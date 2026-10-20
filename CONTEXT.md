@@ -8,6 +8,18 @@ Widget para desktop KDE Plasma 6 que monitora limites, cotas temporais (janela h
 Identidade ou perfil de acesso autenticado em um provedor. Um mesmo agente pode ter multiplas contas cadastradas, ativadas ou removidas.
 _Avoid_: usuario, perfil, sessao
 
+**Conta Ativa no Sistema**:
+A conta cuja credencial esta atualmente aplicada nos caminhos padrao do sistema (`~/.claude/.credentials.json`, `~/.codex/auth.json`, chaveiro/`~/.gemini`), sendo utilizada diretamente por qualquer terminal ou IDE que invoque o agente de IA.
+_Avoid_: conta padrao, sessao global, login primario
+
+**Alternancia de Conta (Switch)**:
+Operacao atomica que sincroniza a credencial ativa atual de volta para seu perfil de origem e ativa uma nova credencial do perfil selecionado nos diretorios globais do sistema, sem necessidade de reautenticacao no navegador.
+_Avoid_: troca de usuario, re-login, swap
+
+**Renomeacao de Conta**:
+Alteracao do rotulo amigavel legivel (`label` / `name`) de uma conta previamente cadastrada ou capturada, preservando o identificador interno (`id`) e o diretorio de arquivos de perfil.
+_Avoid_: renomear arquivo, mudar id
+
 **Criacao de Conta**:
 Acao de cadastrar uma nova credencial ou perfil de acesso diretamente pela interface grafica do Plasmoid ou via comando CLI.
 _Avoid_: cadastro manual, edicao de json
