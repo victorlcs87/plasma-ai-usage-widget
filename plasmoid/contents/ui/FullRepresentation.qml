@@ -238,6 +238,12 @@ PlasmaExtras.Representation {
                 delegate: AccountCard {
                     width: accountsListView.width
                     accountData: modelData
+                    plasmoidItem: fullRoot.plasmoidItem
+                    onAccountSwitched: {
+                        if (fullRoot.plasmoidItem && typeof fullRoot.plasmoidItem.loadStatus === "function") {
+                            fullRoot.plasmoidItem.loadStatus();
+                        }
+                    }
                 }
 
                 // Placeholder quando não houver contas

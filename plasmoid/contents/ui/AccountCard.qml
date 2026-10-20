@@ -9,9 +9,54 @@ Kirigami.AbstractCard {
     id: cardRoot
 
     property var accountData: ({})
+    property var plasmoidItem: null
     property int liveSecondsRemaining: 0
     property int liveWeeklySecondsRemaining: 0
     property bool copiedFeedback: false
+    property bool isSwitching: false
+    property string switchError: ""
+
+    readonly property bool isActive: Boolean(cardRoot.accountData && (cardRoot.accountData.isActive === true || cardRoot.accountData.is_active === true))
+
+    signal accountSwitched()
+
+    Plasma5Support.DataSource {
+        id: switchDataSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            cardRoot.isSwitching = false;
+            var exitCode = data["exit code"];
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+
+            if (exitCode === 0) {
+                cardRoot.switchError = "";
+                var jsonStart = stdout.indexOf("{");
+                if (jsonStart !== -1) {
+                    try {
+                        var parsed = JSON.parse(stdout.substring(jsonStart));
+                        if (cardRoot.plasmoidItem) {
+                            cardRoot.plasmoidItem.statusData = parsed;
+                        }
+                    } catch (e) {
+                        // ignore parse error and rely on loadStatus
+                    }
+                }
+                if (cardRoot.plasmoidItem && typeof cardRoot.plasmoidItem.loadStatus === "function") {
+                    cardRoot.plasmoidItem.loadStatus();
+                }
+                cardRoot.accountSwitched();
+            } else {
+                var errMsg = stderr || stdout || cardRoot.safeI18n("Código de saída %1", exitCode);
+                cardRoot.switchError = cardRoot.safeI18n("Erro ao alternar conta: %1", errMsg);
+                if (cardRoot.plasmoidItem) {
+                    cardRoot.plasmoidItem.lastError = cardRoot.switchError;
+                }
+            }
+            disconnectSource(sourceName);
+        }
+    }
 
     Timer {
         id: copiedFeedbackTimer
@@ -58,6 +103,34 @@ Kirigami.AbstractCard {
         // 3. Feedback visual imediato
         cardRoot.copiedFeedback = true;
         copiedFeedbackTimer.restart();
+    }
+
+    function buildCollectorCommand(quotedArgs) {
+        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
+               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
+               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
+    }
+
+    function switchAccount() {
+        if (cardRoot.isSwitching) return;
+        var prov = cardRoot.accountData?.provider;
+        var accId = cardRoot.accountData?.id;
+        if (!prov || !accId) return;
+
+        var provClean = String(prov).toLowerCase().trim();
+        if (["claude", "codex", "gemini"].indexOf(provClean) === -1) return;
+
+        cardRoot.isSwitching = true;
+        cardRoot.switchError = "";
+
+        var safeArgs = shellQuote("--switch-account") + " " +
+                       shellQuote(provClean) + " " +
+                       shellQuote(accId) + " " +
+                       shellQuote("--status");
+
+        var cmd = cardRoot.buildCollectorCommand(safeArgs);
+        switchDataSource.connectSource(cmd);
     }
 
     function safeI18n(text, arg1, arg2, arg3) {
@@ -260,6 +333,55 @@ Kirigami.AbstractCard {
                 font.bold: true
                 elide: Text.ElideRight
                 color: Kirigami.Theme.textColor
+            }
+
+            // Botão de Ativação Rápida no Sistema (apenas para contas inativas com saúde válida)
+            PlasmaComponents3.Button {
+                id: switchAccountButton
+                visible: !cardRoot.isActive && (cardRoot.accountData?.health?.status === "valid")
+                enabled: !cardRoot.isSwitching
+                text: cardRoot.isSwitching ? cardRoot.safeI18n("Ativando...") : cardRoot.safeI18n("⚡ Ativar no Sistema")
+                icon.name: cardRoot.isSwitching ? "view-refresh" : "system-run"
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: {
+                    if (cardRoot.isSwitching) return cardRoot.safeI18n("Ativando conta no sistema...");
+                    if (cardRoot.switchError && cardRoot.switchError.length > 0) return cardRoot.switchError;
+                    return cardRoot.safeI18n("Ativar esta conta como perfil padrão no CLI do sistema");
+                }
+
+                onClicked: {
+                    cardRoot.switchAccount();
+                }
+            }
+
+            // Badge de Conta Ativa no CLI
+            Rectangle {
+                id: activeCliBadge
+                visible: cardRoot.isActive
+                implicitWidth: activeCliLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                implicitHeight: activeCliLabel.implicitHeight + Kirigami.Units.smallSpacing
+                radius: 4
+                color: Kirigami.Theme.highlightColor
+
+                QQC2.Label {
+                    id: activeCliLabel
+                    anchors.centerIn: parent
+                    text: cardRoot.safeI18n("✓ Ativa no CLI")
+                    font.bold: true
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Kirigami.Theme.highlightedTextColor || "white"
+                }
+
+                QQC2.ToolTip.text: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.")
+                QQC2.ToolTip.visible: activeCliMouseArea.containsMouse
+
+                MouseArea {
+                    id: activeCliMouseArea
+                    anchors.fill: parent
+                    hoverEnabled: true
+                }
             }
 
             Rectangle {

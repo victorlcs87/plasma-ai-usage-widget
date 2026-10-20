@@ -16,13 +16,13 @@ Implementar a interface de alternância de conta ativa e visualização nos card
 
 ## Acceptance criteria
 
-- [ ] `AccountCard.qml` lê a propriedade `accountData.isActive`.
-- [ ] Badge `[✓ Ativa no CLI]` é visível exclusivamente na conta ativa.
-- [ ] Botão `[⚡ Ativar no Sistema]` é exibido nas contas inativas com saúde válida.
-- [ ] Clique no botão invoca `ai-usage-collector --switch-account` com argumentos devidamente sanitizados via `shellQuote()`.
-- [ ] Sucesso da troca dispara atualização visual imediata no Plasmoid sem exigir recarga manual do usuário.
-- [ ] Teste em `test_plasmoid_interactive.py` valida a presença do badge de conta ativa e do botão de switch.
-- [ ] Suíte completa de testes passando (145+ testes).
+- [x] `AccountCard.qml` lê a propriedade `accountData.isActive`.
+- [x] Badge `[✓ Ativa no CLI]` é visível exclusivamente na conta ativa.
+- [x] Botão `[⚡ Ativar no Sistema]` é exibido nas contas inativas com saúde válida.
+- [x] Clique no botão invoca `ai-usage-collector --switch-account` com argumentos devidamente sanitizados via `shellQuote()`.
+- [x] Sucesso da troca dispara atualização visual imediata no Plasmoid sem exigir recarga manual do usuário.
+- [x] Teste em `test_plasmoid_interactive.py` valida a presença do badge de conta ativa e do botão de switch.
+- [x] Suíte completa de testes passando (145+ testes).
 
 ## Blocked by
 

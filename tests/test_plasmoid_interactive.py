@@ -684,3 +684,118 @@ def test_config_general_qml_rename_dialog_clean_layout_and_no_conflicting_standa
         assert not pwned_marker.exists(), f"Vulnerability detected with payload: {evil_input}"
 
 
+def test_account_card_active_cli_badge():
+    """Verify that AccountCard.qml contains the active CLI badge reading accountData.isActive."""
+    card_path = UI_DIR / "AccountCard.qml"
+    content = card_path.read_text(encoding="utf-8")
+
+    # 1. Active property reading accountData.isActive
+    assert "accountData.isActive" in content
+    assert "isActive" in content
+
+    # 2. Visual badge [✓ Ativa no CLI]
+    assert "activeCliBadge" in content
+    assert "✓ Ativa no CLI" in content
+    assert "visible: cardRoot.isActive" in content
+    assert "Kirigami.Theme.highlightColor" in content
+
+
+def test_account_card_switch_account_button_and_contracts():
+    """Verify that AccountCard.qml contains switch button, DataSource, and reactive updating."""
+    card_path = UI_DIR / "AccountCard.qml"
+    content = card_path.read_text(encoding="utf-8")
+
+    # 1. Switch button with lightning icon/text
+    assert "switchAccountButton" in content
+    assert "⚡ Ativar no Sistema" in content
+    assert "Ativando..." in content
+
+    # 2. Display condition: inactive accounts with valid health
+    assert "!cardRoot.isActive" in content
+    assert '"valid"' in content
+
+    # 3. Busy and disabled state
+    assert "isSwitching" in content
+    assert "enabled: !cardRoot.isSwitching" in content
+
+    # 4. Asynchronous DataSource execution and buildCollectorCommand
+    assert "switchDataSource" in content
+    assert "buildCollectorCommand" in content
+    assert "switchAccount" in content
+    assert "--switch-account" in content
+    assert "--status" in content
+
+    # 5. Immediate UI update notification on success
+    assert "accountSwitched" in content
+    assert "statusData" in content
+
+
+def test_account_card_switch_account_shell_injection_resilience(tmp_path: Path):
+    """Verify that AccountCard switchAccount command formatting with shellQuote prevents injection."""
+    card_path = UI_DIR / "AccountCard.qml"
+    content = card_path.read_text(encoding="utf-8")
+
+    # Locate switchAccount function
+    func_start = content.find("function switchAccount()")
+    assert func_start != -1, "switchAccount function not found in AccountCard.qml"
+    func_end = content.find("}", content.find("switchDataSource.connectSource", func_start))
+    assert func_end != -1
+    func_code = content[func_start:func_end]
+
+    # Verify shellQuote is applied to all positional arguments
+    assert 'shellQuote("--switch-account")' in func_code
+    assert 'shellQuote(provClean)' in func_code
+    assert 'shellQuote(accId)' in func_code
+    assert 'shellQuote("--status")' in func_code
+
+    # Test malicious command injection simulation
+    pwned_marker = tmp_path / "pwned_switch.txt"
+    malicious_inputs = [
+        f"hack'; touch {pwned_marker}; echo '",
+        f'hack"$(touch {pwned_marker})"',
+        f"hack`touch {pwned_marker}`",
+        f"hack && touch {pwned_marker}",
+    ]
+
+    for evil_input in malicious_inputs:
+        safe_quoted = "'" + evil_input.replace("'", "'\\''") + "'"
+        cmd = f"bash -c 'for a in \"$@\"; do :; done' _ --switch-account claude {safe_quoted} --status"
+        subprocess.run(cmd, shell=True, check=True)
+        assert not pwned_marker.exists(), f"Vulnerability detected with payload: {evil_input}"
+
+
+@pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary not available")
+def test_account_card_qml_syntax_validity():
+    """Verify that AccountCard.qml parses cleanly with qml6."""
+    card_path = UI_DIR / "AccountCard.qml"
+    res = subprocess.run(
+        ["qml6", "-I", str(UI_DIR.resolve()), "--quit-after", "200", str(card_path.resolve())],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert res.returncode == 0, f"qml6 failed for AccountCard.qml: {res.stderr}"
+
+
+def test_full_representation_wires_plasmoid_item_to_account_card():
+    """Verify that FullRepresentation passes plasmoidItem and connects onAccountSwitched."""
+    full_path = UI_DIR / "FullRepresentation.qml"
+    content = full_path.read_text(encoding="utf-8")
+
+    assert "plasmoidItem: fullRoot.plasmoidItem" in content
+    assert "onAccountSwitched:" in content
+    assert "loadStatus" in content
+
+
+def test_main_qml_switch_account_contract():
+    """Verify that main.qml provides switchAccount method with safe execution."""
+    main_path = UI_DIR / "main.qml"
+    content = main_path.read_text(encoding="utf-8")
+
+    assert "function switchAccount(provider, accountId)" in content
+    assert "--switch-account" in content
+    assert "shellQuote" in content
+    assert "buildCollectorCommand" in content
+
+
+
