@@ -4,11 +4,11 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Remoção da sobreposição de textos ("Claudede") no seletor de provedor em `configGeneral.qml`.
-- [ ] Uso do componente nativo `PlasmaComponents3.ComboBox` integrado perfeitamente ao tema Breeze e Kirigami.
-- [ ] Exibição clara e legível dos nomes de todos os provedores (`Claude`, `Codex`, `Gemini`) tanto no campo fechado quanto na lista suspensa do popup.
-- [ ] Preservação dos indicadores visuais coloridos oficiais de cada IA sem interferir no layout de texto do KDE Plasma.
-- [ ] Validação sintática QML com `qml6` e atualização do pacote com `kpackagetool6`.
-- [ ] Testes automatizados em pytest validando os atributos, bindings e propriedades do ComboBox.
+- [x] Remoção da sobreposição de textos ("Claudede") no seletor de provedor em `configGeneral.qml`.
+- [x] Uso do componente nativo `PlasmaComponents3.ComboBox` integrado perfeitamente ao tema Breeze e Kirigami.
+- [x] Exibição clara e legível dos nomes de todos os provedores (`Claude`, `Codex`, `Gemini`) tanto no campo fechado quanto na lista suspensa do popup.
+- [x] Preservação dos indicadores visuais coloridos oficiais de cada IA sem interferir no layout de texto do KDE Plasma.
+- [x] Validação sintática QML com `qml6` e atualização do pacote com `kpackagetool6`.
+- [x] Testes automatizados em pytest validando os atributos, bindings e propriedades do ComboBox.

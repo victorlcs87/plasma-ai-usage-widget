@@ -396,47 +396,23 @@ Item {
                             font.bold: true
                         }
 
-                        QQC2.ComboBox {
+                        Rectangle {
+                            id: providerIndicator
+                            implicitWidth: Math.round(Kirigami.Units.gridUnit * 0.75)
+                            implicitHeight: Math.round(Kirigami.Units.gridUnit * 0.75)
+                            radius: width / 2
+                            color: configRoot.getProviderColor(providerComboBox.currentText)
+                            Layout.alignment: Qt.AlignVCenter
+                            border.width: 1
+                            border.color: Qt.rgba(0, 0, 0, 0.15)
+                        }
+
+                        PlasmaComponents3.ComboBox {
                             id: providerComboBox
                             Layout.fillWidth: true
                             model: ["Claude", "Codex", "Gemini"]
                             currentIndex: 0
                             enabled: !configRoot.isAdding
-
-                            delegate: QQC2.ItemDelegate {
-                                width: providerComboBox.width
-                                contentItem: RowLayout {
-                                    spacing: Kirigami.Units.smallSpacing
-                                    Rectangle {
-                                        implicitWidth: 12
-                                        implicitHeight: 12
-                                        radius: 6
-                                        color: configRoot.getProviderColor(modelData)
-                                    }
-                                    QQC2.Label {
-                                        text: modelData
-                                        color: Kirigami.Theme.textColor
-                                        font.bold: providerComboBox.currentIndex === index
-                                    }
-                                }
-                                highlighted: providerComboBox.highlightedIndex === index
-                            }
-
-                            contentItem: RowLayout {
-                                spacing: Kirigami.Units.smallSpacing
-                                Rectangle {
-                                    implicitWidth: 12
-                                    implicitHeight: 12
-                                    radius: 6
-                                    color: configRoot.getProviderColor(providerComboBox.currentText)
-                                }
-                                QQC2.Label {
-                                    text: providerComboBox.currentText
-                                    color: Kirigami.Theme.textColor
-                                    verticalAlignment: Text.AlignVCenter
-                                    Layout.fillWidth: true
-                                }
-                            }
                         }
                     }
 

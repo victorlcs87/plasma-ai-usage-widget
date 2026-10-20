@@ -244,8 +244,10 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     assert "isAddFormExpanded" in content
     assert "toggleAddFormBtn" in content
 
-    # Controls: provider ComboBox, labels, textfields
+    # Controls: provider ComboBox (native PlasmaComponents3), indicator, labels, textfields
     assert "providerComboBox" in content
+    assert "PlasmaComponents3.ComboBox" in content
+    assert "providerIndicator" in content
     assert "accountNameField" in content
     assert "credentialPathField" in content
     assert "useDefaultPathBtn" in content

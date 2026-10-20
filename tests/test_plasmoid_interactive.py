@@ -481,4 +481,36 @@ def test_gui_add_account_shell_injection_resilience(tmp_path: Path):
         assert res.stdout.strip() == malicious_input
 
 
+def test_config_general_qml_combobox_native_breeze_compliance():
+    """Verify provider ComboBox uses native PlasmaComponents3 and avoids text-overlap bugs."""
+    config_general_path = UI_DIR / "configGeneral.qml"
+    content = config_general_path.read_text(encoding="utf-8")
+
+    # 1. Native PlasmaComponents3 ComboBox
+    assert "PlasmaComponents3.ComboBox" in content
+    assert "providerComboBox" in content
+
+    # 2. Extract providerComboBox block
+    combo_start = content.find("PlasmaComponents3.ComboBox {")
+    assert combo_start != -1, "PlasmaComponents3.ComboBox definition not found"
+    combo_end = content.find("}", combo_start)
+    assert combo_end != -1
+    combo_block = content[combo_start:combo_end]
+
+    # 3. Model defines all supported providers
+    assert '"Claude"' in combo_block
+    assert '"Codex"' in combo_block
+    assert '"Gemini"' in combo_block
+
+    # 4. No conflicting contentItem or custom Label overrides inside ComboBox
+    # (prevents duplicate rendering/overlapping 'Claudede' bug under Breeze theme)
+    assert "contentItem:" not in combo_block
+    assert "QQC2.Label {" not in combo_block
+
+    # 5. Visual color indicator is maintained safely outside ComboBox layout
+    assert "providerIndicator" in content
+    assert "configRoot.getProviderColor(providerComboBox.currentText)" in content
+
+
+
 
