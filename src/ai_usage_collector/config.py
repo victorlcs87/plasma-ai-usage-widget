@@ -124,11 +124,9 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
 
     migrated = copy.deepcopy(data)
     try:
-        changed = migrate_accounts(migrated, file_path)
+        migrate_accounts(migrated, file_path)  # salva a configuracao se algo mudou
     except Exception:
         return data  # nunca impedir a leitura da configuracao por falha na migracao
-    if changed:
-        save_config(migrated, file_path)
     return migrated
 
 
