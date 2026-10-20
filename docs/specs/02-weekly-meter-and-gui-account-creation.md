@@ -32,6 +32,10 @@ Uma reformulação visual e funcional do widget no KDE Plasma 6 e no Coletor Pyt
 ## Implementation Decisions
 
 - **Arquitetura de Contrato e Backend (`ai-usage-collector`)**:
+  - **Sincronização Oficial da API de Uso do Claude (`/api/oauth/usage`)**:
+    - O extrator do Claude passa a consultar primariamente `https://api.anthropic.com/api/oauth/usage` utilizando o `accessToken` OAuth já existente em `~/.claude/.credentials.json`.
+    - Essa rota oficial retorna com precisão absoluta de servidor os mesmos valores exibidos pelo Claude Code: `five_hour.utilization` (ex.: 3% / 4%), `five_hour.resets_at`, `seven_day.utilization` (ex.: 87%) e `seven_day.resets_at`.
+    - Caso a máquina esteja sem conexão ou o endpoint falhe, o extrator realiza fallback transparente para o cálculo local de logs.
   - **Cálculo da Porcentagem Semanal no Contrato `status.json`**:
     - O modelo de contrato enriquece a seção `weekly_window` com `total_capacity`, `usage_percentage` e `available_capacity`, calculados a partir da capacidade semanal estimada ou configurada para cada plano e agente.
     - Preserva o campo `tokens_used` e `messages_used` para fornecer o contexto de volume.
