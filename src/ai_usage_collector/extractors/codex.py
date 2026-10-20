@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import sqlite3
 from typing import Any
 
 from ai_usage_collector.discovery import discover_codex
@@ -249,6 +251,38 @@ def deduplicate_timestamps(raw_timestamps: list[float], tolerance_sec: float = 1
     return deduped
 
 
+def fetch_codex_usage_api(
+    access_token: str,
+    account_id: str | None = None,
+    timeout: float = 3.0,
+) -> dict[str, Any] | None:
+    """Fetch official usage metrics from OpenAI ChatGPT backend WHAM API."""
+    if not access_token:
+        return None
+    url = "https://chatgpt.com/backend-api/wham/usage"
+    headers = {
+        "Authorization": f"Bearer {access_token}",
+        "Accept": "application/json",
+        "User-Agent": "codex-cli",
+    }
+    if account_id:
+        headers["ChatGPT-Account-Id"] = account_id
+    req = urllib.request.Request(url, headers=headers, method="GET")
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
+            if status in (200, 201):
+                body = resp.read()
+                if isinstance(body, bytes):
+                    body = body.decode("utf-8")
+                data = json.loads(body)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        return None
+    return None
+
+
 def extract_codex_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
@@ -338,6 +372,93 @@ def extract_codex_status(
         cycle_reset_time = None
         weekly_seconds_remaining = None
 
+    # Read access token and account id for official API
+    access_token = None
+    account_id = None
+    if cred_file.exists():
+        try:
+            with open(cred_file, "r", encoding="utf-8") as f:
+                cdata = json.load(f)
+            if isinstance(cdata, dict):
+                toks = cdata.get("tokens")
+                if isinstance(toks, dict):
+                    access_token = toks.get("access_token")
+                    account_id = toks.get("account_id") or toks.get("ChatGPT-Account-Id")
+                if not access_token:
+                    access_token = cdata.get("access_token")
+                if not account_id:
+                    account_id = cdata.get("account_id") or cdata.get("ChatGPT-Account-Id")
+        except Exception:
+            pass
+    if not access_token:
+        access_token = account.get("access_token") or account.get("token")
+    if not account_id:
+        account_id = account.get("account_id") or account.get("chatgpt_account_id")
+
+    weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
+
+    # Attempt primary official API usage route
+    api_data = None
+    if access_token and health.get("status") == "valid":
+        api_data = fetch_codex_usage_api(access_token, account_id)
+
+    if api_data and (isinstance(api_data.get("rate_limit"), dict) or "primary_window" in api_data):
+        rate_limit = api_data.get("rate_limit") or api_data
+        primary = rate_limit.get("primary_window") or {}
+        secondary = rate_limit.get("secondary_window") or {}
+
+        # Primary window (active window)
+        used_pct_primary = primary.get("used_percent")
+        if used_pct_primary is not None:
+            usage_percentage = round(float(used_pct_primary), 1)
+            used_3h = round(total_capacity * (usage_percentage / 100.0))
+            available_capacity = max(0, total_capacity - used_3h)
+
+        resets_at_primary = primary.get("reset_at")
+        if resets_at_primary:
+            r_sec = parse_timestamp(resets_at_primary)
+            if r_sec is not None:
+                release_sec = r_sec
+                seconds_remaining = max(0, int(release_sec - now_sec))
+                release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+
+        # Secondary window (weekly window)
+        used_pct_secondary = secondary.get("used_percent")
+        if used_pct_secondary is not None:
+            weekly_usage_percentage = round(float(used_pct_secondary), 1)
+            weekly_used_capacity = round(weekly_total_capacity * (weekly_usage_percentage / 100.0))
+            weekly_available_capacity = max(0, weekly_total_capacity - weekly_used_capacity)
+        else:
+            weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
+            weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
+            weekly_used_capacity = used_7d
+
+        resets_at_secondary = secondary.get("reset_at")
+        if resets_at_secondary:
+            w_sec = parse_timestamp(resets_at_secondary)
+            if w_sec is not None:
+                cycle_reset_sec = w_sec
+                weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
+                cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+
+        # Promo / invite mapping
+        promo = api_data.get("promo")
+        if promo:
+            if isinstance(promo, dict):
+                p_url = promo.get("invite_url") or promo.get("referral_url") or promo.get("url")
+                p_cnt = promo.get("available_count") or promo.get("count")
+                if p_url and not invites.get("invite_url"):
+                    invites["invite_url"] = p_url
+                if p_cnt is not None and account.get("manual_invite_count") is None:
+                    invites["available_count"] = p_cnt
+            elif isinstance(promo, str) and promo.strip() and not invites.get("invite_url"):
+                invites["invite_url"] = promo.strip()
+    else:
+        # Fallback local calculation
+        weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
+        weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
+        weekly_used_capacity = used_7d
+
     native_window = {
         "type": "3h",
         "total_capacity": total_capacity,
@@ -352,7 +473,10 @@ def extract_codex_status(
 
     weekly_window = {
         "total_tokens_or_turns": None,
-        "used_capacity": used_7d,
+        "total_capacity": weekly_total_capacity,
+        "used_capacity": weekly_used_capacity,
+        "available_capacity": weekly_available_capacity,
+        "usage_percentage": weekly_usage_percentage,
         "messages_used": used_7d,
         "tokens_used": 0,
         "cycle_reset_time": cycle_reset_time,

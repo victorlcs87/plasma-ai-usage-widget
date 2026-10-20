@@ -3,9 +3,12 @@
 from __future__ import annotations
 
 import json
+import sqlite3
+import subprocess
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
-import sqlite3
 from typing import Any
 
 from ai_usage_collector.discovery import discover_gemini
@@ -204,6 +207,110 @@ def deduplicate_timestamps(raw_timestamps: list[float], tolerance_sec: float = 1
     return deduped
 
 
+def get_gemini_keyring_token(timeout: float = 3.0) -> str | None:
+    """Retrieve Gemini OAuth access token from system keyring via secret-tool."""
+    try:
+        proc = subprocess.run(
+            ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if proc.returncode == 0:
+            raw = proc.stdout.strip()
+            if not raw:
+                return None
+            try:
+                data = json.loads(raw)
+                if isinstance(data, dict):
+                    tok = data.get("token")
+                    if isinstance(tok, dict) and tok.get("access_token"):
+                        return str(tok["access_token"])
+                    if isinstance(tok, str) and tok:
+                        return tok
+                    if data.get("access_token"):
+                        return str(data["access_token"])
+            except Exception:
+                pass
+            return raw
+    except Exception:
+        pass
+    return None
+
+
+def fetch_gemini_quota_api(
+    token: str,
+    timeout: float = 3.0,
+) -> dict[str, Any] | None:
+    """Fetch official quota summary from Google Cloud Code internal API."""
+    if not token:
+        return None
+    url = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+    req = urllib.request.Request(
+        url,
+        data=b"{}",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "antigravity",
+        },
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
+            if status in (200, 201):
+                body = resp.read()
+                if isinstance(body, bytes):
+                    body = body.decode("utf-8")
+                data = json.loads(body)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        return None
+    return None
+
+
+def parse_gemini_quota_buckets(
+    data: dict[str, Any],
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    """Extract gemini-5h and gemini-weekly quota bucket entries from API response."""
+    bucket_5h: dict[str, Any] | None = None
+    bucket_weekly: dict[str, Any] | None = None
+
+    # 1. Direct dictionary keys
+    for k in ["gemini-5h", "5h"]:
+        if isinstance(data.get(k), dict):
+            bucket_5h = data[k]
+            break
+    for k in ["gemini-weekly", "weekly", "7d", "seven_day"]:
+        if isinstance(data.get(k), dict):
+            bucket_weekly = data[k]
+            break
+
+    # 2. Lists in known wrapper keys
+    candidate_lists: list[list[Any]] = []
+    for list_key in ["buckets", "quotas", "userQuotas", "quotaSummaries"]:
+        val = data.get(list_key)
+        if isinstance(val, list):
+            candidate_lists.append(val)
+    if isinstance(data, list):
+        candidate_lists.append(data)
+
+    for lst in candidate_lists:
+        for item in lst:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or item.get("id") or item.get("window") or "").lower()
+            if not bucket_5h and ("5h" in name or name == "gemini-5h"):
+                bucket_5h = item
+            if not bucket_weekly and ("weekly" in name or "7d" in name or name == "gemini-weekly"):
+                bucket_weekly = item
+
+    return bucket_5h, bucket_weekly
+
+
 def extract_gemini_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
@@ -323,6 +430,68 @@ def extract_gemini_status(
         cycle_reset_time = None
         weekly_seconds_remaining = None
 
+    # Keyring or file token lookup for official API
+    token = get_gemini_keyring_token()
+    if not token and cred_file.exists():
+        try:
+            with open(cred_file, "r", encoding="utf-8") as f:
+                cdata = json.load(f)
+            if isinstance(cdata, dict):
+                token = cdata.get("access_token")
+        except Exception:
+            pass
+    if not token:
+        token = account.get("access_token") or account.get("token")
+
+    weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
+
+    # Attempt primary official API usage route
+    api_data = None
+    if token:
+        api_data = fetch_gemini_quota_api(token)
+
+    if api_data:
+        bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data)
+
+        # 5h window from official API
+        if bucket_5h and bucket_5h.get("remainingFraction") is not None:
+            rem_5h = float(bucket_5h["remainingFraction"])
+            usage_percentage = round((1.0 - rem_5h) * 100.0, 1)
+            available_capacity = max(0, round(total_capacity * rem_5h))
+            used_daily = total_capacity - available_capacity
+
+            reset_5h = bucket_5h.get("resetTime") or bucket_5h.get("resets_at")
+            if reset_5h:
+                r_sec = parse_timestamp(reset_5h)
+                if r_sec is not None:
+                    release_sec = r_sec
+                    seconds_remaining = max(0, int(release_sec - now_sec))
+                    release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+
+        # Weekly window from official API
+        if bucket_weekly and bucket_weekly.get("remainingFraction") is not None:
+            rem_w = float(bucket_weekly["remainingFraction"])
+            weekly_usage_percentage = round((1.0 - rem_w) * 100.0, 1)
+            weekly_available_capacity = max(0, round(weekly_total_capacity * rem_w))
+            weekly_used_capacity = weekly_total_capacity - weekly_available_capacity
+
+            reset_w = bucket_weekly.get("resetTime") or bucket_weekly.get("resets_at")
+            if reset_w:
+                w_sec = parse_timestamp(reset_w)
+                if w_sec is not None:
+                    cycle_reset_sec = w_sec
+                    weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
+                    cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+        else:
+            weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
+            weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
+            weekly_used_capacity = used_7d
+    else:
+        # Fallback local calculation
+        weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
+        weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
+        weekly_used_capacity = used_7d
+
     native_window = {
         "type": "daily",
         "total_capacity": total_capacity,
@@ -337,7 +506,10 @@ def extract_gemini_status(
 
     weekly_window = {
         "total_tokens_or_turns": total_steps_recorded if total_steps_recorded > 0 else None,
-        "used_capacity": used_7d,
+        "total_capacity": weekly_total_capacity,
+        "used_capacity": weekly_used_capacity,
+        "available_capacity": weekly_available_capacity,
+        "usage_percentage": weekly_usage_percentage,
         "messages_used": used_7d,
         "tokens_used": 0,
         "cycle_reset_time": cycle_reset_time,

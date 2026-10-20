@@ -8,7 +8,12 @@ import sys
 from typing import Sequence
 
 from ai_usage_collector import __version__
-from ai_usage_collector.collector import collect_and_save, load_status_cache, remove_account
+from ai_usage_collector.collector import (
+    add_account_entry,
+    collect_and_save,
+    load_status_cache,
+    remove_account,
+)
 from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
 
 
@@ -38,6 +43,42 @@ def build_parser() -> argparse.ArgumentParser:
         nargs=2,
         metavar=("PROVIDER", "ACCOUNT_ID"),
         help="Remove uma conta cadastrada do provedor e sincroniza o status",
+    )
+    parser.add_argument(
+        "--add-account",
+        action="store_true",
+        help="Adiciona uma nova conta ao provedor especificado e sincroniza o status",
+    )
+    parser.add_argument(
+        "--provider",
+        type=str,
+        help="Provedor da conta ('claude', 'codex', 'gemini')",
+    )
+    parser.add_argument(
+        "--label",
+        "--name",
+        dest="label",
+        type=str,
+        help="Rótulo amigável legível da nova conta",
+    )
+    parser.add_argument(
+        "--credential-path",
+        "--dir",
+        dest="credential_path",
+        type=str,
+        help="Caminho do arquivo ou diretório de credenciais da conta",
+    )
+    parser.add_argument(
+        "--invite-url",
+        type=str,
+        default=None,
+        help="URL opcional de convite para teste gratuito",
+    )
+    parser.add_argument(
+        "--total-capacity",
+        type=int,
+        default=None,
+        help="Capacidade total opcional personalizada para a conta",
     )
     parser.add_argument(
         "--config-path",
@@ -85,8 +126,43 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stderr.flush()
                 return 1
 
+        if args.add_account:
+            if not args.provider:
+                sys.stderr.write("Erro: Parâmetro --provider é obrigatório para --add-account.\n")
+                sys.stderr.flush()
+                return 1
+            if not args.label:
+                sys.stderr.write("Erro: Parâmetro --label / --name é obrigatório para --add-account.\n")
+                sys.stderr.flush()
+                return 1
+            if not args.credential_path:
+                sys.stderr.write("Erro: Parâmetro --credential-path / --dir é obrigatório para --add-account.\n")
+                sys.stderr.flush()
+                return 1
+
+            success, message, status_data = add_account_entry(
+                provider=args.provider,
+                label=args.label,
+                credential_path=args.credential_path,
+                invite_url=args.invite_url,
+                total_capacity=args.total_capacity,
+                config_path=config_path,
+                cache_path=cache_path,
+            )
+            if success:
+                sys.stdout.write(f"{message}\n")
+                sys.stdout.flush()
+                if args.status and status_data:
+                    sys.stdout.write(json.dumps(status_data, indent=2, ensure_ascii=False) + "\n")
+                    sys.stdout.flush()
+                return 0
+            else:
+                sys.stderr.write(f"Erro: {message}\n")
+                sys.stderr.flush()
+                return 1
+
         # Default behavior: if neither refresh nor status is explicitly given, default to refresh
-        should_refresh = args.refresh or (not args.refresh and not args.status and not args.remove_account)
+        should_refresh = args.refresh or (not args.refresh and not args.status and not args.remove_account and not args.add_account)
         should_output_status = args.status
 
         status_data = None

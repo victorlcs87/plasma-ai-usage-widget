@@ -6,6 +6,9 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import sqlite3
+import subprocess
+import urllib.error
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,6 +18,9 @@ from ai_usage_collector.extractors.gemini import (
     DEFAULT_GEMINI_CAPACITY_BY_TIER,
     extract_gemini_invites,
     extract_gemini_status,
+    fetch_gemini_quota_api,
+    get_gemini_keyring_token,
+    parse_gemini_quota_buckets,
     parse_timestamp,
     read_gemini_history_timestamps,
     read_gemini_sqlite_summaries,
@@ -367,3 +373,149 @@ def test_collector_integration_with_gemini_native_extractor(tmp_path):
     assert acc["native_window"]["type"] == "daily"
     assert acc["native_window"]["used_capacity"] == 1
     assert acc["free_trial_invites"]["invite_url"] == "https://gemini.google/invite/SHARED"
+
+
+def test_get_gemini_keyring_token_success():
+    fake_json = json.dumps({"token": {"access_token": "ya29.keyring_token"}})
+    mock_proc = MagicMock(returncode=0, stdout=fake_json)
+
+    with patch("subprocess.run", return_value=mock_proc) as mock_run:
+        tok = get_gemini_keyring_token()
+        assert tok == "ya29.keyring_token"
+        assert mock_run.call_args[0][0] == [
+            "secret-tool", "lookup", "service", "gemini", "username", "antigravity"
+        ]
+
+
+def test_get_gemini_keyring_token_failures():
+    # Return code failure
+    with patch("subprocess.run", return_value=MagicMock(returncode=1, stdout="")):
+        assert get_gemini_keyring_token() is None
+
+    # Subprocess exception (e.g. secret-tool not found or timeout)
+    with patch("subprocess.run", side_effect=FileNotFoundError):
+        assert get_gemini_keyring_token() is None
+
+
+def test_fetch_gemini_quota_api_success():
+    fake_body = json.dumps({
+        "gemini-5h": {"remainingFraction": 0.8, "resetTime": "2026-10-20T18:00:00Z"},
+        "gemini-weekly": {"remainingFraction": 0.35, "resetTime": "2026-10-25T12:00:00Z"},
+    }).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = fake_body
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        data = fetch_gemini_quota_api("test-token")
+        assert data is not None
+        assert "gemini-5h" in data
+        req = mock_urlopen.call_args[0][0]
+        assert req.get_header("Authorization") == "Bearer test-token"
+        assert req.get_header("Content-type") == "application/json"
+        assert req.data == b"{}"
+
+
+def test_parse_gemini_quota_buckets():
+    # Format 1: direct dictionary keys
+    data1 = {
+        "gemini-5h": {"remainingFraction": 0.8},
+        "gemini-weekly": {"remainingFraction": 0.5},
+    }
+    b5h, bw = parse_gemini_quota_buckets(data1)
+    assert b5h["remainingFraction"] == 0.8
+    assert bw["remainingFraction"] == 0.5
+
+    # Format 2: list of buckets
+    data2 = {
+        "buckets": [
+            {"window": "5h", "remainingFraction": 0.7},
+            {"window": "weekly", "remainingFraction": 0.4},
+        ]
+    }
+    b5h2, bw2 = parse_gemini_quota_buckets(data2)
+    assert b5h2["remainingFraction"] == 0.7
+    assert bw2["remainingFraction"] == 0.4
+
+
+def test_extract_gemini_status_with_official_api(tmp_path):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir()
+    creds = {"access_token": "ya29.fallback"}
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps(creds))
+
+    fake_api_response = {
+        "gemini-5h": {
+            "remainingFraction": 0.75,  # 1.0 - 0.75 = 25.0% used
+            "resetTime": "2026-10-20T18:00:00Z",
+        },
+        "gemini-weekly": {
+            "remainingFraction": 0.30,  # 1.0 - 0.30 = 70.0% used
+            "resetTime": "2026-10-25T12:00:00Z",
+        },
+    }
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {
+        "id": "official_gemini",
+        "provider": "gemini",
+        "gemini_dir": str(gemini_dir),
+        "weekly_capacity": 700,
+    }
+
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value="ya29.keyring"), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=fake_api_response):
+        res = extract_gemini_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["usage_percentage"] == 25.0
+    assert nw["total_capacity"] == 100
+    assert nw["available_capacity"] == 75  # 75% available
+    assert nw["used_capacity"] == 25  # 25% used
+    assert nw["seconds_remaining"] == 3 * 3600
+
+    ww = res["weekly_window"]
+    assert ww["usage_percentage"] == 70.0
+    assert ww["total_capacity"] == 700
+    assert ww["available_capacity"] == 210  # 30% available of 700
+    assert ww["used_capacity"] == 490  # 70% used of 700
+    assert ww["cycle_reset_time"] == "2026-10-25T12:00:00+00:00"
+
+
+def test_extract_gemini_status_fallback_when_api_fails(tmp_path):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir()
+    creds = {"access_token": "ya29.fallback"}
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps(creds))
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    now_ms = int(now.timestamp() * 1000)
+    history_file = gemini_dir / "history.jsonl"
+    history_file.write_text(
+        f'{{"timestamp": {now_ms - 1800000}, "display": "g1"}}\n'
+        f'{{"timestamp": {now_ms - 600000}, "display": "g2"}}\n'
+    )
+
+    account = {
+        "id": "fallback_gemini",
+        "provider": "gemini",
+        "gemini_dir": str(gemini_dir),
+    }
+
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=None):
+        res = extract_gemini_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["used_capacity"] == 2
+    assert nw["total_capacity"] == 100
+    assert nw["available_capacity"] == 98
+    assert nw["usage_percentage"] == round((2 / 100) * 100, 1)
+
+    ww = res["weekly_window"]
+    assert ww["total_capacity"] == 100 * 7
+    assert ww["used_capacity"] == 2
+    assert ww["available_capacity"] == (100 * 7) - 2
+    assert ww["usage_percentage"] == round((2 / (100 * 7)) * 100, 1)

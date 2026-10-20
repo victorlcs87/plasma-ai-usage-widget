@@ -5,6 +5,8 @@ from __future__ import annotations
 import glob
 import json
 import os
+import urllib.error
+import urllib.request
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
@@ -256,6 +258,38 @@ def resolve_tier_capacity(account: dict[str, Any], health: dict[str, Any]) -> in
     return DEFAULT_FALLBACK_CAPACITY
 
 
+def fetch_claude_usage_api(
+    access_token: str,
+    timeout: float = 3.0,
+) -> dict[str, Any] | None:
+    """Fetch official usage metrics from Anthropic API (https://api.anthropic.com/api/oauth/usage)."""
+    if not access_token:
+        return None
+    url = "https://api.anthropic.com/api/oauth/usage"
+    req = urllib.request.Request(
+        url,
+        headers={
+            "Authorization": f"Bearer {access_token}",
+            "Accept": "application/json",
+            "User-Agent": "claude-code",
+        },
+        method="GET",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
+            if status in (200, 201):
+                body = resp.read()
+                if isinstance(body, bytes):
+                    body = body.decode("utf-8")
+                data = json.loads(body)
+                if isinstance(data, dict):
+                    return data
+    except Exception:
+        return None
+    return None
+
+
 def extract_claude_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
@@ -361,6 +395,73 @@ def extract_claude_status(
         cycle_reset_time = None
         weekly_seconds_remaining = None
 
+    # Read access token for official API
+    access_token = None
+    if cred_file.exists():
+        try:
+            with open(cred_file, "r", encoding="utf-8") as f:
+                cdata = json.load(f)
+            if isinstance(cdata, dict):
+                oauth_val = cdata.get("claudeAiOauth")
+                if isinstance(oauth_val, dict) and oauth_val.get("accessToken"):
+                    access_token = oauth_val["accessToken"]
+                elif cdata.get("accessToken"):
+                    access_token = cdata["accessToken"]
+        except Exception:
+            pass
+    if not access_token:
+        access_token = account.get("accessToken") or account.get("access_token") or account.get("token")
+
+    weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
+
+    # Attempt primary official API usage route
+    api_data = None
+    if access_token and health.get("status") in ("valid", "session_expired"):
+        api_data = fetch_claude_usage_api(access_token)
+
+    if api_data and (isinstance(api_data.get("five_hour"), dict) or isinstance(api_data.get("seven_day"), dict)):
+        five_hour_info = api_data.get("five_hour") or {}
+        seven_day_info = api_data.get("seven_day") or {}
+
+        # 5h window from official API
+        util_5h = five_hour_info.get("utilization")
+        if util_5h is not None:
+            usage_percentage = round(float(util_5h), 1)
+            used_5h = round(total_capacity * (usage_percentage / 100.0))
+            available_capacity = max(0, total_capacity - used_5h)
+
+        resets_at_5h = five_hour_info.get("resets_at")
+        if resets_at_5h:
+            r_sec = parse_timestamp(resets_at_5h)
+            if r_sec is not None:
+                release_sec = r_sec
+                seconds_remaining = max(0, int(release_sec - now_sec))
+                release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+
+        # Weekly window from official API
+        util_7d = seven_day_info.get("utilization")
+        if util_7d is not None:
+            weekly_usage_percentage = round(float(util_7d), 1)
+            weekly_used_capacity = round(weekly_total_capacity * (weekly_usage_percentage / 100.0))
+            weekly_available_capacity = max(0, weekly_total_capacity - weekly_used_capacity)
+        else:
+            weekly_usage_percentage = min(100.0, round((total_weekly_messages / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
+            weekly_available_capacity = max(0, weekly_total_capacity - total_weekly_messages)
+            weekly_used_capacity = total_weekly_messages
+
+        resets_at_7d = seven_day_info.get("resets_at")
+        if resets_at_7d:
+            w_sec = parse_timestamp(resets_at_7d)
+            if w_sec is not None:
+                cycle_reset_sec = w_sec
+                weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
+                cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+    else:
+        # Fallback to local calculation
+        weekly_usage_percentage = min(100.0, round((total_weekly_messages / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
+        weekly_available_capacity = max(0, weekly_total_capacity - total_weekly_messages)
+        weekly_used_capacity = total_weekly_messages
+
     native_window = {
         "type": "5h",
         "total_capacity": total_capacity,
@@ -375,7 +476,10 @@ def extract_claude_status(
 
     weekly_window = {
         "total_tokens_or_turns": None,
-        "used_capacity": total_weekly_messages,
+        "total_capacity": weekly_total_capacity,
+        "used_capacity": weekly_used_capacity,
+        "available_capacity": weekly_available_capacity,
+        "usage_percentage": weekly_usage_percentage,
         "tokens_used": total_weekly_tokens,
         "messages_used": total_weekly_messages,
         "cycle_reset_time": cycle_reset_time,

@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import json
+import urllib.error
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -14,6 +16,7 @@ from ai_usage_collector.extractors.claude import (
     DEFAULT_CAPACITY_BY_TIER,
     extract_claude_status,
     extract_invites,
+    fetch_claude_usage_api,
     parse_timestamp,
     read_daily_activity_and_tokens,
     read_history_timestamps,
@@ -475,4 +478,132 @@ def test_claude_extractor_with_real_environment_if_present():
 
     ww = result["weekly_window"]
     assert ww["used_capacity"] is not None
+
+
+def test_fetch_claude_usage_api_success():
+    fake_body = json.dumps({
+        "five_hour": {"utilization": 22.5, "resets_at": "2026-10-20T18:00:00Z"},
+        "seven_day": {"utilization": 87.0, "resets_at": "2026-10-25T12:00:00Z"},
+    }).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = fake_body
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        data = fetch_claude_usage_api("test-token")
+        assert data is not None
+        assert data["five_hour"]["utilization"] == 22.5
+        assert data["seven_day"]["utilization"] == 87.0
+
+        # Verify request headers
+        req = mock_urlopen.call_args[0][0]
+        assert req.get_header("Authorization") == "Bearer test-token"
+        assert req.get_header("Accept") == "application/json"
+
+
+def test_fetch_claude_usage_api_http_error():
+    with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)):
+        data = fetch_claude_usage_api("bad-token")
+        assert data is None
+
+
+def test_fetch_claude_usage_api_timeout():
+    with patch("urllib.request.urlopen", side_effect=TimeoutError("Connection timed out")):
+        data = fetch_claude_usage_api("test-token")
+        assert data is None
+
+
+def test_extract_claude_status_with_official_api(tmp_path):
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    creds = {
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-live",
+            "subscriptionType": "pro",
+            "expiresAt": "2026-10-25T12:00:00Z",
+        }
+    }
+    (claude_dir / ".credentials.json").write_text(json.dumps(creds))
+
+    fake_api_response = {
+        "five_hour": {
+            "utilization": 20.0,
+            "resets_at": "2026-10-20T18:00:00Z",
+        },
+        "seven_day": {
+            "utilization": 85.0,
+            "resets_at": "2026-10-25T12:00:00Z",
+        },
+    }
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {
+        "id": "official_claude",
+        "provider": "claude",
+        "claude_dir": str(claude_dir),
+        "weekly_capacity": 315,
+    }
+
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=fake_api_response):
+        res = extract_claude_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["usage_percentage"] == 20.0
+    assert nw["used_capacity"] == 9  # 20% of 45
+    assert nw["total_capacity"] == 45
+    assert nw["available_capacity"] == 36
+    assert nw["seconds_remaining"] == 3 * 3600  # 15:00 to 18:00 = 3h
+
+    ww = res["weekly_window"]
+    assert ww["usage_percentage"] == 85.0
+    assert ww["total_capacity"] == 315
+    assert ww["available_capacity"] == 47  # 15% of 315
+    assert ww["used_capacity"] == 268  # 85% of 315
+    assert ww["cycle_reset_time"] == "2026-10-25T12:00:00+00:00"
+
+
+def test_extract_claude_status_fallback_when_api_fails(tmp_path):
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    creds = {
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-live",
+            "subscriptionType": "pro",
+            "expiresAt": "2026-10-25T12:00:00Z",
+        }
+    }
+    (claude_dir / ".credentials.json").write_text(json.dumps(creds))
+
+    # Add 2 messages in last hour
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    now_ms = int(now.timestamp() * 1000)
+    history_file = claude_dir / "history.jsonl"
+    history_file.write_text(
+        f'{{"timestamp": {now_ms - 1800000}, "display": "p1"}}\n'
+        f'{{"timestamp": {now_ms - 600000}, "display": "p2"}}\n'
+    )
+
+    account = {
+        "id": "fallback_claude",
+        "provider": "claude",
+        "claude_dir": str(claude_dir),
+    }
+
+    # API returns None (offline / network failure)
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=None):
+        res = extract_claude_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["used_capacity"] == 2
+    assert nw["total_capacity"] == 45
+    assert nw["available_capacity"] == 43
+    assert nw["usage_percentage"] == round((2 / 45) * 100, 1)
+
+    ww = res["weekly_window"]
+    assert ww["total_capacity"] == 45 * 7
+    assert ww["used_capacity"] == 2
+    assert ww["available_capacity"] == (45 * 7) - 2
+    assert ww["usage_percentage"] == round((2 / (45 * 7)) * 100, 1)
 

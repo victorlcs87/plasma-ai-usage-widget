@@ -71,12 +71,22 @@ def build_agent_account_status(
 
     default_weekly_window: dict[str, Any] = {
         "total_tokens_or_turns": None,
+        "total_capacity": None,
         "used_capacity": None,
+        "available_capacity": None,
+        "usage_percentage": 0.0,
         "cycle_reset_time": None,
         "seconds_remaining": None,
     }
     if weekly_window:
         default_weekly_window.update(weekly_window)
+        if default_weekly_window.get("usage_percentage") is not None:
+            try:
+                default_weekly_window["usage_percentage"] = float(round(default_weekly_window["usage_percentage"], 1))
+            except (ValueError, TypeError):
+                default_weekly_window["usage_percentage"] = 0.0
+        else:
+            default_weekly_window["usage_percentage"] = 0.0
 
     default_invites: dict[str, Any] = {
         "available_count": manual_invite_count if manual_invite_count is not None else 0,
@@ -140,5 +150,15 @@ def validate_status_contract(data: Any) -> bool:
             for field in ["id", "label", "provider", "source", "health", "native_window", "weekly_window", "free_trial_invites"]:
                 if field not in acc:
                     return False
+
+            ww = acc.get("weekly_window")
+            if not isinstance(ww, dict):
+                return False
+            if "usage_percentage" not in ww or not isinstance(ww["usage_percentage"], (int, float)):
+                return False
+            if ww.get("total_capacity") is not None and not isinstance(ww["total_capacity"], int):
+                return False
+            if ww.get("available_capacity") is not None and not isinstance(ww["available_capacity"], int):
+                return False
 
     return True

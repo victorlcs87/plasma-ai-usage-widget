@@ -6,6 +6,8 @@ import json
 from datetime import datetime, timezone, timedelta
 from pathlib import Path
 import sqlite3
+import urllib.error
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -15,6 +17,7 @@ from ai_usage_collector.extractors.codex import (
     DEFAULT_CODEX_CAPACITY_BY_TIER,
     extract_codex_invites,
     extract_codex_status,
+    fetch_codex_usage_api,
     parse_timestamp,
     read_codex_history_timestamps,
     read_codex_logs_timestamps,
@@ -415,3 +418,139 @@ def test_collector_integration_with_codex_native_extractor(tmp_path):
     assert acc["native_window"]["type"] == "3h"
     assert acc["native_window"]["used_capacity"] == 1
     assert acc["free_trial_invites"]["invite_url"] == "https://chatgpt.com/invite/TEST"
+
+
+def test_fetch_codex_usage_api_success():
+    fake_body = json.dumps({
+        "rate_limit": {
+            "primary_window": {"used_percent": 30.0, "reset_at": "2026-10-20T18:00:00Z"},
+            "secondary_window": {"used_percent": 65.0, "reset_at": "2026-10-25T12:00:00Z"},
+        },
+        "plan_type": "plus",
+        "promo": {
+            "invite_url": "https://chatgpt.com/invite/wham-test",
+            "available_count": 4,
+        },
+    }).encode("utf-8")
+
+    mock_resp = MagicMock()
+    mock_resp.status = 200
+    mock_resp.__enter__.return_value = mock_resp
+    mock_resp.read.return_value = fake_body
+
+    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+        data = fetch_codex_usage_api("test-token", account_id="acc-12345")
+        assert data is not None
+        assert data["plan_type"] == "plus"
+        assert data["rate_limit"]["primary_window"]["used_percent"] == 30.0
+
+        req = mock_urlopen.call_args[0][0]
+        assert req.get_header("Authorization") == "Bearer test-token"
+        assert req.get_header("Chatgpt-account-id") == "acc-12345"
+
+
+def test_fetch_codex_usage_api_errors():
+    with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)):
+        assert fetch_codex_usage_api("bad-token") is None
+
+    with patch("urllib.request.urlopen", side_effect=TimeoutError("Timed out")):
+        assert fetch_codex_usage_api("tok") is None
+
+
+def test_extract_codex_status_with_official_api(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    auth_data = {
+        "tokens": {
+            "access_token": "valid_token",
+            "account_id": "acc-999",
+        }
+    }
+    (codex_dir / "auth.json").write_text(json.dumps(auth_data))
+
+    fake_api_response = {
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 40.0,
+                "reset_at": "2026-10-20T18:00:00Z",
+            },
+            "secondary_window": {
+                "used_percent": 75.0,
+                "reset_at": "2026-10-25T12:00:00Z",
+            },
+        },
+        "promo": {
+            "invite_url": "https://chatgpt.com/invite/official",
+            "available_count": 5,
+        },
+    }
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {
+        "id": "official_codex",
+        "provider": "codex",
+        "codex_dir": str(codex_dir),
+        "weekly_capacity": 350,
+    }
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=fake_api_response):
+        res = extract_codex_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["usage_percentage"] == 40.0
+    assert nw["total_capacity"] == 50
+    assert nw["used_capacity"] == 20  # 40% of 50
+    assert nw["available_capacity"] == 30
+    assert nw["seconds_remaining"] == 3 * 3600
+
+    ww = res["weekly_window"]
+    assert ww["usage_percentage"] == 75.0
+    assert ww["total_capacity"] == 350
+    assert ww["available_capacity"] == 88  # 25% of 350
+    assert ww["used_capacity"] == 262  # 75% of 350
+    assert ww["cycle_reset_time"] == "2026-10-25T12:00:00+00:00"
+
+    # Promo check
+    assert res["free_trial_invites"]["invite_url"] == "https://chatgpt.com/invite/official"
+    assert res["free_trial_invites"]["available_count"] == 5
+
+
+def test_extract_codex_status_fallback_when_api_fails(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    auth_data = {
+        "tokens": {
+            "access_token": "valid_token",
+            "account_id": "acc-999",
+        }
+    }
+    (codex_dir / "auth.json").write_text(json.dumps(auth_data))
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    now_ms = int(now.timestamp() * 1000)
+    history_file = codex_dir / "history.jsonl"
+    history_file.write_text(
+        f'{{"timestamp": {now_ms - 1800000}, "display": "c1"}}\n'
+        f'{{"timestamp": {now_ms - 600000}, "display": "c2"}}\n'
+    )
+
+    account = {
+        "id": "fallback_codex",
+        "provider": "codex",
+        "codex_dir": str(codex_dir),
+    }
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=None):
+        res = extract_codex_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["used_capacity"] == 2
+    assert nw["total_capacity"] == 50
+    assert nw["available_capacity"] == 48
+    assert nw["usage_percentage"] == round((2 / 50) * 100, 1)
+
+    ww = res["weekly_window"]
+    assert ww["total_capacity"] == 50 * 7
+    assert ww["used_capacity"] == 2
+    assert ww["available_capacity"] == (50 * 7) - 2
+    assert ww["usage_percentage"] == round((2 / (50 * 7)) * 100, 1)

@@ -7,8 +7,10 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import stat
 import tempfile
+import unicodedata
 from pathlib import Path
 from typing import Any
 
@@ -257,3 +259,84 @@ def remove_account_from_config(
             removed = True
 
     return config_data, removed
+
+
+def generate_account_slug(label: str, existing_ids: set[str] | None = None) -> str:
+    """Generate a clean, safe, and unique slug identifier for an account."""
+    normalized = unicodedata.normalize("NFKD", str(label or "")).encode("ascii", "ignore").decode("ascii")
+    slug = re.sub(r"[^a-zA-Z0-9]+", "-", normalized).strip("-").lower()
+    if not slug:
+        slug = "account"
+
+    if existing_ids is None:
+        return slug
+
+    candidate = slug
+    counter = 2
+    while candidate in existing_ids:
+        candidate = f"{slug}-{counter}"
+        counter += 1
+    return candidate
+
+
+def create_account_entry(
+    provider: str,
+    label: str,
+    credential_path: str,
+    invite_url: str | None = None,
+    total_capacity: int | None = None,
+    config_path: str | Path | None = None,
+) -> tuple[dict[str, Any], dict[str, Any]]:
+    """Validate, generate unique ID, and persist new account entry in config."""
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        raise ValueError(
+            f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+        )
+
+    clean_label = label.strip() if label else ""
+    if not clean_label:
+        raise ValueError("Rótulo/nome da conta não pode ser vazio")
+
+    clean_cred = credential_path.strip() if credential_path else ""
+    if not clean_cred:
+        raise ValueError("Caminho de credenciais não pode ser vazio")
+
+    cfg = load_config(config_path)
+    existing_accs = get_accounts_for_agent(cfg, prov)
+    existing_ids = {str(a.get("id")) for a in existing_accs if isinstance(a, dict) and a.get("id")}
+
+    unique_slug = generate_account_slug(clean_label, existing_ids)
+
+    account_entry: dict[str, Any] = {
+        "id": unique_slug,
+        "name": clean_label,
+        "label": clean_label,
+        "source": "manual",
+        "credential_path": clean_cred,
+    }
+
+    # If the user passed a directory, also record the provider's specific dir key
+    cred_p = Path(clean_cred).expanduser()
+    if cred_p.is_dir():
+        if prov == "claude":
+            account_entry["claude_dir"] = clean_cred
+        elif prov == "codex":
+            account_entry["codex_dir"] = clean_cred
+        elif prov == "gemini":
+            account_entry["gemini_dir"] = clean_cred
+
+    if invite_url and str(invite_url).strip():
+        account_entry["manual_invite_url"] = str(invite_url).strip()
+
+    if total_capacity is not None:
+        try:
+            val = int(total_capacity)
+            if val > 0:
+                account_entry["rate_limit_capacity"] = val
+        except (ValueError, TypeError):
+            pass
+
+    updated_cfg = add_account_to_config(cfg, prov, account_entry)
+    save_config(updated_cfg, config_path)
+    return updated_cfg, account_entry

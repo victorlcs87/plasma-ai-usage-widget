@@ -12,6 +12,7 @@ from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
     SUPPORTED_PROVIDERS,
+    create_account_entry,
     get_accounts_for_agent,
     load_config,
     remove_account_from_config,
@@ -256,3 +257,63 @@ def remove_account(
                 save_status_cache(updated_cache, c_file)
 
     return True, f"Conta '{account_id}' removida com sucesso do provedor '{provider}'."
+
+
+def add_account_entry(
+    provider: str,
+    label: str,
+    credential_path: str,
+    invite_url: str | None = None,
+    total_capacity: int | None = None,
+    config_path: str | Path | None = None,
+    cache_path: str | Path | None = None,
+    now: datetime | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """Add a new account to config and immediately sync status cache.
+
+    Returns:
+        tuple[bool, str, dict[str, Any] | None]: (success, status_message, status_payload)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return (
+            False,
+            f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}",
+            None,
+        )
+
+    clean_label = label.strip() if label else ""
+    if not clean_label:
+        return False, "Rótulo/nome da conta não pode ser vazio", None
+
+    clean_cred = credential_path.strip() if credential_path else ""
+    if not clean_cred:
+        return False, "Caminho de credenciais não pode ser vazio", None
+
+    try:
+        updated_cfg, new_acc = create_account_entry(
+            provider=prov,
+            label=clean_label,
+            credential_path=clean_cred,
+            invite_url=invite_url,
+            total_capacity=total_capacity,
+            config_path=config_path,
+        )
+    except Exception as e:
+        return False, f"Falha ao salvar configuração da conta: {e}", None
+
+    # Immediately execute collection and update status cache
+    try:
+        status_payload = collect_and_save(config_path=config_path, cache_path=cache_path, now=now)
+    except Exception as e:
+        return (
+            True,
+            f"Conta '{clean_label}' ({new_acc['id']}) adicionada à configuração, mas falhou ao sincronizar status: {e}",
+            None,
+        )
+
+    return (
+        True,
+        f"Conta '{clean_label}' ({new_acc['id']}) adicionada com sucesso ao provedor '{prov}'.",
+        status_payload,
+    )
