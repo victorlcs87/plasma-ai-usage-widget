@@ -9,14 +9,10 @@ from typing import Any
 from datetime import datetime, timezone
 
 from ai_usage_collector.capture import (
-    activate_profile_to_system,
-    backup_active_to_profile,
-    get_active_claude_credentials,
-    get_active_codex_credentials,
-    get_active_gemini_credentials,
+    find_matching_account,
+    get_active_credentials,
     get_system_credential_file,
-    _extract_credential_signature,
-    _signatures_match,
+    switch_system_account,
 )
 from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
@@ -29,7 +25,6 @@ from ai_usage_collector.config import (
     rename_account as config_rename_account,
     save_config,
     save_secure_json,
-    set_active_account,
 )
 from ai_usage_collector.contract import (
     build_agent_account_status,
@@ -63,61 +58,19 @@ def load_status_cache(path: str | Path | None = None) -> dict[str, Any] | None:
 
 
 def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> str | None:
-    """Detect which account is currently active in the system for the given provider."""
+    """Detect the Conta Ativa no Sistema by Identidade da Conta (ADR-0008).
+
+    The `active` config field is not consulted. If the system credential matches no
+    registered account, no account is marked active (Spec 04).
+    """
     if not accounts:
         return None
-
     prov = provider.lower().strip()
-    if prov == "claude":
-        sys_creds, _ = get_active_claude_credentials()
-    elif prov == "codex":
-        sys_creds, _ = get_active_codex_credentials()
-    elif prov == "gemini":
-        sys_creds, _ = get_active_gemini_credentials()
-    else:
-        sys_creds = None
-
-    sys_file = None
-    try:
-        sys_file = get_system_credential_file(prov).resolve()
-    except Exception:
-        pass
-
-    sys_sig = _extract_credential_signature(prov, sys_creds) if sys_creds else {}
-
-    # Check 1: If system credentials exist, check signature match against account credential files
-    if sys_sig:
-        for acc in accounts:
-            cred_p_val = acc.get("credential_path") or acc.get("credentials_path")
-            if not cred_p_val:
-                dir_key = f"{prov}_dir"
-                if acc.get(dir_key):
-                    filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
-                    cred_p_val = str(Path(acc[dir_key]) / filename)
-
-            if cred_p_val:
-                p = Path(cred_p_val).expanduser().resolve()
-                if p.exists() and p.is_file():
-                    try:
-                        with open(p, "r", encoding="utf-8") as f:
-                            acc_data = json.load(f)
-                        if isinstance(acc_data, dict):
-                            acc_sig = _extract_credential_signature(prov, acc_data)
-                            if _signatures_match(sys_sig, acc_sig):
-                                return str(acc.get("id"))
-                    except Exception:
-                        pass
-
-    # Check 2: If system file exists and matches an account's credential_path
-    if sys_file and sys_file.exists() and sys_creds is not None:
-        for acc in accounts:
-            cred_p_val = acc.get("credential_path") or acc.get("credentials_path")
-            if cred_p_val and Path(cred_p_val).expanduser().resolve() == sys_file:
-                return str(acc.get("id"))
-
-    # If system credentials exist but matched none of the registered accounts,
-    # no account is marked active to prevent false positives (Spec 04).
-    return None
+    sys_creds = get_active_credentials(prov)
+    if sys_creds is None:
+        return None
+    match = find_matching_account(prov, accounts, sys_creds, get_system_credential_file(prov))
+    return str(match.get("id")) if match else None
 
 
 def collect_and_save(
@@ -544,10 +497,9 @@ def switch_account(
 
     Steps:
         1. Validate provider and account existence.
-        2. Backup current active session to its isolated profile.
-        3. Activate selected account credentials to system paths.
-        4. Persist active account flag in config.
-        5. Collect and save updated status.
+        2. Backup system credential to the matching profile (or capture it as a new account).
+        3. Apply selected account credentials to system paths (rollback on failure).
+        4. Collect and save updated status.
 
     Returns:
         tuple[bool, str, dict[str, Any] | None]: (success, status_message, status_payload)
@@ -570,20 +522,12 @@ def switch_account(
     if not target_acc:
         return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
 
-    # Step 2: Backup active account in system to its matching profile
-    backup_ok, backup_msg = backup_active_to_profile(prov, config_path)
-    if not backup_ok:
-        return False, f"Falha ao realizar backup da conta ativa no sistema: {backup_msg}", None
+    # Steps 2-4: backup/capture current system credential, apply target (rollback on failure)
+    ok, msg = switch_system_account(prov, acc_id, config_path)
+    if not ok:
+        return False, msg, None
 
-    # Step 3: Activate target account to system
-    act_ok, act_msg = activate_profile_to_system(prov, acc_id, config_path)
-    if not act_ok:
-        return False, f"Falha ao ativar conta no sistema: {act_msg}", None
-
-    # Step 4: Persist active account flag in config
-    set_active_account(prov, acc_id, config_path)
-
-    # Step 5: Collect and save updated status
+    # Step 4: Collect and save updated status
     target_label = target_acc.get("label") or target_acc.get("name") or acc_id
     try:
         status_payload = collect_and_save(config_path=config_path, cache_path=cache_path)

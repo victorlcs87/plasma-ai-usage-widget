@@ -92,11 +92,11 @@ def test_cli_switch_account_claude_success(capsys, tmp_path, monkeypatch):
     assert stat.S_IMODE(os.stat(sys_claude_path).st_mode) == 0o600
     assert stat.S_IMODE(os.stat(sys_claude_path.parent).st_mode) == 0o700
 
-    # Verify config updated
+    # Campo `active` deixou de ser fonte de verdade e e removido da configuracao (ADR-0008)
     updated_cfg = load_config(config_path)
     accs = updated_cfg["agents"]["claude"]["accounts"]
-    assert accs[0]["id"] == "claude-pessoal" and accs[0]["active"] is False
-    assert accs[1]["id"] == "claude-trabalho" and accs[1]["active"] is True
+    assert [a["id"] for a in accs] == ["claude-pessoal", "claude-trabalho"]
+    assert all("active" not in a for a in accs)
 
     # Verify status.json has isActive
     assert cache_path.exists()
