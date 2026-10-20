@@ -230,3 +230,24 @@ def test_parse_window_seconds_and_type():
     assert window_type_from_seconds(86400) == "daily"
     assert window_type_from_seconds(5400) == "90m"
 
+
+def test_parse_window_seconds_rejects_hostile_values():
+    # M1: valores infinitos/enormes da API nao podem derrubar a coleta
+    assert parse_window_seconds(float("inf")) is None
+    assert parse_window_seconds(float("nan")) is None
+    assert parse_window_seconds(10**400) is None
+    assert parse_window_seconds("9" * 400 + "h") is None
+    assert parse_window_seconds("9" * 400) is None
+    assert parse_window_seconds(400 * 86400) is None  # acima do teto de 1 ano
+    # B2
+    assert parse_window_seconds(0.5) is None
+    assert parse_window_seconds("18000") == 18000
+    assert parse_window_seconds("٥h") is None  # digito arabe-indico
+
+
+def test_window_type_from_seconds_weekly_and_short():
+    # B1
+    assert window_type_from_seconds(604800) == "7d"
+    assert window_type_from_seconds(30) == "30s"
+    assert window_type_from_seconds(90) == "90s"
+

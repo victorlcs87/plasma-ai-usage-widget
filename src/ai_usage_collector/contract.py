@@ -20,6 +20,7 @@ SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3)
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 _NAMED_WINDOWS = {"daily": 86400, "weekly": 604800}
+MAX_WINDOW_SECONDS = 366 * 86400  # sanity ceiling for provider-reported durations
 
 AGENT_NAMES: dict[str, str] = {
     "claude": "Claude",
@@ -34,30 +35,37 @@ def get_current_iso_timestamp() -> str:
 
 
 def parse_window_seconds(value: Any) -> int | None:
-    """Window duration in seconds from 18000, "18000s", "5h", "7d", "daily" or "weekly"; None if unknown."""
+    """Window duration in seconds from 18000, "18000", "18000s", "5h", "7d", "daily" or "weekly".
+
+    Returns None for unknown, non-positive, sub-second, non-finite or absurd (> 1 year) values.
+    """
     if isinstance(value, bool):
         return None
-    if isinstance(value, (int, float)):
-        return int(value) if value > 0 else None
-    if not isinstance(value, str):
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in _NAMED_WINDOWS:
+            return _NAMED_WINDOWS[text]
+        match = re.fullmatch(r"([0-9]+(?:\.[0-9]+)?)([smhdw]?)", text)
+        if not match:
+            return None
+        value = float(match.group(1)) * _UNIT_SECONDS[match.group(2) or "s"]
+    # Range check also rejects NaN, +/-Infinity and huge ints before int() can overflow
+    if not isinstance(value, (int, float)) or not 1 <= value <= MAX_WINDOW_SECONDS:
         return None
-    text = value.strip().lower()
-    if text in _NAMED_WINDOWS:
-        return _NAMED_WINDOWS[text]
-    match = re.fullmatch(r"(\d+(?:\.\d+)?)([smhdw])", text)
-    if not match:
-        return None
-    seconds = int(float(match.group(1)) * _UNIT_SECONDS[match.group(2)])
-    return seconds or None
+    return int(value)
 
 
 def window_type_from_seconds(seconds: int) -> str:
-    """Short label for a Native Window duration ("5h", "daily", "90m")."""
+    """Short label for a window duration ("30s", "90m", "5h", "daily", "7d")."""
     if seconds == 86400:
         return "daily"
+    if seconds % 86400 == 0:
+        return f"{seconds // 86400}d"
     if seconds % 3600 == 0:
         return f"{seconds // 3600}h"
-    return f"{seconds // 60}m"
+    if seconds % 60 == 0:
+        return f"{seconds // 60}m"
+    return f"{seconds}s"
 
 
 def _elapsed_fraction(window: dict[str, Any]) -> float | None:

@@ -435,7 +435,10 @@ def parse_gemini_quota_buckets(
 
 
 def gemini_bucket_seconds(bucket: dict[str, Any], default: int) -> int:
-    """Duration of a quota bucket from its window or id suffix ("5h", "gemini-weekly"), else default."""
+    """Duration of a quota bucket from its window or id suffix ("5h", "gemini-weekly"), else default.
+
+    The quota summary has no explicit duration field: it is deduced from the bucket name.
+    """
     for key in ("window", "bucketId", "name", "id"):
         value = bucket.get(key)
         if isinstance(value, str):
@@ -642,13 +645,15 @@ def extract_gemini_status(
             used_daily = total_capacity - available_capacity
             native_window_seconds = gemini_bucket_seconds(bucket_5h, GEMINI_5H_SECONDS)
 
-            reset_5h = bucket_5h.get("resetTime") or bucket_5h.get("resets_at")
-            if reset_5h:
-                r_sec = parse_timestamp(reset_5h)
-                if r_sec is not None:
-                    release_sec = r_sec
-                    seconds_remaining = max(0, int(release_sec - now_sec))
-                    release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+            r_sec = parse_timestamp(bucket_5h.get("resetTime") or bucket_5h.get("resets_at"))
+            if r_sec is not None:
+                release_sec = r_sec
+                seconds_remaining = max(0, int(release_sec - now_sec))
+                release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+            elif native_window_seconds != GEMINI_DAILY_SECONDS:
+                # Bucket duration without a reset: the daily heuristic release would be wrong
+                seconds_remaining = None
+                release_time = None
 
         # Weekly window from official API
         if bucket_weekly and bucket_weekly.get("remainingFraction") is not None:
@@ -658,13 +663,14 @@ def extract_gemini_status(
             weekly_used_capacity = weekly_total_capacity - weekly_available_capacity
             weekly_window_seconds = gemini_bucket_seconds(bucket_weekly, GEMINI_7D_SECONDS)
 
-            reset_w = bucket_weekly.get("resetTime") or bucket_weekly.get("resets_at")
-            if reset_w:
-                w_sec = parse_timestamp(reset_w)
-                if w_sec is not None:
-                    cycle_reset_sec = w_sec
-                    weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
-                    cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+            w_sec = parse_timestamp(bucket_weekly.get("resetTime") or bucket_weekly.get("resets_at"))
+            if w_sec is not None:
+                cycle_reset_sec = w_sec
+                weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
+                cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+            elif weekly_window_seconds != GEMINI_7D_SECONDS:
+                weekly_seconds_remaining = None
+                cycle_reset_time = None
         else:
             weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
             weekly_available_capacity = max(0, weekly_total_capacity - used_7d)

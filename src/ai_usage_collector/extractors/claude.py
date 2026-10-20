@@ -562,7 +562,7 @@ def extract_claude_status(
 
     native_window = {
         "type": "5h",
-        # five_hour/seven_day buckets of the usage API (and the local heuristic) define the durations
+        # The usage API has no duration field: it is deduced from the five_hour/seven_day bucket names
         "window_seconds": CLAUDE_5H_SECONDS,
         "total_capacity": total_capacity,
         "used_capacity": used_5h,
