@@ -38,10 +38,9 @@ Item {
     }
 
     function buildCollectorCommand(args) {
-        var venvBin = "/home/victorlcs/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector";
         return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector " + args + "; " +
-               "elif [ -x \"" + venvBin + "\" ]; then \"" + venvBin + "\" " + args + "; " +
                "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" " + args + "; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" " + args + "; " +
                "else python3 -m ai_usage_collector " + args + "; fi'";
     }
 

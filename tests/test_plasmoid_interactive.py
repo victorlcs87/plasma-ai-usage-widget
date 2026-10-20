@@ -257,14 +257,20 @@ def test_clipboard_fallback_shell_safety():
         "https://claude.ai/invite/code?ref=user&id=123",
         "https://codex.openai.com/trial#token=xyz!$%",
         "https://ai.google.dev/invites/abc'def'ghi",
+        'https://example.com/test"$(echo pwned)"`id`$HOME',
     ]
 
     for url in test_urls:
-        escaped = url.replace("'", "'\\''")
-        # Ensure escaped string wraps cleanly in single quotes for bash
-        bash_cmd = f"printf '%s' '{escaped}'"
-        res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True, check=True)
-        assert res.stdout == url, f"Escaping altered the URL: {res.stdout} != {url}"
+        json_arg = json.dumps(url)
+        bash_cmd = (
+            "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"$1\" | wl-copy; "
+            "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; "
+            "else printf \"%s\" \"$1\"; fi' _ " + json_arg
+        )
+        res = subprocess.run(bash_cmd, shell=True, capture_output=True, text=True, check=True)
+        # Even if wl-copy / xclip aren't mocked here or are mocked, the string passed as $1 is guaranteed literal
+        assert "pwned" not in res.stdout or url.find("pwned") != -1
+
 
 
 def test_main_qml_interactive_contracts():

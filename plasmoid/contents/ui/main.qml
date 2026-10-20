@@ -117,10 +117,9 @@ PlasmoidItem {
     }
 
     function buildCollectorCommand(args) {
-        var venvBin = "/home/victorlcs/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector";
         return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector " + args + "; " +
-               "elif [ -x \"" + venvBin + "\" ]; then \"" + venvBin + "\" " + args + "; " +
                "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" " + args + "; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" " + args + "; " +
                "else python3 -m ai_usage_collector " + args + "; fi'";
     }
 
@@ -202,17 +201,17 @@ PlasmoidItem {
         statusDataSource.connectSource(cmd);
     }
 
-    // Timer para recarregar periodicamente a cada 30 segundos (somente quando ativo/visível)
+    // Timer para recarregar periodicamente com intervalo configurável via KConfigXT (somente quando ativo/visível)
     Timer {
         id: autoReloadTimer
-        interval: 30000
+        interval: (Plasmoid.configuration.refreshIntervalSeconds || 30) * 1000
         repeat: true
         running: root.expanded || !root.inPanel
         onTriggered: root.loadStatus()
     }
 
     onExpandedChanged: {
-        if (root.expanded) {
+        if (root.expanded && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }
     }

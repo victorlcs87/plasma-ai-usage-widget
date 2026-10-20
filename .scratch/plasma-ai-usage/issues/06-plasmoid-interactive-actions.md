@@ -4,7 +4,7 @@
 
 **Blocked by:** 05: Estrutura do Plasmoid KDE Plasma 6 e Renderizacao em Cards (Desktop e Painel)
 
-**Status:** in-review
+**Status:** closed
 
 - [x] Botao "Atualizar agora" no cabecalho do Plasmoid disparando a execucao assincrona do coletor Python sem travar a interface grafica.
 - [x] Indicador visual de carregamento (spinner) ativo durante a execucao da atualizacao.

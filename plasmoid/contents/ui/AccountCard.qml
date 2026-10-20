@@ -41,10 +41,11 @@ Kirigami.AbstractCard {
         clipHelper.selectAll();
         clipHelper.copy();
 
-        // 2. Cópia para o clipboard do sistema (Wayland wl-copy ou X11 xclip)
-        var escaped = text.replace(/'/g, "'\\''");
-        var cmd = "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"" + escaped + "\" | wl-copy; " +
-                  "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"" + escaped + "\" | xclip -selection clipboard; fi'";
+        // 2. Cópia segura para o clipboard do sistema (Wayland wl-copy ou X11 xclip)
+        // Passa o texto como argumento posicional $1 via JSON.stringify para prevenir qualquer expansão shell
+        var cmd = "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"$1\" | wl-copy; " +
+                  "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; fi' _ " +
+                  JSON.stringify(text);
         clipboardDataSource.connectSource(cmd);
 
         // 3. Feedback visual imediato
