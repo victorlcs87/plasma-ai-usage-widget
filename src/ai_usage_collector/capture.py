@@ -11,8 +11,10 @@ import json
 import os
 import shlex
 import shutil
+import stat
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -30,6 +32,12 @@ from ai_usage_collector.config import (
     save_secure_json,
 )
 from ai_usage_collector.discovery import extract_jwt_identity
+from ai_usage_collector.identity import (
+    copy_identity_state,
+    credential_identity,
+    identity_state_file,
+    supports_identity,
+)
 
 
 def get_profiles_base_dir(config_path: str | Path | None = None) -> Path:
@@ -353,6 +361,11 @@ def capture_current_session(
     if not valid or creds_data is None:
         return False, err_msg, None
 
+    sys_file = get_system_credential_file(prov)
+    sys_identity = credential_identity(prov, sys_file)
+    if sys_identity and sys_identity.email:
+        identity = sys_identity.email
+
     # Determine final readable label
     if label and str(label).strip():
         final_label = str(label).strip()
@@ -380,6 +393,7 @@ def capture_current_session(
     target_cred_file = profile_dir / filename
     try:
         save_secure_json(creds_data, target_cred_file, prefix="cred_")
+        copy_identity_state(prov, sys_file, target_cred_file)
     except Exception as e:
         _cleanup_profile_if_empty(profile_dir)
         return False, f"Falha ao persistir credencial isolada no perfil: {e}", None
@@ -923,88 +937,118 @@ def _signatures_match(sig1: dict[str, Any], sig2: dict[str, Any]) -> bool:
     return False
 
 
-def backup_active_to_profile(provider: str, config_path: str | Path | None = None) -> tuple[bool, str]:
-    """Inspect active system credentials and synchronize back to matching isolated profile.
+_CREDENTIAL_FILENAMES = {"claude": ".credentials.json", "codex": "auth.json", "gemini": "oauth_creds.json"}
 
-    Preserves refreshed OAuth tokens generated during CLI tool execution.
 
-    Returns:
-        tuple[bool, str]: (success, status_message)
-    """
-    prov = provider.lower().strip() if provider else ""
-    if prov not in SUPPORTED_PROVIDERS:
-        return False, f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+def _read_json_dict(path: Path | None) -> dict[str, Any] | None:
+    if path is None or not path.is_file():
+        return None
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        return data if isinstance(data, dict) else None
+    except Exception:
+        return None
 
+
+def get_active_credentials(provider: str) -> dict[str, Any] | None:
+    """Credencial atualmente aplicada no sistema para o provedor (ou None)."""
+    prov = provider.lower().strip()
     if prov == "claude":
-        sys_creds, _ = get_active_claude_credentials()
-    elif prov == "codex":
-        sys_creds, _ = get_active_codex_credentials()
-    elif prov == "gemini":
-        sys_creds, _ = get_active_gemini_credentials()
-    else:
-        sys_creds = None
+        return get_active_claude_credentials()[0]
+    if prov == "codex":
+        return get_active_codex_credentials()[0]
+    if prov == "gemini":
+        return get_active_gemini_credentials()[0]
+    return None
 
-    if sys_creds is None:
-        return True, "Nenhuma sessão ativa encontrada no sistema para backup."
 
-    sys_sig = _extract_credential_signature(prov, sys_creds)
-    cfg = load_config(config_path)
-    accounts = get_accounts_for_agent(cfg, prov)
-    if not accounts:
-        return True, "Nenhuma conta cadastrada para backup."
+def account_credential_file(provider: str, account: dict[str, Any]) -> Path | None:
+    """Arquivo de credencial do Perfil Isolado de uma Conta."""
+    prov = provider.lower().strip()
+    val = account.get("credential_path") or account.get("credentials_path")
+    if not val and account.get(f"{prov}_dir"):
+        val = str(Path(account[f"{prov}_dir"]) / _CREDENTIAL_FILENAMES.get(prov, ""))
+    return Path(val).expanduser().resolve() if val else None
 
-    sys_file = get_system_credential_file(prov).resolve()
 
-    matched_account: dict[str, Any] | None = None
-    matched_file: Path | None = None
+def find_matching_account(
+    provider: str,
+    accounts: list[dict[str, Any]],
+    creds: dict[str, Any] | None,
+    cred_file: Path,
+) -> dict[str, Any] | None:
+    """Conta cuja Identidade corresponde a credencial em `cred_file`.
 
-    # Step 1: Search by signature match in profile credentials files
+    A comparacao por token so e usada como ultimo recurso, quando um dos lados nao
+    tem identidade conhecida. A propria `cred_file` nunca e considerada uma Conta.
+    """
+    prov = provider.lower().strip()
+    target = cred_file.expanduser().resolve()
+    ident = credential_identity(prov, target)
+    sig = _extract_credential_signature(prov, creds) if creds else {}
+    fallback: dict[str, Any] | None = None
+
     for acc in accounts:
-        cred_p_val = acc.get("credential_path")
-        if not cred_p_val:
-            dir_key = f"{prov}_dir"
-            if acc.get(dir_key):
-                filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
-                cred_p_val = str(Path(acc[dir_key]) / filename)
+        f = account_credential_file(prov, acc)
+        if f is None or f == target or not f.is_file():
+            continue
+        acc_ident = credential_identity(prov, f)
+        if ident and acc_ident:
+            if ident.key == acc_ident.key:
+                return acc
+            continue
+        if fallback is None and sig:
+            acc_sig = _extract_credential_signature(prov, _read_json_dict(f))
+            if _signatures_match(sig, acc_sig):
+                fallback = acc
+    return fallback
 
-        if cred_p_val:
-            file_p = Path(cred_p_val).expanduser().resolve()
-            if file_p.exists() and file_p.is_file():
-                try:
-                    with open(file_p, "r", encoding="utf-8") as f:
-                        acc_data = json.load(f)
-                    if isinstance(acc_data, dict):
-                        acc_sig = _extract_credential_signature(prov, acc_data)
-                        if _signatures_match(sys_sig, acc_sig):
-                            matched_account = acc
-                            matched_file = file_p
-                            break
-                except Exception:
-                    pass
 
-    if matched_account and matched_file:
-        if matched_file == sys_file:
-            return True, "Conta ativa no sistema já reside no caminho padrão do sistema."
+def _store_into_profile(provider: str, creds: dict[str, Any], src_file: Path, profile_file: Path) -> None:
+    """Grava a credencial e seus metadados de identidade no Perfil Isolado."""
+    save_secure_json(creds, profile_file, prefix="backup_")
+    copy_identity_state(provider, src_file, profile_file)
+    enforce_profile_security_permissions(profile_file.parent)
 
+
+def _snapshot(paths: list[Path | None]) -> list[tuple[Path, bytes | None, int]]:
+    snap = []
+    for p in paths:
+        if p is None:
+            continue
+        if p.is_file():
+            snap.append((p, p.read_bytes(), stat.S_IMODE(p.stat().st_mode)))
+        else:
+            snap.append((p, None, 0))
+    return snap
+
+
+def _restore(snap: list[tuple[Path, bytes | None, int]]) -> None:
+    for path, data, mode in snap:
         try:
-            save_secure_json(sys_creds, matched_file, prefix="backup_")
-            enforce_profile_security_permissions(matched_file.parent)
-            acc_id = matched_account.get("id", "desconhecido")
-            return True, f"Credenciais da conta ativa sincronizadas de volta para a conta '{acc_id}'."
-        except Exception as e:
-            return False, f"Falha ao realizar backup da conta ativa no sistema para '{matched_file}': {e}"
+            if data is None:
+                path.unlink(missing_ok=True)
+                continue
+            fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".rollback_", suffix=".tmp")
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+            os.chmod(tmp, mode)
+            os.replace(tmp, path)
+        except Exception:
+            pass
 
-    return True, "Nenhuma conta registrada correspondente à conta ativa no sistema para sincronização."
 
-
-def activate_profile_to_system(
+def switch_system_account(
     provider: str,
     account_id: str,
     config_path: str | Path | None = None,
 ) -> tuple[bool, str]:
-    """Atomically copy isolated profile credentials to system default path with 0600 permissions.
+    """Alternancia de Conta (ADR-0008), com rollback do sistema em caso de falha.
 
-    For Gemini, also updates system keyring via secret-tool if available.
+    1. Le a credencial do sistema e obtem sua identidade.
+    2. Faz backup no Perfil Isolado da Conta correspondente ou a captura como Conta nova.
+    3. Aplica a credencial da Conta escolhida no sistema (0600) junto de sua identidade.
 
     Returns:
         tuple[bool, str]: (success, status_message)
@@ -1014,51 +1058,50 @@ def activate_profile_to_system(
         return False, f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
 
     acc_id = str(account_id).strip() if account_id is not None else ""
-    if not acc_id:
-        return False, "Identificador da conta não pode ser vazio."
-
     cfg = load_config(config_path)
     accounts = get_accounts_for_agent(cfg, prov)
     target_acc = next((a for a in accounts if str(a.get("id")) == acc_id), None)
     if not target_acc:
         return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
 
-    cred_path_val = target_acc.get("credential_path")
-    if not cred_path_val:
-        dir_key = f"{prov}_dir"
-        if target_acc.get(dir_key):
-            filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
-            cred_path_val = str(Path(target_acc[dir_key]) / filename)
-
-    if not cred_path_val:
+    source_file = account_credential_file(prov, target_acc)
+    if source_file is None:
         return False, f"Caminho de credenciais não configurado para a conta '{account_id}'."
+    target_creds = _read_json_dict(source_file)
+    if target_creds is None:
+        return False, f"Arquivo de credenciais da conta '{account_id}' ausente ou inválido em '{source_file}'."
 
-    source_file = Path(cred_path_val).expanduser().resolve()
-    if not source_file.exists() or not source_file.is_file():
-        return False, f"Arquivo de credenciais da conta '{account_id}' não encontrado em '{source_file}'."
+    sys_file = get_system_credential_file(prov)
+    if sys_file.is_file() and _read_json_dict(sys_file) is None:
+        return False, f"Credencial do sistema em '{sys_file}' está ilegível; troca abortada para não perdê-la."
 
+    # Passos 1 e 2: backup da credencial atual do sistema
+    sys_creds = get_active_credentials(prov)
+    if sys_creds is not None:
+        match = find_matching_account(prov, accounts, sys_creds, sys_file)
+        if match is not None:
+            try:
+                _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
+            except Exception as e:
+                return False, f"Falha ao realizar backup da conta ativa no sistema para '{match.get('id')}': {e}"
+        else:
+            ok, msg, _ = capture_current_session(prov, config_path=config_path)
+            if not ok:
+                return False, f"Credencial desconhecida no sistema não pôde ser capturada antes da troca: {msg}"
+
+    # Passo 3: aplicar a Conta escolhida, restaurando o sistema em caso de falha
+    snapshot = _snapshot([sys_file, identity_state_file(prov, sys_file)])
     try:
-        with open(source_file, "r", encoding="utf-8") as f:
-            creds_data = json.load(f)
+        save_secure_json(target_creds, sys_file, prefix=f"{prov}_sys_")
+        copy_identity_state(prov, source_file, sys_file)
     except Exception as e:
-        return False, f"Falha ao ler credenciais de '{source_file}': {e}"
-
-    if not isinstance(creds_data, dict):
-        return False, f"Formato de credencial inválido no arquivo '{source_file}'."
-
-    # Write atomically to system destination with strict 0600 permissions
-    sys_target = get_system_credential_file(prov)
-    try:
-        save_secure_json(creds_data, sys_target, prefix=f"{prov}_sys_")
-        ensure_secure_file(sys_target)
-        ensure_secure_dir(sys_target.parent)
-    except Exception as e:
-        return False, f"Falha ao gravar credencial no caminho do sistema '{sys_target}': {e}"
+        _restore(snapshot)
+        return False, f"Falha ao aplicar a conta '{account_id}' no sistema (estado anterior restaurado): {e}"
 
     # For Gemini, update system keyring via secret-tool
     if prov == "gemini":
         try:
-            raw_payload = json.dumps(creds_data, ensure_ascii=False)
+            raw_payload = json.dumps(target_creds, ensure_ascii=False)
             subprocess.run(
                 [
                     "secret-tool",
@@ -1079,4 +1122,104 @@ def activate_profile_to_system(
             pass
 
     return True, f"Conta '{account_id}' ativada com sucesso no sistema para '{provider}'."
+
+
+def _is_auto_label(provider: str, label: str | None) -> bool:
+    """Rotulo gerado automaticamente (captura, login ou configuracao padrao)."""
+    # ponytail: heuristica pelo formato "Provedor (x)" com x email/minusculo; um rotulo
+    # renomeado como "Claude (trabalho)" e tomado por automatico. Guardar flag se incomodar.
+    text = (label or "").strip()
+    name = provider.capitalize()
+    if not text or text == name:
+        return True
+    if text.startswith(f"{name} (") and text.endswith(")"):
+        inner = text[len(name) + 2:-1]
+        return inner == "Padrão" or "@" in inner or (inner.islower() and " " not in inner)
+    return False
+
+
+def _merge_label(provider: str, keep: dict[str, Any], other: dict[str, Any]) -> None:
+    """Na fusao, prevalece o rotulo renomeado pelo usuario."""
+    keep_label = keep.get("name") or keep.get("label")
+    other_label = other.get("name") or other.get("label")
+    if _is_auto_label(provider, keep_label) and not _is_auto_label(provider, other_label):
+        keep["label"] = other_label
+        keep["name"] = other_label
+
+
+def _migrate_provider(prov: str, accounts: list[dict[str, Any]], config_path: str | Path | None) -> bool:
+    changed = False
+    sys_file = get_system_credential_file(prov).resolve()
+
+    # 1. Entradas legadas apontando para o caminho do sistema viram Perfil Isolado.
+    for acc in list(accounts):
+        if account_credential_file(prov, acc) != sys_file:
+            continue
+        changed = True
+        sys_creds = _read_json_dict(sys_file)
+        if sys_creds is None:
+            accounts.remove(acc)  # o caminho do sistema nunca e, por si so, uma Conta
+            continue
+        others = [a for a in accounts if a is not acc]
+        match = find_matching_account(prov, others, sys_creds, sys_file)
+        if match is not None:
+            _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
+            _merge_label(prov, match, acc)
+            accounts.remove(acc)
+            continue
+        ident = credential_identity(prov, sys_file)
+        profiles_base = get_profiles_base_dir(config_path)
+        existing_ids = {str(a.get("id")) for a in others}
+        slug_label = f"{prov.capitalize()} ({ident.email})" if ident and ident.email else (acc.get("label") or prov)
+        _, dir_name = resolve_profile_slug_and_dir(prov, slug_label, profiles_base, existing_ids)
+        profile_dir = ensure_secure_dir(profiles_base / dir_name)
+        profile_file = profile_dir / _CREDENTIAL_FILENAMES[prov]
+        _store_into_profile(prov, sys_creds, sys_file, profile_file)
+        acc.pop("credentials_path", None)
+        acc["credential_path"] = str(profile_file)
+        acc[f"{prov}_dir"] = str(profile_dir)
+
+    # 2. Fusao de Contas com a mesma identidade (Perfis dos duplicados ficam como Orfaos).
+    seen: dict[str, dict[str, Any]] = {}
+    for acc in list(accounts):
+        f = account_credential_file(prov, acc)
+        ident = credential_identity(prov, f)
+        if ident is None:
+            continue
+        keep = seen.get(ident.key)
+        if keep is None:
+            seen[ident.key] = acc
+            continue
+        keep_file = account_credential_file(prov, keep)
+        if f.is_file() and keep_file and keep_file.is_file() and f.stat().st_mtime > keep_file.stat().st_mtime:
+            creds = _read_json_dict(f)
+            if creds is not None:
+                _store_into_profile(prov, creds, f, keep_file)
+        _merge_label(prov, keep, acc)
+        accounts.remove(acc)
+        changed = True
+
+    return changed
+
+
+def migrate_accounts(config_data: dict[str, Any], config_path: str | Path | None = None) -> bool:
+    """Migracao idempotente da configuracao (ADR-0008). Altera `config_data` in-place.
+
+    Remove o campo legado `active` (deixou de ser fonte de verdade) e, nos provedores com
+    Identidade da Conta, migra entradas do caminho do sistema e funde duplicatas.
+
+    Returns:
+        bool: True se algo mudou e a configuracao deve ser salva.
+    """
+    changed = False
+    for prov in SUPPORTED_PROVIDERS:
+        accounts = get_accounts_for_agent(config_data, prov)
+        for acc in accounts:
+            if isinstance(acc, dict) and "active" in acc:
+                del acc["active"]
+                changed = True
+        if supports_identity(prov) and accounts:
+            changed = _migrate_provider(prov, accounts, config_path) or changed
+    return changed
+
 

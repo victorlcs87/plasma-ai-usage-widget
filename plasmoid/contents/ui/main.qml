@@ -171,18 +171,6 @@ PlasmoidItem {
         collectorDataSource.connectSource(cmd);
     }
 
-    function switchAccount(provider, accountId) {
-        if (!provider || !accountId) return;
-        var provClean = String(provider).toLowerCase().trim();
-        if (["claude", "codex", "gemini"].indexOf(provClean) === -1) return;
-
-        root.isRefreshing = true;
-        root.lastError = "";
-        var safeArgs = shellQuote("--switch-account") + " " + shellQuote(provClean) + " " + shellQuote(accountId) + " " + shellQuote("--status");
-        var cmd = buildCollectorCommand(safeArgs);
-        collectorDataSource.connectSource(cmd);
-    }
-
     // Leitor assíncrono via DataSource do KDE Plasma
     Plasma5Support.DataSource {
         id: statusDataSource

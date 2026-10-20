@@ -787,13 +787,13 @@ def test_full_representation_wires_plasmoid_item_to_account_card():
     assert "loadStatus" in content
 
 
-def test_main_qml_switch_account_contract():
-    """Verify that main.qml provides switchAccount method with safe execution."""
+def test_main_qml_has_no_duplicate_switch_account():
+    """AccountCard.qml is the only switch path; main.qml must not duplicate it (ADR-0008)."""
     main_path = UI_DIR / "main.qml"
     content = main_path.read_text(encoding="utf-8")
 
-    assert "function switchAccount(provider, accountId)" in content
-    assert "--switch-account" in content
+    assert "function switchAccount" not in content
+    assert "--switch-account" not in content
     assert "shellQuote" in content
     assert "buildCollectorCommand" in content
 
