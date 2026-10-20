@@ -12,12 +12,14 @@ import org.kde.plasma.extras as PlasmaExtras
 Item {
     id: configRoot
 
-    implicitWidth: Kirigami.Units.gridUnit * 30
-    implicitHeight: Kirigami.Units.gridUnit * 25
+    implicitWidth: Kirigami.Units.gridUnit * 32
+    implicitHeight: Kirigami.Units.gridUnit * 28
 
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
+    property bool isAdding: false
+    property bool isAddFormExpanded: false
     property string statusMessage: ""
     property string errorMessage: ""
     property var accountPendingDeletion: null
@@ -92,6 +94,57 @@ Item {
         return list;
     }
 
+    function getDefaultPath(provider) {
+        var prov = (provider || "").toLowerCase().trim();
+        if (prov === "claude") {
+            return "~/.claude";
+        } else if (prov === "codex") {
+            return "~/.codex";
+        } else if (prov === "gemini") {
+            return "~/.gemini";
+        }
+        return "";
+    }
+
+    function clearAddAccountForm() {
+        accountNameField.text = "";
+        credentialPathField.text = "";
+        inviteUrlField.text = "";
+    }
+
+    function addAccount() {
+        var prov = (providerComboBox.currentText || "Claude").toLowerCase().trim();
+        var label = (accountNameField.text || "").trim();
+        var path = (credentialPathField.text || "").trim();
+        var inviteUrl = (inviteUrlField.text || "").trim();
+
+        if (!label) {
+            configRoot.errorMessage = configRoot.safeI18n("Por favor, preencha o apelido/nome da conta.");
+            return;
+        }
+        if (!path) {
+            configRoot.errorMessage = configRoot.safeI18n("Por favor, informe o caminho das credenciais ou diretório.");
+            return;
+        }
+
+        configRoot.isAdding = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+
+        var safeArgs = shellQuote("--add-account") + " " +
+                       shellQuote("--provider") + " " + shellQuote(prov) + " " +
+                       shellQuote("--label") + " " + shellQuote(label) + " " +
+                       shellQuote("--credential-path") + " " + shellQuote(path);
+
+        if (inviteUrl.length > 0) {
+            safeArgs += " " + shellQuote("--invite-url") + " " + shellQuote(inviteUrl);
+        }
+        safeArgs += " " + shellQuote("--status");
+
+        var cmd = configRoot.buildCollectorCommand(safeArgs);
+        additionDataSource.connectSource(cmd);
+    }
+
     // Leitor de status para a tela de configurações
     Plasma5Support.DataSource {
         id: configStatusDataSource
@@ -131,7 +184,32 @@ Item {
                 configRoot.errorMessage = "";
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = configRoot.safeI18n("Falha ao remover conta: %1", stderr || stdout || safeI18n("Erro desconhecido"));
+                configRoot.errorMessage = configRoot.safeI18n("Falha ao remover conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.statusMessage = "";
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Executor de adição de conta
+    Plasma5Support.DataSource {
+        id: additionDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isAdding = false;
+            var exitCode = data["exit code"];
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+
+            if (exitCode === 0) {
+                configRoot.statusMessage = configRoot.safeI18n("Conta adicionada com sucesso!");
+                configRoot.errorMessage = "";
+                configRoot.clearAddAccountForm();
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = configRoot.safeI18n("Falha ao adicionar conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
                 configRoot.statusMessage = "";
             }
             disconnectSource(sourceName);
@@ -189,7 +267,7 @@ Item {
                 icon.name: "view-refresh"
                 text: configRoot.safeI18n("Recarregar")
                 display: QQC2.AbstractButton.IconOnly
-                enabled: !configRoot.isLoading && !configRoot.isDeleting
+                enabled: !configRoot.isLoading && !configRoot.isDeleting && !configRoot.isAdding
                 QQC2.ToolTip.text: configRoot.safeI18n("Atualizar lista de contas")
                 QQC2.ToolTip.visible: hovered
                 onClicked: {
@@ -202,18 +280,18 @@ Item {
 
         QQC2.Label {
             Layout.fillWidth: true
-            text: configRoot.safeI18n("Visualize as contas cadastradas de Claude, Codex e Gemini e exclua contas obsoletas diretamente.")
+            text: configRoot.safeI18n("Visualize as contas cadastradas de Claude, Codex e Gemini e gerencie o ciclo de vida diretamente.")
             color: Kirigami.Theme.disabledTextColor
             wrapMode: Text.WordWrap
         }
 
-        // Barra de progresso durante carregamento ou exclusão
+        // Barra de progresso durante carregamento, adição ou exclusão
         QQC2.ProgressBar {
             id: configProgressBar
             Layout.fillWidth: true
             Layout.preferredHeight: 4
             indeterminate: true
-            visible: configRoot.isLoading || configRoot.isDeleting
+            visible: configRoot.isLoading || configRoot.isDeleting || configRoot.isAdding
         }
 
         // Mensagem de sucesso
@@ -248,6 +326,220 @@ Item {
             repeat: false
             onTriggered: {
                 configRoot.statusMessage = "";
+            }
+        }
+
+        // Seção expansível: Adicionar Nova Conta
+        Kirigami.AbstractCard {
+            id: addAccountSection
+            Layout.fillWidth: true
+
+            contentItem: ColumnLayout {
+                spacing: Kirigami.Units.smallSpacing
+
+                // Cabeçalho retrátil clicável
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Icon {
+                        source: configRoot.isAddFormExpanded ? "list-remove" : "list-add"
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                    }
+
+                    QQC2.Label {
+                        text: configRoot.safeI18n("+ Adicionar Nova Conta")
+                        font.bold: true
+                        font.pointSize: Kirigami.Theme.defaultFont.pointSize
+                        Layout.fillWidth: true
+
+                        MouseArea {
+                            anchors.fill: parent
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
+                            }
+                        }
+                    }
+
+                    PlasmaComponents3.Button {
+                        id: toggleAddFormBtn
+                        text: configRoot.isAddFormExpanded ? configRoot.safeI18n("Recolher") : configRoot.safeI18n("Expandir")
+                        icon.name: configRoot.isAddFormExpanded ? "arrow-up" : "arrow-down"
+                        display: QQC2.AbstractButton.TextBesideIcon
+                        onClicked: {
+                            configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
+                        }
+                    }
+                }
+
+                // Formulário de adição (visível apenas quando expandido)
+                ColumnLayout {
+                    id: addAccountFormLayout
+                    Layout.fillWidth: true
+                    visible: configRoot.isAddFormExpanded
+                    spacing: Kirigami.Units.smallSpacing
+
+                    Kirigami.Separator {
+                        Layout.fillWidth: true
+                    }
+
+                    // Campo 1: Seleção do Provedor
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        QQC2.Label {
+                            text: configRoot.safeI18n("Provedor:")
+                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                            font.bold: true
+                        }
+
+                        QQC2.ComboBox {
+                            id: providerComboBox
+                            Layout.fillWidth: true
+                            model: ["Claude", "Codex", "Gemini"]
+                            currentIndex: 0
+                            enabled: !configRoot.isAdding
+
+                            delegate: QQC2.ItemDelegate {
+                                width: providerComboBox.width
+                                contentItem: RowLayout {
+                                    spacing: Kirigami.Units.smallSpacing
+                                    Rectangle {
+                                        implicitWidth: 12
+                                        implicitHeight: 12
+                                        radius: 6
+                                        color: configRoot.getProviderColor(modelData)
+                                    }
+                                    QQC2.Label {
+                                        text: modelData
+                                        color: Kirigami.Theme.textColor
+                                        font.bold: providerComboBox.currentIndex === index
+                                    }
+                                }
+                                highlighted: providerComboBox.highlightedIndex === index
+                            }
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing
+                                Rectangle {
+                                    implicitWidth: 12
+                                    implicitHeight: 12
+                                    radius: 6
+                                    color: configRoot.getProviderColor(providerComboBox.currentText)
+                                }
+                                QQC2.Label {
+                                    text: providerComboBox.currentText
+                                    color: Kirigami.Theme.textColor
+                                    verticalAlignment: Text.AlignVCenter
+                                    Layout.fillWidth: true
+                                }
+                            }
+                        }
+                    }
+
+                    // Campo 2: Apelido / Nome da Conta
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        QQC2.Label {
+                            text: configRoot.safeI18n("Apelido:")
+                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                            font.bold: true
+                        }
+
+                        QQC2.TextField {
+                            id: accountNameField
+                            Layout.fillWidth: true
+                            placeholderText: configRoot.safeI18n("Ex: Claude Trabalho, Codex Pessoal")
+                            enabled: !configRoot.isAdding
+                        }
+                    }
+
+                    // Campo 3: Caminho das Credenciais / Diretório
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        QQC2.Label {
+                            text: configRoot.safeI18n("Caminho:")
+                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                            font.bold: true
+                        }
+
+                        QQC2.TextField {
+                            id: credentialPathField
+                            Layout.fillWidth: true
+                            placeholderText: configRoot.safeI18n("Ex: %1", configRoot.getDefaultPath(providerComboBox.currentText))
+                            enabled: !configRoot.isAdding
+                        }
+
+                        PlasmaComponents3.Button {
+                            id: useDefaultPathBtn
+                            text: configRoot.safeI18n("Usar Caminho Padrão")
+                            icon.name: "document-open"
+                            enabled: !configRoot.isAdding
+                            QQC2.ToolTip.text: configRoot.safeI18n("Preencher com o diretório padrão '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
+                            QQC2.ToolTip.visible: hovered
+                            onClicked: {
+                                credentialPathField.text = configRoot.getDefaultPath(providerComboBox.currentText);
+                            }
+                        }
+                    }
+
+                    // Campo 4: Link de Convite Opcional
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        QQC2.Label {
+                            text: configRoot.safeI18n("Link de Convite:")
+                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                        }
+
+                        QQC2.TextField {
+                            id: inviteUrlField
+                            Layout.fillWidth: true
+                            placeholderText: configRoot.safeI18n("https://... (opcional)")
+                            enabled: !configRoot.isAdding
+                        }
+                    }
+
+                    // Ações do Formulário: Limpar e Salvar
+                    RowLayout {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+
+                        PlasmaComponents3.Button {
+                            id: clearFormBtn
+                            text: configRoot.safeI18n("Limpar")
+                            icon.name: "edit-clear"
+                            enabled: !configRoot.isAdding
+                            onClicked: {
+                                configRoot.clearAddAccountForm();
+                            }
+                        }
+
+                        PlasmaComponents3.Button {
+                            id: saveAccountBtn
+                            text: configRoot.safeI18n("Salvar Conta")
+                            icon.name: "document-save"
+                            highlighted: true
+                            enabled: !configRoot.isAdding && !configRoot.isLoading && !configRoot.isDeleting
+                            onClicked: {
+                                configRoot.addAccount();
+                            }
+                        }
+                    }
+                }
             }
         }
 
@@ -358,7 +650,7 @@ Item {
                             icon.name: "delete"
                             text: configRoot.safeI18n("Remover conta")
                             display: QQC2.AbstractButton.IconOnly
-                            enabled: !configRoot.isDeleting
+                            enabled: !configRoot.isDeleting && !configRoot.isAdding
 
                             QQC2.ToolTip.visible: hovered
                             QQC2.ToolTip.text: configRoot.safeI18n("Remover conta '%1'", modelData.name || modelData.id)
@@ -423,6 +715,7 @@ Item {
                     text: configRoot.safeI18n("Remover Conta")
                     icon.name: "delete"
                     highlighted: true
+                    enabled: !configRoot.isDeleting && !configRoot.isAdding
                     onClicked: {
                         confirmDialog.close();
                         configRoot.confirmDelete();

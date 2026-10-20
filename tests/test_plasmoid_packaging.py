@@ -231,3 +231,33 @@ def test_account_card_qml_symmetric_meters_and_clean_capacity():
     assert "copyToClipboard" in content
     assert "shellQuote" in content
 
+
+def test_config_general_qml_add_account_form_packaging_and_controls():
+    """Verify configGeneral.qml includes the complete add-account form controls and functions."""
+    config_path = UI_DIR / "configGeneral.qml"
+    assert config_path.is_file()
+    content = config_path.read_text(encoding="utf-8")
+
+    # Header and expandable container
+    assert "+ Adicionar Nova Conta" in content
+    assert "addAccountSection" in content
+    assert "isAddFormExpanded" in content
+    assert "toggleAddFormBtn" in content
+
+    # Controls: provider ComboBox, labels, textfields
+    assert "providerComboBox" in content
+    assert "accountNameField" in content
+    assert "credentialPathField" in content
+    assert "useDefaultPathBtn" in content
+    assert "inviteUrlField" in content
+    assert "saveAccountBtn" in content
+
+    # Helper and action methods
+    assert "getDefaultPath" in content
+    assert "clearAddAccountForm" in content
+    assert "addAccount" in content
+    assert "shellQuote" in content
+    assert "buildCollectorCommand" in content
+    assert "additionDataSource" in content
+
+

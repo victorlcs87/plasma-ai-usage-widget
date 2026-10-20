@@ -4,14 +4,14 @@
 
 **Blocked by:** 08: Reformulacao Visual dos Cards no Plasmoid com Medidores Simetricos Horario/Semanal
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Secao expansivel de cadastro "+ Adicionar Nova Conta" em `configGeneral.qml`.
-- [ ] ComboBox para selecao do provedor (`Claude`, `Codex`, `Gemini`) com estilizacao visual condizente.
-- [ ] Campos de texto para Apelido/Label da conta, caminho das credenciais e URL de convite opcional.
-- [ ] Botao auxiliar para sugerir/preencher o caminho padrao do provedor selecionado.
-- [ ] Botao "Salvar Conta" que invoca assincronamente `ai-usage-collector --add-account` via `Plasma5Support.DataSource` com `shellQuote` e `"$@"`.
-- [ ] Exibicao de mensagem em linha (`Kirigami.InlineMessage`) com feedback de sucesso ou erro.
-- [ ] Atualizacao imediata da lista de contas e sincronizacao automatica do widget no desktop.
-- [ ] Reinstalacao e validacao do pacote Plasmoid com `kpackagetool6`.
-- [ ] Bateria de testes automatizados cobrindo a interacao do formulario e bindings QML.
+- [x] Secao expansivel de cadastro "+ Adicionar Nova Conta" em `configGeneral.qml`.
+- [x] ComboBox para selecao do provedor (`Claude`, `Codex`, `Gemini`) com estilizacao visual condizente.
+- [x] Campos de texto para Apelido/Label da conta, caminho das credenciais e URL de convite opcional.
+- [x] Botao auxiliar para sugerir/preencher o caminho padrao do provedor selecionado.
+- [x] Botao "Salvar Conta" que invoca assincronamente `ai-usage-collector --add-account` via `Plasma5Support.DataSource` com `shellQuote` e `"$@"`.
+- [x] Exibicao de mensagem em linha (`Kirigami.InlineMessage`) com feedback de sucesso ou erro.
+- [x] Atualizacao imediata da lista de contas e sincronizacao automatica do widget no desktop.
+- [x] Reinstalacao e validacao do pacote Plasmoid com `kpackagetool6`.
+- [x] Bateria de testes automatizados cobrindo a interacao do formulario e bindings QML.

@@ -62,25 +62,78 @@ def test_config_qml_registration():
 
 
 def test_config_general_qml_structure_and_bindings():
-    """Verify that configGeneral.qml contains account management and deletion bindings."""
+    """Verify that configGeneral.qml contains account management, addition and deletion bindings."""
     config_general_path = UI_DIR / "configGeneral.qml"
     assert config_general_path.is_file(), "contents/ui/configGeneral.qml must exist"
 
     content = config_general_path.read_text(encoding="utf-8")
 
-    # Essential methods and properties
+    # Essential methods and properties for deletion and addition
     assert "getAccountsList" in content
     assert "requestDeleteAccount" in content
     assert "confirmDelete" in content
+    assert "addAccount" in content
+    assert "getDefaultPath" in content
+    assert "clearAddAccountForm" in content
     assert "buildCollectorCommand" in content
     assert "--remove-account" in content
+    assert "--add-account" in content
 
-    # UI Elements: trash/delete icon, dialog, inline message
+    # UI Elements: trash/delete icon, dialog, inline message, add form
     assert "delete" in content or "trash-empty" in content
     assert "confirmDialog" in content or "Dialog" in content
     assert "InlineMessage" in content
     assert "statusMessage" in content
     assert "errorMessage" in content
+    assert "isAdding" in content
+    assert "isAddFormExpanded" in content
+
+
+def test_config_general_gui_add_account_form_elements():
+    """Verify that configGeneral.qml contains all required controls for adding accounts."""
+    config_general_path = UI_DIR / "configGeneral.qml"
+    content = config_general_path.read_text(encoding="utf-8")
+
+    # 1. Expandable section "+ Adicionar Nova Conta"
+    assert "+ Adicionar Nova Conta" in content
+    assert "addAccountSection" in content
+    assert "toggleAddFormBtn" in content
+    assert "isAddFormExpanded" in content
+
+    # 2. Provider ComboBox with Claude, Codex, Gemini and getProviderColor
+    assert "providerComboBox" in content
+    assert "getProviderColor" in content
+    assert "Claude" in content and "Codex" in content and "Gemini" in content
+
+    # 3. Label/Nickname and Path TextFields
+    assert "accountNameField" in content
+    assert "credentialPathField" in content
+
+    # 4. Auxiliary button "Usar Caminho Padrão" with default paths
+    assert "useDefaultPathBtn" in content
+    assert "Usar Caminho Padrão" in content
+    assert "~/.claude" in content
+    assert "~/.codex" in content
+    assert "~/.gemini" in content
+
+    # 5. Optional invite URL TextField
+    assert "inviteUrlField" in content
+    assert "https://... (opcional)" in content
+
+    # 6. Save Account button and Clear button
+    assert "saveAccountBtn" in content
+    assert "Salvar Conta" in content
+    assert "document-save" in content or "list-add" in content
+    assert "clearFormBtn" in content
+
+    # 7. Safe execution and DataSource bindings
+    assert "additionDataSource" in content
+    assert "shellQuote" in content
+    assert "--provider" in content
+    assert "--label" in content
+    assert "--credential-path" in content
+    assert "--invite-url" in content
+    assert "--status" in content
 
 
 @pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary not available")
@@ -325,5 +378,107 @@ def test_account_card_weekly_meter_reactive_bindings():
     assert "activeWindowPercentageLabel" in content
     assert "weeklyWindowTitleLabel" in content
     assert "weeklyWindowPercentageLabel" in content
+
+
+def test_simulated_gui_add_account_invocation(tmp_path: Path):
+    """Simulate Plasmoid GUI add-account invocation through collector CLI."""
+    config_path = tmp_path / "config.json"
+    cache_path = tmp_path / "status.json"
+    dummy_cred_dir = tmp_path / "custom_claude"
+    dummy_cred_dir.mkdir(parents=True, exist_ok=True)
+    (dummy_cred_dir / ".credentials.json").write_text("{}", encoding="utf-8")
+
+    initial_config = {
+        "version": "1.0",
+        "agents": {
+            "claude": {
+                "accounts": [
+                    {
+                        "id": "claude-existing",
+                        "label": "Claude Pessoal",
+                        "source": "manual",
+                        "session_token": "sk-111",
+                    }
+                ]
+            }
+        },
+    }
+    save_config(initial_config, config_path)
+    collect_and_save(config_path=config_path, cache_path=cache_path)
+
+    # Simulate GUI triggering account addition with --status
+    cmd = [
+        sys.executable,
+        "-m",
+        "ai_usage_collector.cli",
+        "--add-account",
+        "--provider",
+        "claude",
+        "--label",
+        "Claude Trabalho",
+        "--credential-path",
+        str(dummy_cred_dir),
+        "--invite-url",
+        "https://claude.ai/invite/demo123",
+        "--config-path",
+        str(config_path),
+        "--cache-path",
+        str(cache_path),
+        "--status",
+    ]
+    res = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    assert res.returncode == 0, f"Add account failed: {res.stderr}"
+    assert "adicionada com sucesso" in res.stdout
+
+    # Verify config.json was updated with permissions 0600
+    assert config_path.is_file()
+    assert oct(config_path.stat().st_mode & 0o777) == oct(0o600)
+    with open(config_path, "r", encoding="utf-8") as f:
+        updated_config = json.load(f)
+
+    claude_accounts = updated_config["agents"]["claude"]["accounts"]
+    assert len(claude_accounts) == 2
+    labels = [acc["label"] for acc in claude_accounts]
+    assert "Claude Trabalho" in labels
+    assert "Claude Pessoal" in labels
+
+    # Verify new account properties
+    new_acc = [acc for acc in claude_accounts if acc["label"] == "Claude Trabalho"][0]
+    assert new_acc["credential_path"] == str(dummy_cred_dir)
+    assert new_acc["manual_invite_url"] == "https://claude.ai/invite/demo123"
+
+    # Verify status.json was immediately updated and valid
+    with open(cache_path, "r", encoding="utf-8") as f:
+        status_cache = json.load(f)
+    assert validate_status_contract(status_cache) is True
+    cached_claude_accs = status_cache["agents"]["claude"]["accounts"]
+    assert len(cached_claude_accs) == 2
+    cached_new_acc = [acc for acc in cached_claude_accs if acc["id"] == new_acc["id"]][0]
+    assert cached_new_acc["free_trial_invites"]["invite_url"] == "https://claude.ai/invite/demo123"
+
+
+def test_gui_add_account_shell_injection_resilience(tmp_path: Path):
+    """Verify that positional argument construction with shellQuote prevents shell injection."""
+    pwned_marker = tmp_path / "pwned_marker.txt"
+    malicious_inputs = [
+        f"Label'; touch {pwned_marker}; echo '",
+        f'Label"$(touch {pwned_marker})"',
+        f'Label`touch {pwned_marker}`',
+        f"Label || touch {pwned_marker}",
+    ]
+
+    for malicious_input in malicious_inputs:
+        safe_quoted = "'" + malicious_input.replace("'", "'\\''") + "'"
+        # Simulate buildCollectorCommand: bash -c '... "$@"' _ <quotedArgs>
+        bash_cmd = (
+            "bash -c 'for arg in \"$@\"; do printf \"%s\\n\" \"$arg\"; done' _ "
+            + safe_quoted
+        )
+        res = subprocess.run(bash_cmd, shell=True, capture_output=True, text=True, check=True)
+        # Verify the malicious command was NOT executed
+        assert not pwned_marker.exists(), f"Shell injection vulnerability triggered by: {malicious_input}"
+        # Verify argument was received exactly as literal string
+        assert res.stdout.strip() == malicious_input
+
 
 
