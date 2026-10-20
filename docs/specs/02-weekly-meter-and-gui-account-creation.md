@@ -32,10 +32,10 @@ Uma reformulação visual e funcional do widget no KDE Plasma 6 e no Coletor Pyt
 ## Implementation Decisions
 
 - **Arquitetura de Contrato e Backend (`ai-usage-collector`)**:
-  - **Sincronização Oficial da API de Uso do Claude (`/api/oauth/usage`)**:
-    - O extrator do Claude passa a consultar primariamente `https://api.anthropic.com/api/oauth/usage` utilizando o `accessToken` OAuth já existente em `~/.claude/.credentials.json`.
-    - Essa rota oficial retorna com precisão absoluta de servidor os mesmos valores exibidos pelo Claude Code: `five_hour.utilization` (ex.: 3% / 4%), `five_hour.resets_at`, `seven_day.utilization` (ex.: 87%) e `seven_day.resets_at`.
-    - Caso a máquina esteja sem conexão ou o endpoint falhe, o extrator realiza fallback transparente para o cálculo local de logs.
+  - **Sincronização Oficial das APIs de Uso de Claude e Codex**:
+    - **Claude (`/api/oauth/usage`)**: Consulta primariamente `https://api.anthropic.com/api/oauth/usage` utilizando o `accessToken` OAuth em `~/.claude/.credentials.json`. Retorna com precisão absoluta de servidor: `five_hour.utilization` (sessão de 5h), `five_hour.resets_at`, `seven_day.utilization` (semanal de 7d) e `seven_day.resets_at`. Em caso de offline, fallback transparente para os logs locais.
+    - **Codex (`/backend-api/wham/usage`)**: Consulta primariamente `https://chatgpt.com/backend-api/wham/usage` com `Authorization: Bearer <access_token>` e `ChatGPT-Account-Id: <account_id>` em `~/.codex/auth.json`. Retorna com precisão oficial de servidor: `rate_limit.primary_window.used_percent` (janela rotativa de 5h/18000s e `reset_at`), `rate_limit.secondary_window.used_percent` (janela semanal de 7d/604800s e `reset_at`), `plan_type` e informações de `promo`/convites. Em caso de offline, fallback transparente para o SQLite local `sessions.db`.
+    - **Gemini**: Leitura e cálculo analítico de tokens e mensagens a partir do SQLite local em `~/.gemini/antigravity-cli/conversation_summaries.db`, aplicando as cotas horárias e semanais configuradas por plano (com contingência graciosa caso o endpoint do Google Cloud Code venha a ser liberado).
   - **Cálculo da Porcentagem Semanal no Contrato `status.json`**:
     - O modelo de contrato enriquece a seção `weekly_window` com `total_capacity`, `usage_percentage` e `available_capacity`, calculados a partir da capacidade semanal estimada ou configurada para cada plano e agente.
     - Preserva o campo `tokens_used` e `messages_used` para fornecer o contexto de volume.
