@@ -108,22 +108,15 @@ def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> s
                     except Exception:
                         pass
 
-    # Check 2: Account explicitly flagged with "active": True in config
-    for acc in accounts:
-        if acc.get("active") is True:
-            return str(acc.get("id"))
-
-    # Check 3: If system file exists and matches an account's credential_path
-    if sys_file and sys_file.exists():
+    # Check 2: If system file exists and matches an account's credential_path
+    if sys_file and sys_file.exists() and sys_creds is not None:
         for acc in accounts:
             cred_p_val = acc.get("credential_path") or acc.get("credentials_path")
             if cred_p_val and Path(cred_p_val).expanduser().resolve() == sys_file:
                 return str(acc.get("id"))
 
-    # Check 4: If single account and active session exists
-    if len(accounts) == 1 and sys_creds is not None:
-        return str(accounts[0].get("id"))
-
+    # If system credentials exist but matched none of the registered accounts,
+    # no account is marked active to prevent false positives (Spec 04).
     return None
 
 
@@ -573,15 +566,15 @@ def switch_account(
     if not target_acc:
         return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
 
-    # Step 2: Backup active session to profile
+    # Step 2: Backup active account in system to its matching profile
     backup_ok, backup_msg = backup_active_to_profile(prov, config_path)
     if not backup_ok:
-        pass
+        return False, f"Falha ao realizar backup da conta ativa no sistema: {backup_msg}", None
 
-    # Step 3: Activate target profile to system
+    # Step 3: Activate target account to system
     act_ok, act_msg = activate_profile_to_system(prov, acc_id, config_path)
     if not act_ok:
-        return False, f"Falha ao ativar perfil no sistema: {act_msg}", None
+        return False, f"Falha ao ativar conta no sistema: {act_msg}", None
 
     # Step 4: Persist active account flag in config
     set_active_account(prov, acc_id, config_path)

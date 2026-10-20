@@ -5,6 +5,7 @@ Handles loading, saving, and ensuring Unix 0600 permissions for config files.
 
 from __future__ import annotations
 
+import copy
 import json
 import os
 import re
@@ -269,26 +270,29 @@ def rename_account_in_config(
 ) -> tuple[dict[str, Any], bool]:
     """Rename an account (label and name) in config structure, preserving other fields.
 
+    Operates purely by returning a defensive copy without mutating input in-place.
+
     Returns:
         tuple[dict[str, Any], bool]: (updated_config, was_renamed)
     """
+    cfg = copy.deepcopy(config_data)
     prov = provider.lower().strip() if provider else ""
     if prov not in SUPPORTED_PROVIDERS:
-        return config_data, False
+        return cfg, False
 
     acc_id = str(account_id).strip() if account_id is not None else ""
     if not acc_id:
-        return config_data, False
+        return cfg, False
 
     clean_label = str(new_label).strip() if new_label is not None else ""
     if not clean_label:
-        return config_data, False
+        return cfg, False
 
     renamed = False
 
     # Standard format: config["agents"][prov]["accounts"]
-    if "agents" in config_data and isinstance(config_data["agents"], dict):
-        agent_entry = config_data["agents"].get(prov)
+    if "agents" in cfg and isinstance(cfg["agents"], dict):
+        agent_entry = cfg["agents"].get(prov)
         if isinstance(agent_entry, dict) and "accounts" in agent_entry and isinstance(agent_entry["accounts"], list):
             for acc in agent_entry["accounts"]:
                 if isinstance(acc, dict) and str(acc.get("id")) == acc_id:
@@ -298,9 +302,9 @@ def rename_account_in_config(
                     break
 
     # Alternative format 1: config["accounts"][prov] = [...]
-    if not renamed and "accounts" in config_data and isinstance(config_data["accounts"], dict):
-        if prov in config_data["accounts"] and isinstance(config_data["accounts"][prov], list):
-            for acc in config_data["accounts"][prov]:
+    if not renamed and "accounts" in cfg and isinstance(cfg["accounts"], dict):
+        if prov in cfg["accounts"] and isinstance(cfg["accounts"][prov], list):
+            for acc in cfg["accounts"][prov]:
                 if isinstance(acc, dict) and str(acc.get("id")) == acc_id:
                     acc["label"] = clean_label
                     acc["name"] = clean_label
@@ -308,15 +312,15 @@ def rename_account_in_config(
                     break
 
     # Alternative format 2: config["accounts"] = [{"provider": "...", "id": "..."}, ...]
-    if not renamed and "accounts" in config_data and isinstance(config_data["accounts"], list):
-        for acc in config_data["accounts"]:
+    if not renamed and "accounts" in cfg and isinstance(cfg["accounts"], list):
+        for acc in cfg["accounts"]:
             if isinstance(acc, dict) and acc.get("provider") == prov and str(acc.get("id")) == acc_id:
                 acc["label"] = clean_label
                 acc["name"] = clean_label
                 renamed = True
                 break
 
-    return config_data, renamed
+    return cfg, renamed
 
 
 def rename_account(
@@ -421,24 +425,25 @@ def set_active_account_in_config(
 ) -> tuple[dict[str, Any], bool]:
     """Set specified account as active ("active": True) and others as inactive ("active": False).
 
-    Supports standard format and legacy formats.
+    Operates purely by returning a defensive copy without mutating input in-place.
 
     Returns:
         tuple[dict[str, Any], bool]: (updated_config, was_found_and_updated)
     """
+    cfg = copy.deepcopy(config_data)
     prov = provider.lower().strip() if provider else ""
     if prov not in SUPPORTED_PROVIDERS:
-        return config_data, False
+        return cfg, False
 
     acc_id = str(account_id).strip() if account_id is not None else ""
     if not acc_id:
-        return config_data, False
+        return cfg, False
 
     found = False
 
     # Standard format: config["agents"][prov]["accounts"]
-    if "agents" in config_data and isinstance(config_data["agents"], dict):
-        agent_entry = config_data["agents"].get(prov)
+    if "agents" in cfg and isinstance(cfg["agents"], dict):
+        agent_entry = cfg["agents"].get(prov)
         if isinstance(agent_entry, dict) and "accounts" in agent_entry and isinstance(agent_entry["accounts"], list):
             target_exists = any(
                 isinstance(acc, dict) and str(acc.get("id")) == acc_id
@@ -451,31 +456,31 @@ def set_active_account_in_config(
                         acc["active"] = (str(acc.get("id")) == acc_id)
 
     # Alternative format 1: config["accounts"][prov] = [...]
-    if "accounts" in config_data and isinstance(config_data["accounts"], dict):
-        if prov in config_data["accounts"] and isinstance(config_data["accounts"][prov], list):
+    if "accounts" in cfg and isinstance(cfg["accounts"], dict):
+        if prov in cfg["accounts"] and isinstance(cfg["accounts"][prov], list):
             target_exists = any(
                 isinstance(acc, dict) and str(acc.get("id")) == acc_id
-                for acc in config_data["accounts"][prov]
+                for acc in cfg["accounts"][prov]
             )
             if target_exists:
                 found = True
-                for acc in config_data["accounts"][prov]:
+                for acc in cfg["accounts"][prov]:
                     if isinstance(acc, dict):
                         acc["active"] = (str(acc.get("id")) == acc_id)
 
     # Alternative format 2: config["accounts"] = [{"provider": "...", "id": "..."}, ...]
-    if "accounts" in config_data and isinstance(config_data["accounts"], list):
+    if "accounts" in cfg and isinstance(cfg["accounts"], list):
         target_exists = any(
             isinstance(acc, dict) and acc.get("provider") == prov and str(acc.get("id")) == acc_id
-            for acc in config_data["accounts"]
+            for acc in cfg["accounts"]
         )
         if target_exists:
             found = True
-            for acc in config_data["accounts"]:
+            for acc in cfg["accounts"]:
                 if isinstance(acc, dict) and acc.get("provider") == prov:
                     acc["active"] = (str(acc.get("id")) == acc_id)
 
-    return config_data, found
+    return cfg, found
 
 
 def set_active_account(

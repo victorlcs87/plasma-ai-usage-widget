@@ -15,8 +15,6 @@ from ai_usage_collector.config import save_secure_json
 from ai_usage_collector.discovery import (
     discover_gemini,
     extract_jwt_identity,
-    get_gemini_keyring_credentials,
-    parse_timestamp,
 )
 
 GEMINI_DAILY_SECONDS = 24 * 3600  # 86400s
@@ -565,24 +563,16 @@ def extract_gemini_status(
     default_gemini = Path("~/.gemini").expanduser().resolve()
     default_cred_path = DEFAULT_GEMINI_CREDENTIALS.expanduser().resolve()
 
-    is_custom_env = bool(
-        (cred_path_val and Path(cred_path_val).expanduser().resolve() != default_cred_path)
-        or (account.get("gemini_dir") and Path(account["gemini_dir"]).expanduser().resolve() not in (default_gemini, default_antigravity))
+    is_default_account = (
+        account.get("id") in ("default", None)
+        and "profiles" not in str(cred_path_val or "")
+        and "profiles" not in str(account.get("gemini_dir") or "")
     )
 
-    is_keyring_mocked = (
-        hasattr(get_gemini_keyring_token, "mock_calls")
-        or hasattr(get_gemini_keyring_raw, "mock_calls")
-        or hasattr(subprocess.run, "mock_calls")
-    )
+    keyring_token = get_gemini_keyring_token() if is_default_account else None
+    keyring_raw = get_gemini_keyring_raw() if is_default_account else None
 
-    keyring_token = None
-    keyring_raw = None
-    if not is_custom_env or is_keyring_mocked:
-        keyring_token = get_gemini_keyring_token()
-        keyring_raw = get_gemini_keyring_raw()
-
-    if is_custom_env and file_token and not file_expired and not is_keyring_mocked:
+    if file_token and not file_expired:
         token = file_token
         token_is_from_keyring = False
     elif keyring_token:
@@ -607,8 +597,10 @@ def extract_gemini_status(
         health["status"] = "valid"
         health["message"] = "Credencial Gemini ativa detectada via API oficial"
 
-        # Synchronize keyring token to local file if token came from keyring
-        if token_is_from_keyring:
+        # Synchronize keyring token to local file if token came from keyring,
+        # but NEVER overwrite an isolated account profile
+        is_isolated_profile = "profiles" in Path(cred_file).resolve().parts
+        if token_is_from_keyring and not is_isolated_profile:
             sync_data = keyring_raw if (keyring_raw and isinstance(keyring_raw, dict)) else {"access_token": token}
             id_tok = (
                 sync_data.get("id_token")

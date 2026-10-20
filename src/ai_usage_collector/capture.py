@@ -982,36 +982,19 @@ def backup_active_to_profile(provider: str, config_path: str | Path | None = Non
                 except Exception:
                     pass
 
-    # Step 2: If no signature match, check for account flagged active in config
-    if not matched_account:
-        for acc in accounts:
-            if acc.get("active") is True:
-                cred_p_val = acc.get("credential_path")
-                if not cred_p_val:
-                    dir_key = f"{prov}_dir"
-                    if acc.get(dir_key):
-                        filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
-                        cred_p_val = str(Path(acc[dir_key]) / filename)
-                if cred_p_val:
-                    file_p = Path(cred_p_val).expanduser().resolve()
-                    if file_p.exists() and file_p.is_file():
-                        matched_account = acc
-                        matched_file = file_p
-                        break
-
     if matched_account and matched_file:
         if matched_file == sys_file:
-            return True, "Sessão ativa já reside no caminho padrão do sistema."
+            return True, "Conta ativa no sistema já reside no caminho padrão do sistema."
 
         try:
             save_secure_json(sys_creds, matched_file, prefix="backup_")
             enforce_profile_security_permissions(matched_file.parent)
             acc_id = matched_account.get("id", "desconhecido")
-            return True, f"Credenciais da sessão ativa sincronizadas de volta para o perfil '{acc_id}'."
+            return True, f"Credenciais da conta ativa sincronizadas de volta para a conta '{acc_id}'."
         except Exception as e:
-            return False, f"Falha ao realizar backup da sessão ativa para '{matched_file}': {e}"
+            return False, f"Falha ao realizar backup da conta ativa no sistema para '{matched_file}': {e}"
 
-    return True, "Nenhum perfil isolado correspondente para sincronizar sessão ativa."
+    return True, "Nenhuma conta registrada correspondente à conta ativa no sistema para sincronização."
 
 
 def activate_profile_to_system(
@@ -1095,5 +1078,5 @@ def activate_profile_to_system(
         except Exception:
             pass
 
-    return True, f"Perfil '{account_id}' ativado com sucesso no sistema para '{provider}'."
+    return True, f"Conta '{account_id}' ativada com sucesso no sistema para '{provider}'."
 

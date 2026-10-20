@@ -283,12 +283,6 @@ def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]
     path = Path(credential_path or DEFAULT_GEMINI_CREDENTIALS).expanduser().resolve()
     now_ts = datetime.now(timezone.utc).timestamp()
 
-    is_custom_path = bool(
-        credential_path
-        and Path(credential_path).expanduser().resolve() != DEFAULT_GEMINI_CREDENTIALS.expanduser().resolve()
-    )
-    is_keyring_mocked = hasattr(get_gemini_keyring_credentials, "mock_calls") or hasattr(subprocess.run, "mock_calls")
-
     file_data: dict[str, Any] | None = None
     file_read_error: str | None = None
 
@@ -333,7 +327,7 @@ def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]
 
         # Token in file is expired or missing access_token.
         # Check keyring before reporting expired or unauthenticated.
-        keyring_creds = get_gemini_keyring_credentials() if (not is_custom_path or is_keyring_mocked) else None
+        keyring_creds = get_gemini_keyring_credentials()
         if keyring_creds and (keyring_creds.get("access_token") or keyring_creds.get("refresh_token")):
             k_id_token = keyring_creds.get("id_token") or id_token
             k_email = extract_jwt_identity(k_id_token) if k_id_token else email
@@ -390,7 +384,7 @@ def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]
         }
 
     if file_read_error:
-        keyring_creds = get_gemini_keyring_credentials() if (not is_custom_path or is_keyring_mocked) else None
+        keyring_creds = get_gemini_keyring_credentials()
         if keyring_creds and (keyring_creds.get("access_token") or keyring_creds.get("refresh_token")):
             k_id_token = keyring_creds.get("id_token")
             k_email = extract_jwt_identity(k_id_token) if k_id_token else None
@@ -413,7 +407,7 @@ def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]
         }
 
     # File does not exist: check keyring as source of Gemini credentials
-    keyring_creds = get_gemini_keyring_credentials() if (not is_custom_path or is_keyring_mocked) else None
+    keyring_creds = get_gemini_keyring_credentials()
     if keyring_creds and (keyring_creds.get("access_token") or keyring_creds.get("refresh_token")):
         k_id_token = keyring_creds.get("id_token")
         k_email = extract_jwt_identity(k_id_token) if k_id_token else None
