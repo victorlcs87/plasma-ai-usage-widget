@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import fcntl
 import io
 import json
 import os
@@ -10,7 +11,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
-from ai_usage_collector.config import DEFAULT_CACHE_DIR, get_accounts_for_agent, save_secure_json
+from ai_usage_collector.config import DEFAULT_CACHE_DIR, ensure_secure_dir, get_accounts_for_agent, save_secure_json
 from ai_usage_collector.extractors.claude import parse_timestamp
 
 RETENTION_DAYS = 400
@@ -51,20 +52,21 @@ def _tokens(usage: Any) -> int:
     return int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
 
 
-def _parse_claude(entry: dict[str, Any], cursor: dict[str, Any]) -> tuple[str, int] | None:
+def _parse_claude(entry: dict[str, Any], cursor: dict[str, Any], seen: set[str]) -> tuple[str, int] | None:
     msg = entry.get("message")
     if not isinstance(msg, dict) or not isinstance(msg.get("usage"), dict):
         return None
-    # O Claude Code grava uma linha por bloco de conteudo com o mesmo usage; conta uma vez.
-    # ponytail: dedup so de linhas consecutivas; set global de ids se sessoes retomadas duplicarem.
-    key = f"{msg.get('id')}:{entry.get('requestId')}"
-    if msg.get("id") and key == cursor.get("last"):
-        return None
-    cursor["last"] = key
+    # O Claude Code repete a mesma mensagem (uma linha por bloco de conteudo, sessoes retomadas
+    # copiadas para outro arquivo, arquivo reescrito): conta cada message.id:requestId uma vez.
+    if msg.get("id"):
+        key = f"{msg['id']}:{entry.get('requestId')}"
+        if key in seen:
+            return None
+        seen.add(key)
     return str(msg.get("model") or UNKNOWN_MODEL), _tokens(msg["usage"])
 
 
-def _parse_codex(entry: dict[str, Any], cursor: dict[str, Any]) -> tuple[str, int] | None:
+def _parse_codex(entry: dict[str, Any], cursor: dict[str, Any], seen: set[str]) -> tuple[str, int] | None:
     payload = entry.get("payload")
     if not isinstance(payload, dict):
         return None
@@ -84,10 +86,14 @@ def _parse_codex(entry: dict[str, Any], cursor: dict[str, Any]) -> tuple[str, in
 PARSERS = {"claude": _parse_claude, "codex": _parse_codex}
 
 
-def _read_new_lines(path: Path, provider: str, account_id: str, history: dict[str, Any], cutoff_ts: float) -> None:
+def _read_new_lines(
+    path: Path, provider: str, account_id: str, history: dict[str, Any], cutoff_ts: float, seen: dict[str, set[str]]
+) -> None:
     cursor = history["cursors"].setdefault(str(path), {"offset": 0})
     st = path.stat()
-    if st.st_size < cursor["offset"]:  # arquivo truncado/reescrito: recomeca
+    # Truncado/reescrito: recomeca (Claude protegido pelo dedup de ids).
+    # ponytail: Codex e append-only; um rollout reescrito seria recontado.
+    if st.st_size < cursor["offset"]:
         cursor.clear()
         cursor["offset"] = 0
     if st.st_size == cursor["offset"]:
@@ -110,12 +116,14 @@ def _read_new_lines(path: Path, provider: str, account_id: str, history: dict[st
             continue
         if not isinstance(entry, dict):
             continue
-        parsed = parser(entry, cursor)
         ts = parse_timestamp(entry.get("timestamp"))
-        if not parsed or parsed[1] <= 0 or ts is None:
+        if ts is None:
+            continue
+        day = datetime.fromtimestamp(ts).date().isoformat()
+        parsed = parser(entry, cursor, seen.setdefault(day, set()))
+        if not parsed or parsed[1] <= 0:
             continue
         model, tokens = parsed
-        day = datetime.fromtimestamp(ts).date().isoformat()
         bucket = history["daily"].setdefault(day, {}).setdefault(provider, {}).setdefault(account_id, {})
         bucket[model] = bucket.get(model, 0) + tokens
 
@@ -123,31 +131,40 @@ def _read_new_lines(path: Path, provider: str, account_id: str, history: dict[st
 def load_history(path: Path) -> dict[str, Any]:
     """Arquivo ausente -> vazio. Arquivo corrompido -> erro (nunca sobrescrever o historico)."""
     if not path.exists():
-        return {"version": 1, "daily": {}, "cursors": {}}
+        return {"version": 1, "daily": {}, "cursors": {}, "seen": {}}
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict) or not isinstance(data.get("daily"), dict):
         raise ValueError(f"Historico de Tokens invalido: {path}")
     data.setdefault("cursors", {})
+    data.setdefault("seen", {})
     return data
 
 
 def update_history(sources: dict[Path, tuple[str, str]], path: Path, today: date) -> dict[str, Any]:
-    """Le o que ha de novo em cada diretorio de logs, aplica a retencao e salva (0600, atomico)."""
-    history = load_history(path)
-    first_day = today - timedelta(days=RETENTION_DAYS - 1)
-    cutoff_ts = datetime.combine(first_day, datetime.min.time()).timestamp()
+    """Le o que ha de novo em cada diretorio de logs, aplica a retencao e salva (0600, atomico).
 
-    for log_dir, (provider, account_id) in sources.items():
-        for file in sorted(log_dir.glob(LOG_GLOBS[provider])):
-            try:
-                _read_new_lines(file, provider, account_id, history, cutoff_ts)
-            except OSError:
-                continue
+    Um lock ao lado do arquivo evita que coletas simultaneas percam incrementos.
+    """
+    ensure_secure_dir(path.parent)
+    with open(path.with_suffix(".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        history = load_history(path)
+        first_day = (today - timedelta(days=RETENTION_DAYS - 1)).isoformat()
+        cutoff_ts = datetime.combine(date.fromisoformat(first_day), datetime.min.time()).timestamp()
+        seen = {d: set(keys) for d, keys in history["seen"].items()}
 
-    history["daily"] = {d: v for d, v in history["daily"].items() if d >= first_day.isoformat()}
-    history["cursors"] = {p: c for p, c in history["cursors"].items() if Path(p).exists()}
-    save_secure_json(history, path, prefix="history_")
+        for log_dir, (provider, account_id) in sources.items():
+            for file in sorted(log_dir.glob(LOG_GLOBS[provider])):
+                try:
+                    _read_new_lines(file, provider, account_id, history, cutoff_ts, seen)
+                except OSError:
+                    continue
+
+        history["daily"] = {d: v for d, v in history["daily"].items() if d >= first_day}
+        history["seen"] = {d: sorted(k) for d, k in seen.items() if k and d >= first_day}
+        history["cursors"] = {p: c for p, c in history["cursors"].items() if Path(p).exists()}
+        save_secure_json(history, path, prefix="history_")
     return history
 
 

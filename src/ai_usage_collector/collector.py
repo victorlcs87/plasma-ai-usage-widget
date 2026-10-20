@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -227,8 +228,8 @@ def collect_and_save(
 
     try:
         apply_token_history(status_payload, config, cache_path, now_dt)
-    except Exception:
-        pass  # Historico de Tokens e opcional; nunca impede o status
+    except Exception as e:  # Historico de Tokens e opcional; nunca impede o status
+        sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
 
     # Save to disk
     save_status_cache(status_payload, cache_path)

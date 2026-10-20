@@ -109,6 +109,17 @@ def test_incremental_read_does_not_duplicate_and_appends(tmp_path):
         f.write('{"type": "assistant", "timestamp"')
     status = _refresh(config_path, cache_path)
     assert _acc(status, "claude")["token_history"]["today"] == 167
+    rest = json.dumps(_iso(now)) + ', "requestId": "r4", "message": {"id": "m4", "usage": {"input_tokens": 2, "output_tokens": 1}}}\n'
+    with open(log, "a") as f:  # a linha parcial e completada e conta uma vez
+        f.write(": " + rest)
+    _refresh(config_path, cache_path)
+    status = _refresh(config_path, cache_path)
+    assert _acc(status, "claude")["token_history"]["today"] == 170
+
+    # Sessao retomada copia mensagens antigas para outro arquivo: nao conta de novo
+    (claude_dir / "projects" / "proj" / "s2.jsonl").write_text(_claude_line(now, "m1", 100, 50) + _claude_line(now, "m5", 1, 0))
+    status = _refresh(config_path, cache_path)
+    assert _acc(status, "claude")["token_history"]["today"] == 171
 
     history_file = cache_path.parent / "history.json"
     assert stat.S_IMODE(os.stat(history_file).st_mode) == 0o600
@@ -173,6 +184,36 @@ def test_export_history_csv_and_json(tmp_path, capsys):
     assert main(["--export-history", "json", *base]) == 0
     data = json.loads(capsys.readouterr().out)
     assert {"date": day, "provider": "claude", "account": "claude-a", "model": "opus", "tokens": 150} in data
+
+
+def test_corrupted_history_is_preserved_and_status_still_saved(tmp_path, capsys):
+    claude_dir, _, config_path, cache_path = _setup(tmp_path)
+    (claude_dir / "projects" / "proj" / "s1.jsonl").write_text(_claude_line(datetime.now(timezone.utc), "m1", 1, 1))
+    cache_path.parent.mkdir(parents=True)
+    history_file = cache_path.parent / "history.json"
+    history_file.write_text("{corrompido")
+
+    status = _refresh(config_path, cache_path)
+    assert "token_history" not in _acc(status, "claude")
+    assert history_file.read_text() == "{corrompido"
+    assert "Historico de Tokens" in capsys.readouterr().err
+
+
+def test_summary_period_boundaries():
+    from datetime import date
+
+    from ai_usage_collector.history import summarize
+
+    # 2026-10-21 e quarta-feira; a semana comeca na segunda 2026-10-19
+    days = {"2026-10-18": 1, "2026-10-19": 10, "2026-10-21": 100, "2026-09-30": 1000, "2025-10-31": 5, "2025-11-01": 7}
+    history = {"daily": {d: {"claude": {"a": {"m": t}}} for d, t in days.items()}}
+    s = summarize(history, "claude", "a", date(2026, 10, 21))
+    assert (s["today"], s["week"], s["month"]) == (100, 110, 111)
+    assert s["weekly_3m"][-1] == {"week_start": "2026-10-19", "tokens": 110}
+    assert s["weekly_3m"][-2] == {"week_start": "2026-10-12", "tokens": 1}
+    assert s["monthly_12m"][0] == {"month": "2025-11", "tokens": 7}
+    assert s["monthly_12m"][-2] == {"month": "2026-09", "tokens": 1000}
+    assert summarize(history, "claude", "outra", date(2026, 10, 21))["month"] == 0
 
 
 def test_status_without_history_field_still_valid():
