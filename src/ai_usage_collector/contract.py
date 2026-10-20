@@ -5,6 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Any
 
+# v2: campo opcional `token_history` por Conta (Historico de Tokens).
+CONTRACT_VERSION = 2
+
 AGENT_NATIVE_WINDOWS: dict[str, str] = {
     "claude": "5h",
     "codex": "3h",
@@ -161,6 +164,8 @@ def validate_status_contract(data: Any) -> bool:
                     return False
 
             if "isActive" in acc and not isinstance(acc["isActive"], bool):
+                return False
+            if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False
 
             ww = acc.get("weekly_window")

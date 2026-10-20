@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +33,7 @@ from ai_usage_collector.contract import (
     get_current_iso_timestamp,
 )
 from ai_usage_collector.discovery import discover_account
+from ai_usage_collector.history import apply_token_history
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -180,6 +182,11 @@ def collect_and_save(
                     status_payload["agents"][agent_id]["status"] = "warning"
         else:
             status_payload["agents"][agent_id]["status"] = "not_configured"
+
+    try:
+        apply_token_history(status_payload, config, cache_path, now_dt)
+    except Exception as e:  # Historico de Tokens e opcional; nunca impede o status
+        sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
 
     # Save to disk
     save_status_cache(status_payload, cache_path)

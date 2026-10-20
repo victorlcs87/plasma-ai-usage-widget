@@ -65,7 +65,7 @@ Momento estimado em que um limite chegara a 100% se o Ritmo de Uso recente se ma
 _Avoid_: estimativa de fim, ETA
 
 **Historico de Tokens**:
-Totais diarios de tokens consumidos por provedor, Conta e modelo, preservados localmente para consulta e exportacao.
+Totais diarios de tokens consumidos por provedor, Conta e modelo, preservados localmente para consulta e exportacao. Token = entrada + saida informados pelo provedor em cada mensagem (no Claude, leituras/escritas de cache ficam fora); o dia e o do fuso local.
 _Avoid_: log de uso, estatisticas brutas
 
 **Convite de Teste Gratuito**:

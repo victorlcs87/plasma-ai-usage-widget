@@ -19,6 +19,7 @@ from ai_usage_collector.collector import (
     switch_account,
 )
 from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
+from ai_usage_collector.history import export_history
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -93,6 +94,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Executa o login diretamente sem abrir janela de emulador de terminal",
     )
     parser.add_argument(
+        "--export-history",
+        choices=["csv", "json"],
+        help="Exporta o Historico de Tokens diario (ate 400 dias) em CSV ou JSON na saida padrao",
+    )
+    parser.add_argument(
         "--provider",
         type=str,
         help="Provedor da conta ('claude', 'codex', 'gemini')",
@@ -147,6 +153,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache_path = args.cache_path
 
     try:
+        if args.export_history:
+            sys.stdout.write(export_history(cache_path, args.export_history))
+            sys.stdout.flush()
+            return 0
+
         if args.switch_account:
             provider, account_id = args.switch_account
             success, message, status_data = switch_account(

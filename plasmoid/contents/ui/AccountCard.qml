@@ -658,6 +658,13 @@ Kirigami.AbstractCard {
             details: cardRoot.accountData?.usage_details ?? null
         }
 
+        // Historico de Tokens (campo opcional do contrato v2)
+        TokenHistory {
+            Layout.fillWidth: true
+            history: cardRoot.accountData?.token_history ?? null
+            barColor: cardRoot.getProviderColor(cardRoot.accountData?.provider)
+        }
+
         // ==========================================
         // Medidor 3: Badge de Convites de Teste Gratuito
         // ==========================================
