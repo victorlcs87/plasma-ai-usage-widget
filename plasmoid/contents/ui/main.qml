@@ -27,6 +27,7 @@ PlasmoidItem {
     property var statusData: null
     property string lastError: ""
     property bool isLoading: false
+    property bool isRefreshing: false
     property string lastUpdatedFormatted: formatLastUpdated(statusData?.last_updated)
     property int totalInvites: calculateTotalInvites()
     property double maxUsagePercent: calculateMaxUsage()
@@ -113,6 +114,54 @@ PlasmoidItem {
             lines.push(safeI18n("%1 convites disponíveis", totalInvites));
         }
         return lines.join(" • ");
+    }
+
+    function buildCollectorCommand(args) {
+        var venvBin = "/home/victorlcs/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector";
+        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector " + args + "; " +
+               "elif [ -x \"" + venvBin + "\" ]; then \"" + venvBin + "\" " + args + "; " +
+               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" " + args + "; " +
+               "else python3 -m ai_usage_collector " + args + "; fi'";
+    }
+
+    // Executor assíncrono de comandos do coletor (refresh / remoção)
+    Plasma5Support.DataSource {
+        id: collectorDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            root.isRefreshing = false;
+            var exitCode = data["exit code"];
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+
+            if (exitCode === 0) {
+                root.lastError = "";
+                root.loadStatus();
+            } else {
+                var errMsg = stderr || stdout || safeI18n("Código de saída %1", exitCode);
+                root.lastError = safeI18n("Erro ao executar coletor: %1", errMsg);
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    function refreshCollector() {
+        if (root.isRefreshing) return;
+        root.isRefreshing = true;
+        root.lastError = "";
+        var cmd = buildCollectorCommand("--refresh");
+        collectorDataSource.connectSource(cmd);
+    }
+
+    function removeAccount(provider, accountId) {
+        if (!provider || !accountId) return;
+        root.isRefreshing = true;
+        root.lastError = "";
+        var escapedArgs = "--remove-account \"" + provider + "\" \"" + accountId + "\"";
+        var cmd = buildCollectorCommand(escapedArgs);
+        collectorDataSource.connectSource(cmd);
     }
 
     // Leitor assíncrono via DataSource do KDE Plasma

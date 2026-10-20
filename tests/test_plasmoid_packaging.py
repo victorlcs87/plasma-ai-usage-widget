@@ -34,11 +34,17 @@ def test_plasmoid_directory_structure():
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
         "AccountCard.qml",
+        "configGeneral.qml",
     ]
     for qml_file in expected_qml_files:
         path = UI_DIR / qml_file
         assert path.is_file(), f"Missing QML component: {qml_file}"
         assert path.stat().st_size > 0, f"QML component {qml_file} is empty"
+
+    config_dir = PLASMOID_DIR / "contents" / "config"
+    assert config_dir.is_dir(), "plasmoid/contents/config/ directory must exist"
+    assert (config_dir / "main.xml").is_file(), "plasmoid/contents/config/main.xml must exist"
+    assert (config_dir / "config.qml").is_file(), "plasmoid/contents/config/config.qml must exist"
 
 
 def test_metadata_json_schema_and_plasma6_compliance():
@@ -103,6 +109,7 @@ def test_qml_components_syntax_validity():
         "AccountCard.qml",
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
+        "configGeneral.qml",
     ]
     for comp in components_to_check:
         comp_path = UI_DIR / comp

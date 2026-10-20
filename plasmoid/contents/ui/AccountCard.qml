@@ -3,12 +3,31 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.components as PlasmaComponents3
+import org.kde.plasma.plasma5support as Plasma5Support
 
 Kirigami.AbstractCard {
     id: cardRoot
 
     property var accountData: ({})
     property int liveSecondsRemaining: 0
+    property bool copiedFeedback: false
+
+    Timer {
+        id: copiedFeedbackTimer
+        interval: 2500
+        running: false
+        repeat: false
+        onTriggered: cardRoot.copiedFeedback = false
+    }
+
+    Plasma5Support.DataSource {
+        id: clipboardDataSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            disconnectSource(sourceName);
+        }
+    }
 
     TextInput {
         id: clipHelper
@@ -17,9 +36,20 @@ Kirigami.AbstractCard {
 
     function copyToClipboard(text) {
         if (!text) return;
+        // 1. Cópia local Qt/QML
         clipHelper.text = text;
         clipHelper.selectAll();
         clipHelper.copy();
+
+        // 2. Cópia para o clipboard do sistema (Wayland wl-copy ou X11 xclip)
+        var escaped = text.replace(/'/g, "'\\''");
+        var cmd = "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"" + escaped + "\" | wl-copy; " +
+                  "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"" + escaped + "\" | xclip -selection clipboard; fi'";
+        clipboardDataSource.connectSource(cmd);
+
+        // 3. Feedback visual imediato
+        cardRoot.copiedFeedback = true;
+        copiedFeedbackTimer.restart();
     }
 
     function safeI18n(text, arg1, arg2, arg3) {
@@ -402,16 +432,32 @@ Kirigami.AbstractCard {
                     }
 
                     QQC2.Button {
+                        id: copyInviteButton
                         visible: Boolean(cardRoot.accountData?.free_trial_invites?.invite_url)
-                        text: cardRoot.safeI18n("Copiar Link")
-                        icon.name: "edit-copy"
+                        text: cardRoot.copiedFeedback ? cardRoot.safeI18n("Copiado!") : cardRoot.safeI18n("Copiar Link")
+                        icon.name: cardRoot.copiedFeedback ? "emblem-ok-symbolic" : "edit-copy"
                         font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        highlighted: cardRoot.copiedFeedback
+
+                        QQC2.ToolTip.visible: hovered || cardRoot.copiedFeedback
+                        QQC2.ToolTip.text: cardRoot.copiedFeedback
+                            ? cardRoot.safeI18n("Link copiado para a Área de Transferência!")
+                            : cardRoot.safeI18n("Copiar link de convite para a Área de Transferência")
+
                         onClicked: {
                             var url = cardRoot.accountData?.free_trial_invites?.invite_url;
                             if (url) {
                                 cardRoot.copyToClipboard(url);
                             }
                         }
+                    }
+
+                    QQC2.Label {
+                        visible: cardRoot.copiedFeedback
+                        text: cardRoot.safeI18n("Copiado!")
+                        font.bold: true
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        color: Kirigami.Theme.positiveTextColor
                     }
                 }
             }

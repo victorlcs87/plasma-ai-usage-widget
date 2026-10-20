@@ -111,14 +111,41 @@ PlasmaExtras.Representation {
             PlasmaComponents3.Button {
                 id: refreshButton
                 icon.name: "view-refresh"
-                text: fullRoot.safeI18n("Atualizar")
+                text: fullRoot.safeI18n("Atualizar agora")
                 display: QQC2.AbstractButton.IconOnly
+                enabled: !Boolean(fullRoot.plasmoidItem && fullRoot.plasmoidItem.isRefreshing)
                 QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: fullRoot.safeI18n("Atualizar status agora")
+                QQC2.ToolTip.text: (fullRoot.plasmoidItem && fullRoot.plasmoidItem.isRefreshing)
+                    ? fullRoot.safeI18n("Atualizando métricas...")
+                    : fullRoot.safeI18n("Atualizar agora")
 
                 onClicked: {
                     if (fullRoot.plasmoidItem) {
-                        fullRoot.plasmoidItem.loadStatus();
+                        fullRoot.plasmoidItem.refreshCollector();
+                    }
+                }
+
+                RotationAnimator on rotation {
+                    from: 0
+                    to: 360
+                    duration: 1000
+                    loops: Animation.Infinite
+                    running: Boolean(fullRoot.plasmoidItem && fullRoot.plasmoidItem.isRefreshing)
+                }
+            }
+
+            PlasmaComponents3.Button {
+                id: configureButton
+                icon.name: "configure"
+                text: fullRoot.safeI18n("Configurações")
+                display: QQC2.AbstractButton.IconOnly
+                QQC2.ToolTip.visible: hovered
+                QQC2.ToolTip.text: fullRoot.safeI18n("Gerenciar contas e configurações")
+                visible: (typeof Plasmoid !== "undefined" && Plasmoid && typeof Plasmoid.internalAction === "function" && Boolean(Plasmoid.internalAction("configure")))
+                onClicked: {
+                    if (typeof Plasmoid !== "undefined" && Plasmoid.internalAction) {
+                        var act = Plasmoid.internalAction("configure");
+                        if (act) act.trigger();
                     }
                 }
             }
@@ -127,6 +154,15 @@ PlasmaExtras.Representation {
 
     contentItem: ColumnLayout {
         spacing: Kirigami.Units.smallSpacing
+
+        // Barra de progresso visual indeterminada durante atualização assíncrona
+        QQC2.ProgressBar {
+            id: refreshProgressBar
+            Layout.fillWidth: true
+            Layout.preferredHeight: 3
+            indeterminate: true
+            visible: Boolean(fullRoot.plasmoidItem && (fullRoot.plasmoidItem.isRefreshing || fullRoot.plasmoidItem.isLoading))
+        }
 
         // Abas para alternar provedores (Claude, Codex, Gemini) ou visão consolidada ("Todos")
         PlasmaComponents3.TabBar {
