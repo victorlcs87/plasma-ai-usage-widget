@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector import refresh
 from ai_usage_collector.config import save_secure_json
 from ai_usage_collector.discovery import (
     discover_gemini,
@@ -353,19 +354,7 @@ def fetch_gemini_quota_api(
         },
         method="POST",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
-            if status in (200, 201):
-                body = resp.read()
-                if isinstance(body, bytes):
-                    body = body.decode("utf-8")
-                data = json.loads(body)
-                if isinstance(data, dict):
-                    return data
-    except Exception:
-        return None
-    return None
+    return refresh.fetch_json("gemini", token, req, timeout)
 
 
 def parse_gemini_quota_buckets(

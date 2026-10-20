@@ -6,8 +6,9 @@ import json
 from pathlib import Path
 from typing import Any
 
-from datetime import datetime, timezone
+from datetime import datetime
 
+from ai_usage_collector import refresh
 from ai_usage_collector.capture import (
     find_matching_account,
     get_active_credentials,
@@ -77,15 +78,44 @@ def collect_and_save(
     config_path: str | Path | None = None,
     cache_path: str | Path | None = None,
     now: datetime | None = None,
+    providers: list[str] | None = None,
+    intervals: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Execute on-demand collection and write canonical status.json."""
+    """Collect and write canonical status.json (ADR-0007).
+
+    `providers` limits the collection; the others are kept from the previous status.json.
+    `intervals` (seconds per provider) defines each account's next check.
+    """
+    cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    now_dt = now or refresh.utcnow()
+    with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc)
+        save_status_cache(status_payload, cache_file)
+    return status_payload
+
+
+def _collect(
+    config_path: str | Path | None,
+    cache_file: Path,
+    now_dt: datetime,
+    providers: list[str] | None,
+    intervals: dict[str, int],
+    cyc: refresh.RefreshCycle,
+) -> dict[str, Any]:
     config = load_config(config_path)
-    now_dt = now or datetime.now(timezone.utc)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
+    previous_agents = (load_status_cache(cache_file) or {}).get("agents") or {}
 
     agents_to_collect = ["claude", "codex", "gemini"]
 
     for agent_id in agents_to_collect:
+        if providers and agent_id not in providers and isinstance(previous_agents.get(agent_id), dict):
+            status_payload["agents"][agent_id] = previous_agents[agent_id]
+            continue
+        previous_accounts = {
+            str(a.get("id")): a for a in previous_agents.get(agent_id, {}).get("accounts", []) if isinstance(a, dict)
+        }
+        interval = intervals.get(agent_id, refresh.DEFAULT_INTERVAL_SECONDS)
         accounts = get_accounts_for_agent(config, agent_id)
         account_statuses: list[dict[str, Any]] = []
 
@@ -111,6 +141,7 @@ def collect_and_save(
             manual_invite = acc.get("manual_invite_url")
             manual_invite_count = acc.get("manual_invite_count")
 
+            cyc.take_outcome()  # discard anything not fetched for this account
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None
@@ -163,9 +194,13 @@ def collect_and_save(
                 is_active=is_active,
                 usage_details=usage_details,
             )
+            refresh.apply_outcome(
+                acc_status, cyc.take_outcome(), previous_accounts.get(str(acc_id)), now_dt, interval
+            )
             account_statuses.append(acc_status)
 
         status_payload["agents"][agent_id]["accounts"] = account_statuses
+        refresh.summarize_agent(status_payload["agents"][agent_id])
         if account_statuses:
             if agent_has_valid_account:
                 status_payload["agents"][agent_id]["status"] = "ok"
@@ -181,8 +216,6 @@ def collect_and_save(
         else:
             status_payload["agents"][agent_id]["status"] = "not_configured"
 
-    # Save to disk
-    save_status_cache(status_payload, cache_path)
     return status_payload
 
 

@@ -12,7 +12,9 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 }
 
 # v2: optional per-account "usage_details" (absent when nothing was collected)
-CONTRACT_VERSION = 2
+# v3: optional per-agent/account "fetched_at", "stale", "next_check_at"; per-account
+#     "fetch_error" {kind, message, retry_at} and "no_data" (ADR-0007, refresh.py)
+CONTRACT_VERSION = 3
 
 AGENT_NAMES: dict[str, str] = {
     "claude": "Claude",
@@ -129,7 +131,7 @@ def validate_status_contract(data: Any) -> bool:
     if not isinstance(data, dict):
         return False
 
-    if data.get("version") not in (1, CONTRACT_VERSION):
+    if data.get("version") not in (1, 2, CONTRACT_VERSION):
         return False
 
     if not isinstance(data.get("last_updated"), str):

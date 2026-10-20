@@ -13,6 +13,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector import refresh
 from ai_usage_collector.discovery import discover_codex
 
 CODEX_3H_SECONDS = 3 * 3600  # 10800s
@@ -271,19 +272,7 @@ def fetch_codex_usage_api(
     if account_id:
         headers["ChatGPT-Account-Id"] = account_id
     req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
-            if status in (200, 201):
-                body = resp.read()
-                if isinstance(body, bytes):
-                    body = body.decode("utf-8")
-                data = json.loads(body)
-                if isinstance(data, dict):
-                    return data
-    except Exception:
-        return None
-    return None
+    return refresh.fetch_json("codex", f"{access_token}|{account_id or ''}", req, timeout)
 
 
 def parse_codex_credits(api_data: dict[str, Any] | None) -> dict[str, Any] | None:

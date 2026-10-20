@@ -18,7 +18,8 @@ from ai_usage_collector.collector import (
     rename_account,
     switch_account,
 )
-from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
+from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH, SUPPORTED_PROVIDERS
+from ai_usage_collector.refresh import parse_intervals
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -95,7 +96,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         type=str,
-        help="Provedor da conta ('claude', 'codex', 'gemini')",
+        help="Provedor da conta ('claude', 'codex', 'gemini'); com --refresh, lista separada por vírgula dos provedores a atualizar",
+    )
+    parser.add_argument(
+        "--refresh-interval",
+        action="append",
+        metavar="PROVIDER=SECONDS",
+        help="Intervalo de Atualização do provedor em segundos (mínimo 60, padrão 300); pode repetir",
     )
     parser.add_argument(
         "--label",
@@ -331,7 +338,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         status_data = None
 
         if should_refresh:
-            status_data = collect_and_save(config_path=config_path, cache_path=cache_path)
+            providers = [p.strip().lower() for p in (args.provider or "").split(",") if p.strip()]
+            invalid = [p for p in providers if p not in SUPPORTED_PROVIDERS]
+            if invalid:
+                sys.stderr.write(f"Erro: Provedor inválido: {', '.join(invalid)}\n")
+                return 1
+            status_data = collect_and_save(
+                config_path=config_path,
+                cache_path=cache_path,
+                providers=providers or None,
+                intervals=parse_intervals(args.refresh_interval),
+            )
 
         if should_output_status:
             if status_data is None:

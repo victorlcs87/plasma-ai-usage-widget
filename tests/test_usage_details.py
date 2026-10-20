@@ -183,7 +183,7 @@ def test_codex_status_without_details_omits_key(tmp_path):
 
 def test_contract_usage_details_optional_and_versioned():
     payload = build_empty_status_contract()
-    assert payload["version"] == 2
+    assert payload["version"] == 3
     plain = build_agent_account_status("codex", "a", "A", "auto", {"status": "valid"})
     assert "usage_details" not in plain
     rich = build_agent_account_status(

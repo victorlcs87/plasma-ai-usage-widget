@@ -14,7 +14,7 @@ def test_agent_native_windows_definition():
 
 def test_build_empty_status_contract():
     contract = build_empty_status_contract()
-    assert contract["version"] == 2
+    assert contract["version"] == 3
     assert "last_updated" in contract
     assert contract["status"] == "ok"
     assert "agents" in contract

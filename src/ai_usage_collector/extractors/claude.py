@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector import refresh
 from ai_usage_collector.discovery import discover_claude
 
 CLAUDE_5H_SECONDS = 5 * 3600  # 18000s
@@ -373,19 +374,7 @@ def fetch_claude_usage_api(
         },
         method="GET",
     )
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
-            if status in (200, 201):
-                body = resp.read()
-                if isinstance(body, bytes):
-                    body = body.decode("utf-8")
-                data = json.loads(body)
-                if isinstance(data, dict):
-                    return data
-    except Exception:
-        return None
-    return None
+    return refresh.fetch_json("claude", access_token, req, timeout)
 
 
 def extract_claude_status(
