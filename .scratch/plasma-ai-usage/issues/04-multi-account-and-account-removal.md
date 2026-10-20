@@ -4,7 +4,7 @@
 
 **Blocked by:** 03: Extratores Nativos Codex e Gemini (Janelas Nativas 3h/Diaria/Semanal, Liberacao e Convites)
 
-**Status:** in-review
+**Status:** closed
 
 - [x] Esquema do `config.json` expandido para listas de contas nomeadas por agente (ex.: `claude`, `codex`, `gemini`).
 - [x] O coletor itera por todas as contas configuradas e gera o `status.json` contendo a lista completa de contas agrupadas por agente.
