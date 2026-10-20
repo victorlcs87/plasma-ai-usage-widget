@@ -21,7 +21,11 @@ from ai_usage_collector.contract import (
     get_current_iso_timestamp,
 )
 from ai_usage_collector.discovery import discover_account
-from ai_usage_collector.extractors.claude import extract_claude_status
+from ai_usage_collector.extractors import (
+    extract_claude_status,
+    extract_codex_status,
+    extract_gemini_status,
+)
 
 
 def save_status_cache(status_data: dict[str, Any], path: str | Path | None = None) -> Path:
@@ -78,6 +82,18 @@ def collect_and_save(
                 native_window = claude_data.get("native_window")
                 weekly_window = claude_data.get("weekly_window")
                 invites = claude_data.get("free_trial_invites")
+            elif agent_id == "codex":
+                codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
+                health = codex_data.get("health", health)
+                native_window = codex_data.get("native_window")
+                weekly_window = codex_data.get("weekly_window")
+                invites = codex_data.get("free_trial_invites")
+            elif agent_id == "gemini":
+                gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
+                health = gemini_data.get("health", health)
+                native_window = gemini_data.get("native_window")
+                weekly_window = gemini_data.get("weekly_window")
+                invites = gemini_data.get("free_trial_invites")
 
             if health.get("status") == "valid":
                 agent_has_valid_account = True

@@ -4,12 +4,12 @@
 
 **Blocked by:** 02: Extrator Nativo Claude (Janela de 5h, Semanal, Liberacao e Convites)
 
-**Status:** ready-for-agent
+**Status:** in-review
 
-- [ ] Extracao de turnos e consumo do Codex na janela nativa de 3 horas e agregacao semanal a partir do SQLite local.
-- [ ] Calculo de tempo de liberacao para o Codex.
-- [ ] Extracao do historico de conversas e turnos do Gemini para agregacao diaria e semanal.
-- [ ] Calculo do proximo ciclo de renovacao de cota para o Gemini.
-- [ ] Tratamento de convites de teste gratuito para Codex e Gemini com suporte a fallback manual no `config.json`.
-- [ ] Consolidacao dos tres provedores (Claude, Codex, Gemini) simultaneamente no arquivo de contrato `status.json`.
-- [ ] Testes automatizados cobrindo os extratores de Codex e Gemini com fixtures isoladas.
+- [x] Extracao de turnos e consumo do Codex na janela nativa de 3 horas e agregacao semanal a partir do SQLite local.
+- [x] Calculo de tempo de liberacao para o Codex.
+- [x] Extracao do historico de conversas e turnos do Gemini para agregacao diaria e semanal.
+- [x] Calculo do proximo ciclo de renovacao de cota para o Gemini.
+- [x] Tratamento de convites de teste gratuito para Codex e Gemini com suporte a fallback manual no `config.json`.
+- [x] Consolidacao dos tres provedores (Claude, Codex, Gemini) simultaneamente no arquivo de contrato `status.json`.
+- [x] Testes automatizados cobrindo os extratores de Codex e Gemini com fixtures isoladas.
