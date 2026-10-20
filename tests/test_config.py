@@ -4,6 +4,7 @@ import stat
 from ai_usage_collector.config import (
     load_config,
     save_config,
+    save_secure_json,
     ensure_secure_file,
     ensure_secure_dir,
     get_default_config,
@@ -62,3 +63,19 @@ def test_save_config_persists_with_0600(tmp_path):
     with open(config_path, "r", encoding="utf-8") as f:
         loaded = json.load(f)
     assert loaded["custom_key"] == "test_value"
+
+
+def test_save_secure_json_atomic_and_permissions(tmp_path):
+    target_path = tmp_path / "sub" / "output.json"
+    data = {"hello": "world", "number": 42}
+
+    res_path = save_secure_json(data, target_path, prefix="test_")
+
+    assert res_path == target_path.resolve()
+    assert target_path.exists()
+    assert stat.S_IMODE(os.stat(target_path).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(target_path.parent).st_mode) == 0o700
+
+    with open(target_path, "r", encoding="utf-8") as f:
+        loaded = json.load(f)
+    assert loaded == data

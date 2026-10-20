@@ -9,6 +9,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from datetime import datetime, timezone
+
 from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
@@ -16,6 +18,7 @@ from ai_usage_collector.config import (
     ensure_secure_file,
     get_accounts_for_agent,
     load_config,
+    save_secure_json,
 )
 from ai_usage_collector.contract import (
     build_agent_account_status,
@@ -23,30 +26,13 @@ from ai_usage_collector.contract import (
     get_current_iso_timestamp,
 )
 from ai_usage_collector.discovery import discover_account
+from ai_usage_collector.extractors.claude import extract_claude_status
 
 
 def save_status_cache(status_data: dict[str, Any], path: str | Path | None = None) -> Path:
     """Save status.json payload atomically with secure permissions (0600)."""
     file_path = Path(path).expanduser().resolve() if path else DEFAULT_CACHE_PATH
-    ensure_secure_dir(file_path.parent)
-
-    dir_name = file_path.parent
-    temp_fd, temp_path_str = tempfile.mkstemp(dir=dir_name, prefix="status_", suffix=".tmp")
-    temp_path = Path(temp_path_str)
-
-    try:
-        with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
-            json.dump(status_data, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-        os.chmod(temp_path, 0o600)
-        os.replace(temp_path, file_path)
-    except Exception:
-        if temp_path.exists():
-            temp_path.unlink()
-        raise
-
-    ensure_secure_file(file_path)
-    return file_path
+    return save_secure_json(status_data, file_path, prefix="status_")
 
 
 def load_status_cache(path: str | Path | None = None) -> dict[str, Any] | None:
@@ -64,10 +50,12 @@ def load_status_cache(path: str | Path | None = None) -> dict[str, Any] | None:
 def collect_and_save(
     config_path: str | Path | None = None,
     cache_path: str | Path | None = None,
+    now: datetime | None = None,
 ) -> dict[str, Any]:
     """Execute on-demand collection and write canonical status.json."""
     config = load_config(config_path)
-    status_payload = build_empty_status_contract(now_iso=get_current_iso_timestamp())
+    now_dt = now or datetime.now(timezone.utc)
+    status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
 
     agents_to_collect = ["claude", "codex", "gemini"]
 
@@ -85,6 +73,16 @@ def collect_and_save(
             manual_invite = acc.get("manual_invite_url")
 
             health = discover_account(agent_id, cred_path)
+            native_window = None
+            weekly_window = None
+            invites = None
+
+            if agent_id == "claude":
+                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt)
+                health = claude_data.get("health", health)
+                native_window = claude_data.get("native_window")
+                weekly_window = claude_data.get("weekly_window")
+                invites = claude_data.get("free_trial_invites")
 
             if health.get("status") == "valid":
                 agent_has_valid_account = True
@@ -103,6 +101,9 @@ def collect_and_save(
                 source=source,
                 health=health,
                 manual_invite_url=manual_invite,
+                native_window=native_window,
+                weekly_window=weekly_window,
+                free_trial_invites=invites,
             )
             account_statuses.append(acc_status)
 

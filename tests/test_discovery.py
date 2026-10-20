@@ -58,6 +58,23 @@ def test_discover_claude_valid_credentials(tmp_path):
     assert health["metadata"]["subscription_type"] == "pro"
 
 
+def test_discover_claude_expired_session(tmp_path):
+    cred_file = tmp_path / "claude_creds_expired.json"
+    cred_data = {
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-test-token",
+            "subscriptionType": "pro",
+            "rateLimitTier": "tier_1",
+            "expiresAt": "2020-01-01T00:00:00Z",
+        }
+    }
+    cred_file.write_text(json.dumps(cred_data))
+    health = discover_claude(cred_file)
+    assert health["status"] == "session_expired"
+    assert health["detected"] is True
+    assert "expirada" in health["message"].lower()
+
+
 def test_discover_codex_valid_tokens(tmp_path):
     cred_file = tmp_path / "codex_auth.json"
     id_tok = make_jwt({"email": "codex-user@company.com"})

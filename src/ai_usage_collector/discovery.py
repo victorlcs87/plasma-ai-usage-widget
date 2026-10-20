@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import base64
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 from typing import Any
@@ -72,6 +73,35 @@ def discover_claude(credential_path: str | Path | None = None) -> dict[str, Any]
         sub_type = oauth.get("subscriptionType")
         tier = oauth.get("rateLimitTier")
         expires_at = oauth.get("expiresAt")
+
+        # Check for expired session
+        is_expired = False
+        now_ts = datetime.now(timezone.utc).timestamp()
+        if isinstance(expires_at, (int, float)):
+            exp_sec = expires_at / 1000.0 if expires_at > 1e11 else float(expires_at)
+            if exp_sec < now_ts:
+                is_expired = True
+        elif isinstance(expires_at, str):
+            try:
+                exp_dt = datetime.fromisoformat(expires_at.replace("Z", "+00:00"))
+                if exp_dt.timestamp() < now_ts:
+                    is_expired = True
+            except Exception:
+                pass
+
+        if is_expired:
+            return {
+                "status": "session_expired",
+                "message": "Sessão Claude expirada. Reautenticação necessária.",
+                "detected": True,
+                "metadata": {
+                    "subscription_type": sub_type,
+                    "rate_limit_tier": tier,
+                    "expires_at": expires_at,
+                    "credential_path": str(path),
+                },
+            }
+
         return {
             "status": "valid",
             "message": "Credencial Claude ativa detectada",

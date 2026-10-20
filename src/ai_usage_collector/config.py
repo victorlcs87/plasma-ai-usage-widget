@@ -81,19 +81,18 @@ def get_default_config() -> dict[str, Any]:
     }
 
 
-def save_config(config_data: dict[str, Any], path: str | Path | None = None) -> Path:
-    """Atomically save configuration to file ensuring 0600 permissions."""
-    file_path = Path(path).expanduser().resolve() if path else DEFAULT_CONFIG_PATH
+def save_secure_json(data: dict[str, Any], path: str | Path, prefix: str = "tmp_") -> Path:
+    """Atomically save dictionary as JSON to file ensuring 0600 permissions."""
+    file_path = Path(path).expanduser().resolve()
     ensure_secure_dir(file_path.parent)
 
-    # Write to temp file in the same directory then replace atomically
     dir_name = file_path.parent
-    temp_fd, temp_path_str = tempfile.mkstemp(dir=dir_name, prefix="config_", suffix=".tmp")
+    temp_fd, temp_path_str = tempfile.mkstemp(dir=dir_name, prefix=prefix, suffix=".tmp")
     temp_path = Path(temp_path_str)
 
     try:
         with os.fdopen(temp_fd, "w", encoding="utf-8") as f:
-            json.dump(config_data, f, indent=2, ensure_ascii=False)
+            json.dump(data, f, indent=2, ensure_ascii=False)
             f.write("\n")
         # Ensure 0600 permissions
         os.chmod(temp_path, 0o600)
@@ -105,6 +104,12 @@ def save_config(config_data: dict[str, Any], path: str | Path | None = None) -> 
 
     ensure_secure_file(file_path)
     return file_path
+
+
+def save_config(config_data: dict[str, Any], path: str | Path | None = None) -> Path:
+    """Atomically save configuration to file ensuring 0600 permissions."""
+    file_path = Path(path).expanduser().resolve() if path else DEFAULT_CONFIG_PATH
+    return save_secure_json(config_data, file_path, prefix="config_")
 
 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
