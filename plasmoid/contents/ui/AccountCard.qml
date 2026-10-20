@@ -17,6 +17,9 @@ Kirigami.AbstractCard {
     property string switchError: ""
 
     readonly property bool isActive: Boolean(cardRoot.accountData && (cardRoot.accountData.isActive === true || cardRoot.accountData.is_active === true))
+    // ADR-0007: dados desatualizados (servidos do cache) ou ausentes (sem cache nem histórico local)
+    readonly property bool isStale: cardRoot.accountData?.stale === true
+    readonly property bool hasNoData: cardRoot.accountData?.no_data === true
 
     signal accountSwitched()
 
@@ -425,12 +428,32 @@ Kirigami.AbstractCard {
             }
         }
 
+        // Situação da consulta: erro (login, limite de requisições, rede), hora dos dados e próxima consulta
+        QQC2.Label {
+            id: refreshStatusLabel
+            Layout.fillWidth: true
+            visible: text.length > 0
+            wrapMode: Text.WordWrap
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
+            color: cardRoot.accountData?.fetch_error ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.disabledTextColor
+            text: {
+                var acc = cardRoot.accountData || {};
+                var parts = [];
+                if (acc.fetch_error && acc.fetch_error.message) parts.push(acc.fetch_error.message);
+                if (cardRoot.hasNoData) parts.push(cardRoot.safeI18n("Sem dados do provedor"));
+                else if (cardRoot.isStale && acc.fetched_at) parts.push(cardRoot.safeI18n("Dados de %1", cardRoot.formatDateTime(acc.fetched_at)));
+                if (acc.next_check_at) parts.push(cardRoot.safeI18n("Próxima consulta às %1", cardRoot.formatTime(acc.next_check_at)));
+                return parts.join(" • ");
+            }
+        }
+
         // ==========================================
         // Medidor 1: Janela Ativa/Horária
         // ==========================================
         ColumnLayout {
             Layout.fillWidth: true
             spacing: Math.round(Kirigami.Units.smallSpacing / 2)
+            opacity: (cardRoot.isStale || cardRoot.hasNoData) ? 0.5 : 1.0
 
             // Cabeçalho: Título da Janela e Porcentagem em Destaque
             RowLayout {
@@ -456,7 +479,7 @@ Kirigami.AbstractCard {
                 QQC2.Label {
                     id: activeWindowPercentageLabel
                     property double pct: cardRoot.accountData?.native_window?.usage_percentage || 0.0
-                    text: cardRoot.formatPercentage(pct)
+                    text: cardRoot.hasNoData ? "—" : cardRoot.formatPercentage(pct)
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
                     color: cardRoot.getUsageColor(pct)
@@ -520,6 +543,7 @@ Kirigami.AbstractCard {
                     elide: Text.ElideRight
                     text: {
                         var nw = cardRoot.accountData?.native_window;
+                        if (cardRoot.hasNoData) return cardRoot.safeI18n("Sem dados");
                         var parts = [];
                         if (nw && nw.tokens_used !== null && nw.tokens_used !== undefined && nw.tokens_used > 0) {
                             parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(nw.tokens_used)));
@@ -546,6 +570,7 @@ Kirigami.AbstractCard {
         ColumnLayout {
             Layout.fillWidth: true
             spacing: Math.round(Kirigami.Units.smallSpacing / 2)
+            opacity: (cardRoot.isStale || cardRoot.hasNoData) ? 0.5 : 1.0
 
             // Cabeçalho: Título da Janela Semanal e Porcentagem em Destaque
             RowLayout {
@@ -566,7 +591,7 @@ Kirigami.AbstractCard {
                     property double weeklyPct: (cardRoot.accountData?.weekly_window?.usage_percentage !== undefined && cardRoot.accountData?.weekly_window?.usage_percentage !== null)
                         ? cardRoot.accountData.weekly_window.usage_percentage
                         : 0.0
-                    text: cardRoot.formatPercentage(weeklyPct)
+                    text: cardRoot.hasNoData ? "—" : cardRoot.formatPercentage(weeklyPct)
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
                     color: cardRoot.getUsageColor(weeklyPct)
@@ -630,6 +655,7 @@ Kirigami.AbstractCard {
                     elide: Text.ElideRight
                     text: {
                         var ww = cardRoot.accountData?.weekly_window;
+                        if (cardRoot.hasNoData) return cardRoot.safeI18n("Sem dados");
                         if (!ww) return cardRoot.safeI18n("Ciclo semanal regular");
                         var parts = [];
                         if (ww.tokens_used !== null && ww.tokens_used !== undefined && ww.tokens_used > 0) {

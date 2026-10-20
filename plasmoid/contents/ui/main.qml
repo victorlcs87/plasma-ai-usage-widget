@@ -106,7 +106,7 @@ PlasmoidItem {
             if (accs.length > 0) {
                 var firstAcc = accs[0];
                 var pct = firstAcc.native_window?.usage_percentage;
-                var pctStr = (pct !== undefined && pct !== null) ? pct.toFixed(0) + "%" : "-";
+                var pctStr = (pct !== undefined && pct !== null && !firstAcc.no_data) ? pct.toFixed(0) + "%" : "-";
                 lines.push(ag.name + ": " + pctStr);
             }
         }
@@ -151,12 +151,52 @@ PlasmoidItem {
         }
     }
 
-    function refreshCollector() {
+    // Intervalo de Atualização por provedor (ADR-0007); o coletor respeita pausas (429) por conta própria
+    readonly property var providers: ["claude", "codex", "gemini"]
+    property var lastProviderRefresh: ({})
+
+    function providerInterval(provider) {
+        var key = "refreshInterval" + provider.charAt(0).toUpperCase() + provider.slice(1);
+        return Math.max(60, Plasmoid.configuration[key] || 300);
+    }
+
+    function runCollectorRefresh(dueProviders) {
         if (root.isRefreshing) return;
+        var now = Date.now();
+        var targets = dueProviders || root.providers;
+        for (var i = 0; i < targets.length; i++) root.lastProviderRefresh[targets[i]] = now;
+
+        var args = shellQuote("--refresh");
+        if (dueProviders) args += " " + shellQuote("--provider") + " " + shellQuote(dueProviders.join(","));
+        for (var j = 0; j < root.providers.length; j++) {
+            var p = root.providers[j];
+            args += " " + shellQuote("--refresh-interval") + " " + shellQuote(p + "=" + providerInterval(p));
+        }
         root.isRefreshing = true;
         root.lastError = "";
-        var cmd = buildCollectorCommand(shellQuote("--refresh"));
-        collectorDataSource.connectSource(cmd);
+        collectorDataSource.connectSource(buildCollectorCommand(args));
+    }
+
+    // "Atualizar agora": ignora o intervalo de todos os provedores
+    function refreshCollector() {
+        runCollectorRefresh(null);
+    }
+
+    Timer {
+        id: providerRefreshScheduler
+        interval: 15000
+        repeat: true
+        running: true
+        onTriggered: {
+            var now = Date.now();
+            var due = [];
+            for (var i = 0; i < root.providers.length; i++) {
+                var p = root.providers[i];
+                var last = root.lastProviderRefresh[p];
+                if (last === undefined || now - last >= root.providerInterval(p) * 1000) due.push(p);
+            }
+            if (due.length > 0) root.runCollectorRefresh(due);
+        }
     }
 
     function removeAccount(provider, accountId) {
@@ -207,15 +247,6 @@ PlasmoidItem {
         var statusFilePath = cachePath + "/plasma-ai-usage/status.json";
         var cmd = "cat " + shellQuote(statusFilePath) + " 2>/dev/null";
         statusDataSource.connectSource(cmd);
-    }
-
-    // Timer para recarregar periodicamente com intervalo configurável via KConfigXT (somente quando ativo/visível)
-    Timer {
-        id: autoReloadTimer
-        interval: (Plasmoid.configuration.refreshIntervalSeconds || 30) * 1000
-        repeat: true
-        running: root.expanded || !root.inPanel
-        onTriggered: root.loadStatus()
     }
 
     onExpandedChanged: {

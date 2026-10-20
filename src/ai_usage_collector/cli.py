@@ -26,7 +26,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build command line argument parser."""
     parser = argparse.ArgumentParser(
         prog="ai-usage-collector",
-        description="Coletor sob demanda de métricas de uso e cotas de agentes de IA para KDE Plasma 6",
+        description="Coletor de métricas de uso e cotas de agentes de IA para KDE Plasma 6",
     )
     parser.add_argument(
         "-v", "--version",
@@ -36,7 +36,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="Executa a coleta sob demanda e atualiza o arquivo de status",
+        help="Executa a coleta (respeitando pausas do provedor) e atualiza o arquivo de status",
     )
     parser.add_argument(
         "--status",

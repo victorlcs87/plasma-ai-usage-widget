@@ -113,7 +113,9 @@ def _collect(
             status_payload["agents"][agent_id] = previous_agents[agent_id]
             continue
         previous_accounts = {
-            str(a.get("id")): a for a in previous_agents.get(agent_id, {}).get("accounts", []) if isinstance(a, dict)
+            str(a.get("id")): a
+            for a in (previous_agents.get(agent_id) or {}).get("accounts") or []
+            if isinstance(a, dict)
         }
         interval = intervals.get(agent_id, refresh.DEFAULT_INTERVAL_SECONDS)
         accounts = get_accounts_for_agent(config, agent_id)

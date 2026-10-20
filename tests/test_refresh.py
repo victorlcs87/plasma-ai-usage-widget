@@ -227,3 +227,17 @@ def test_refresh_state_file_is_private_and_holds_no_secret(env, tmp_path):
     state_file = env["cache"].with_name(refresh.STATE_FILENAME)
     assert stat.S_IMODE(os.stat(state_file).st_mode) == 0o600
     assert "SECRET" not in state_file.read_text()
+
+
+def test_plasmoid_config_has_per_provider_interval_with_minimum():
+    import xml.etree.ElementTree as ET
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parent.parent / "plasmoid" / "contents"
+    entries = {e.attrib["name"]: e for e in ET.parse(root / "config" / "main.xml").getroot().iter() if e.tag.endswith("entry")}
+    for name in ("Claude", "Codex", "Gemini"):
+        entry = entries[f"refreshInterval{name}"]
+        assert entry.find("{*}default").text == "300"
+        assert entry.find("{*}min").text == "60"
+    main_qml = (root / "ui" / "main.qml").read_text(encoding="utf-8")
+    assert "--refresh-interval" in main_qml and "--provider" in main_qml
