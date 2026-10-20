@@ -6,6 +6,7 @@ import base64
 from datetime import datetime, timezone
 import json
 from pathlib import Path
+import subprocess
 from typing import Any
 
 DEFAULT_CLAUDE_CREDENTIALS = Path("~/.claude/.credentials.json")
@@ -33,6 +34,94 @@ def extract_jwt_identity(token: str | None) -> str | None:
         pass
 
     return None
+
+
+def parse_timestamp(ts: Any) -> float | None:
+    """Parse various timestamp formats into UTC epoch seconds."""
+    if ts is None:
+        return None
+
+    if isinstance(ts, (int, float)):
+        if ts > 1e11:
+            return float(ts) / 1000.0
+        if ts > 0:
+            return float(ts)
+        return None
+
+    if isinstance(ts, str):
+        ts = ts.strip()
+        if not ts or ts.startswith("0001"):
+            return None
+        try:
+            val = float(ts)
+            return parse_timestamp(val)
+        except ValueError:
+            pass
+
+        try:
+            clean_ts = ts.replace("Z", "+00:00")
+            dt = datetime.fromisoformat(clean_ts)
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt.timestamp()
+        except Exception:
+            pass
+
+        for fmt in ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M:%S.%f"):
+            try:
+                dt = datetime.strptime(ts, fmt).replace(tzinfo=timezone.utc)
+                return dt.timestamp()
+            except Exception:
+                pass
+
+    return None
+
+
+def get_gemini_keyring_credentials(timeout: float = 3.0) -> dict[str, Any] | None:
+    """Retrieve active Gemini credentials from system keyring via secret-tool."""
+    try:
+        proc = subprocess.run(
+            ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+
+        raw = proc.stdout.strip()
+        if not raw:
+            return None
+
+        data: dict[str, Any] = {}
+        try:
+            parsed = json.loads(raw)
+            if isinstance(parsed, dict):
+                data = parsed
+        except Exception:
+            pass
+
+        if not data:
+            return {"access_token": raw, "token_type": "Bearer", "raw": raw}
+
+        tok_dict = data.get("token") if isinstance(data.get("token"), dict) else {}
+        access_token = tok_dict.get("access_token") or data.get("access_token")
+        refresh_token = tok_dict.get("refresh_token") or data.get("refresh_token")
+        id_token = data.get("id_token") or tok_dict.get("id_token")
+        token_type = tok_dict.get("token_type") or data.get("token_type") or "Bearer"
+        expiry = tok_dict.get("expiry") or data.get("expiry_date") or data.get("expiry")
+
+        return {
+            "access_token": access_token,
+            "refresh_token": refresh_token,
+            "id_token": id_token,
+            "token_type": token_type,
+            "expiry": expiry,
+            "raw": data,
+        }
+    except Exception:
+        return None
 
 
 def discover_claude(credential_path: str | Path | None = None) -> dict[str, Any]:
@@ -192,57 +281,158 @@ def discover_codex(credential_path: str | Path | None = None) -> dict[str, Any]:
 def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]:
     """Inspect and validate Gemini (Google) credentials."""
     path = Path(credential_path or DEFAULT_GEMINI_CREDENTIALS).expanduser().resolve()
+    now_ts = datetime.now(timezone.utc).timestamp()
 
-    if not path.exists():
-        return {
-            "status": "missing_credentials",
-            "message": f"Arquivo de credenciais não encontrado ({path})",
-            "detected": False,
-            "metadata": {"credential_path": str(path)},
-        }
+    is_custom_path = bool(
+        credential_path
+        and Path(credential_path).expanduser().resolve() != DEFAULT_GEMINI_CREDENTIALS.expanduser().resolve()
+    )
+    is_keyring_mocked = hasattr(get_gemini_keyring_credentials, "mock_calls") or hasattr(subprocess.run, "mock_calls")
 
-    try:
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-    except Exception as e:
+    file_data: dict[str, Any] | None = None
+    file_read_error: str | None = None
+
+    if path.exists():
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                loaded = json.load(f)
+            if isinstance(loaded, dict):
+                file_data = loaded
+            else:
+                file_read_error = "Formato de credencial inválido"
+        except Exception as e:
+            file_read_error = f"Falha ao ler credenciais: {e}"
+
+    if file_data is not None:
+        access_token = file_data.get("access_token")
+        refresh_token = file_data.get("refresh_token")
+        id_token = file_data.get("id_token")
+        email = extract_jwt_identity(id_token) if id_token else None
+        expiry_date = file_data.get("expiry_date")
+
+        is_expired = False
+        if expiry_date:
+            exp_sec = parse_timestamp(expiry_date)
+            if exp_sec is not None and exp_sec < now_ts:
+                is_expired = True
+
+        # If file token is present and not expired, it is valid
+        if access_token and not is_expired:
+            return {
+                "status": "valid",
+                "message": "Credencial Gemini ativa detectada",
+                "detected": True,
+                "metadata": {
+                    "email": email,
+                    "expiry_date": expiry_date,
+                    "scope": file_data.get("scope"),
+                    "token_type": file_data.get("token_type"),
+                    "credential_path": str(path),
+                },
+            }
+
+        # Token in file is expired or missing access_token.
+        # Check keyring before reporting expired or unauthenticated.
+        keyring_creds = get_gemini_keyring_credentials() if (not is_custom_path or is_keyring_mocked) else None
+        if keyring_creds and (keyring_creds.get("access_token") or keyring_creds.get("refresh_token")):
+            k_id_token = keyring_creds.get("id_token") or id_token
+            k_email = extract_jwt_identity(k_id_token) if k_id_token else email
+            return {
+                "status": "valid",
+                "message": "Credencial Gemini ativa detectada via chaveiro",
+                "detected": True,
+                "metadata": {
+                    "email": k_email,
+                    "expiry_date": keyring_creds.get("expiry") or expiry_date,
+                    "scope": file_data.get("scope"),
+                    "token_type": keyring_creds.get("token_type") or file_data.get("token_type"),
+                    "credential_path": str(path),
+                    "source": "keyring",
+                },
+            }
+
+        # If no active credential in keyring, but file has refresh_token: session is renewable
+        if refresh_token:
+            return {
+                "status": "valid",
+                "message": "Credencial Gemini ativa detectada (sessão renovável)",
+                "detected": True,
+                "metadata": {
+                    "email": email,
+                    "expiry_date": expiry_date,
+                    "scope": file_data.get("scope"),
+                    "token_type": file_data.get("token_type"),
+                    "credential_path": str(path),
+                    "renewable": True,
+                },
+            }
+
+        # No refresh token and no keyring token: expired session
+        if is_expired:
+            return {
+                "status": "session_expired",
+                "message": "Sessão Gemini expirada. Reautenticação necessária.",
+                "detected": True,
+                "metadata": {
+                    "email": email,
+                    "expiry_date": expiry_date,
+                    "scope": file_data.get("scope"),
+                    "token_type": file_data.get("token_type"),
+                    "credential_path": str(path),
+                },
+            }
+
         return {
-            "status": "auth_error",
-            "message": f"Falha ao ler credenciais: {e}",
+            "status": "unauthenticated",
+            "message": "Credenciais do Gemini ausentes ou expiradas",
             "detected": True,
             "metadata": {"credential_path": str(path)},
         }
 
-    if not isinstance(data, dict):
+    if file_read_error:
+        keyring_creds = get_gemini_keyring_credentials() if (not is_custom_path or is_keyring_mocked) else None
+        if keyring_creds and (keyring_creds.get("access_token") or keyring_creds.get("refresh_token")):
+            k_id_token = keyring_creds.get("id_token")
+            k_email = extract_jwt_identity(k_id_token) if k_id_token else None
+            return {
+                "status": "valid",
+                "message": "Credencial Gemini ativa detectada via chaveiro",
+                "detected": True,
+                "metadata": {
+                    "email": k_email,
+                    "expiry_date": keyring_creds.get("expiry"),
+                    "credential_path": str(path),
+                    "source": "keyring",
+                },
+            }
         return {
             "status": "auth_error",
-            "message": "Formato de credencial inválido",
+            "message": file_read_error,
             "detected": True,
             "metadata": {"credential_path": str(path)},
         }
 
-    access_token = data.get("access_token")
-    refresh_token = data.get("refresh_token")
-    id_token = data.get("id_token")
-    email = extract_jwt_identity(id_token) if id_token else None
-
-    if access_token or refresh_token:
+    # File does not exist: check keyring as source of Gemini credentials
+    keyring_creds = get_gemini_keyring_credentials() if (not is_custom_path or is_keyring_mocked) else None
+    if keyring_creds and (keyring_creds.get("access_token") or keyring_creds.get("refresh_token")):
+        k_id_token = keyring_creds.get("id_token")
+        k_email = extract_jwt_identity(k_id_token) if k_id_token else None
         return {
             "status": "valid",
-            "message": "Credencial Gemini ativa detectada",
+            "message": "Credencial Gemini ativa detectada via chaveiro",
             "detected": True,
             "metadata": {
-                "email": email,
-                "expiry_date": data.get("expiry_date"),
-                "scope": data.get("scope"),
-                "token_type": data.get("token_type"),
+                "email": k_email,
+                "expiry_date": keyring_creds.get("expiry"),
                 "credential_path": str(path),
+                "source": "keyring",
             },
         }
 
     return {
-        "status": "unauthenticated",
-        "message": "Credenciais do Gemini ausentes ou expiradas",
-        "detected": True,
+        "status": "missing_credentials",
+        "message": f"Arquivo de credenciais não encontrado ({path})",
+        "detected": False,
         "metadata": {"credential_path": str(path)},
     }
 

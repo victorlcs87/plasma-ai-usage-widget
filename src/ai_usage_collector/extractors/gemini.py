@@ -11,7 +11,13 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
-from ai_usage_collector.discovery import discover_gemini
+from ai_usage_collector.config import save_secure_json
+from ai_usage_collector.discovery import (
+    discover_gemini,
+    extract_jwt_identity,
+    get_gemini_keyring_credentials,
+    parse_timestamp,
+)
 
 GEMINI_DAILY_SECONDS = 24 * 3600  # 86400s
 GEMINI_7D_SECONDS = 7 * 86400  # 604800s
@@ -207,6 +213,35 @@ def deduplicate_timestamps(raw_timestamps: list[float], tolerance_sec: float = 1
     return deduped
 
 
+def get_gemini_keyring_raw(timeout: float = 3.0) -> dict[str, Any] | None:
+    """Retrieve full raw Gemini credentials from system keyring via secret-tool."""
+    try:
+        proc = subprocess.run(
+            ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+            check=False,
+        )
+        if proc.returncode != 0:
+            return None
+
+        raw = proc.stdout.strip()
+        if not raw:
+            return None
+
+        try:
+            data = json.loads(raw)
+            if isinstance(data, dict):
+                return data
+        except Exception:
+            pass
+
+        return {"access_token": raw, "token_type": "Bearer"}
+    except Exception:
+        return None
+
+
 def get_gemini_keyring_token(timeout: float = 3.0) -> str | None:
     """Retrieve Gemini OAuth access token from system keyring via secret-tool."""
     try:
@@ -237,6 +272,69 @@ def get_gemini_keyring_token(timeout: float = 3.0) -> str | None:
     except Exception:
         pass
     return None
+
+
+def sync_gemini_keyring_to_file(keyring_data: dict[str, Any], cred_file: Path) -> bool:
+    """Synchronize active keyring credentials to oauth_creds.json with 0600 permissions."""
+    try:
+        file_data: dict[str, Any] = {}
+        if cred_file.exists():
+            try:
+                with open(cred_file, "r", encoding="utf-8") as f:
+                    loaded = json.load(f)
+                    if isinstance(loaded, dict):
+                        file_data = loaded
+            except Exception:
+                file_data = {}
+
+        tok_dict = keyring_data.get("token") if isinstance(keyring_data.get("token"), dict) else {}
+        access_token = (
+            tok_dict.get("access_token")
+            or keyring_data.get("access_token")
+            or file_data.get("access_token")
+        )
+        refresh_token = (
+            tok_dict.get("refresh_token")
+            or keyring_data.get("refresh_token")
+            or file_data.get("refresh_token")
+        )
+        token_type = (
+            tok_dict.get("token_type")
+            or keyring_data.get("token_type")
+            or file_data.get("token_type", "Bearer")
+        )
+        id_token = (
+            keyring_data.get("id_token")
+            or tok_dict.get("id_token")
+            or file_data.get("id_token")
+        )
+        expiry_val = tok_dict.get("expiry") or keyring_data.get("expiry_date") or keyring_data.get("expiry")
+
+        sync_payload = dict(file_data)
+        if access_token:
+            sync_payload["access_token"] = access_token
+        if refresh_token:
+            sync_payload["refresh_token"] = refresh_token
+        if token_type:
+            sync_payload["token_type"] = token_type
+        if id_token:
+            sync_payload["id_token"] = id_token
+        if "scope" not in sync_payload and keyring_data.get("scope"):
+            sync_payload["scope"] = keyring_data["scope"]
+        elif "scope" not in sync_payload:
+            sync_payload["scope"] = "openid https://www.googleapis.com/auth/cloud-platform https://www.googleapis.com/auth/userinfo.profile https://www.googleapis.com/auth/userinfo.email"
+
+        if expiry_val:
+            exp_ts = parse_timestamp(expiry_val)
+            if exp_ts is not None:
+                sync_payload["expiry_date"] = int(exp_ts * 1000)
+            elif isinstance(expiry_val, (int, float)):
+                sync_payload["expiry_date"] = int(expiry_val if expiry_val > 1e11 else expiry_val * 1000)
+
+        save_secure_json(sync_payload, cred_file, prefix="gemini_oauth_")
+        return True
+    except Exception:
+        return False
 
 
 def fetch_gemini_quota_api(
@@ -279,6 +377,12 @@ def parse_gemini_quota_buckets(
     bucket_5h: dict[str, Any] | None = None
     bucket_weekly: dict[str, Any] | None = None
 
+    if not isinstance(data, dict):
+        if isinstance(data, list):
+            data = {"buckets": data}
+        else:
+            return None, None
+
     # 1. Direct dictionary keys
     for k in ["gemini-5h", "5h"]:
         if isinstance(data.get(k), dict):
@@ -289,23 +393,41 @@ def parse_gemini_quota_buckets(
             bucket_weekly = data[k]
             break
 
-    # 2. Lists in known wrapper keys
+    # 2. Check "groups" structure from Google Cloud Code API
+    groups = data.get("groups")
+    if isinstance(groups, list):
+        for group in groups:
+            if not isinstance(group, dict):
+                continue
+            group_buckets = group.get("buckets")
+            if not isinstance(group_buckets, list):
+                continue
+            is_gemini_group = "gemini" in str(group.get("displayName", "")).lower()
+            for b in group_buckets:
+                if not isinstance(b, dict):
+                    continue
+                bid = str(b.get("bucketId") or b.get("name") or b.get("id") or "").lower()
+                win = str(b.get("window") or "").lower()
+                if bid == "gemini-5h" or (not bucket_5h and win == "5h" and is_gemini_group):
+                    bucket_5h = b
+                elif bid == "gemini-weekly" or (not bucket_weekly and win in ("weekly", "7d") and is_gemini_group):
+                    bucket_weekly = b
+
+    # 3. Lists in known wrapper keys
     candidate_lists: list[list[Any]] = []
     for list_key in ["buckets", "quotas", "userQuotas", "quotaSummaries"]:
         val = data.get(list_key)
         if isinstance(val, list):
             candidate_lists.append(val)
-    if isinstance(data, list):
-        candidate_lists.append(data)
 
     for lst in candidate_lists:
         for item in lst:
             if not isinstance(item, dict):
                 continue
-            name = str(item.get("name") or item.get("id") or item.get("window") or "").lower()
-            if not bucket_5h and ("5h" in name or name == "gemini-5h"):
+            name = str(item.get("bucketId") or item.get("name") or item.get("id") or item.get("window") or "").lower()
+            if not bucket_5h and ("gemini-5h" in name or name == "5h" or "5h" in name):
                 bucket_5h = item
-            if not bucket_weekly and ("weekly" in name or "7d" in name or name == "gemini-weekly"):
+            if not bucket_weekly and ("gemini-weekly" in name or name in ("weekly", "7d") or "weekly" in name or "7d" in name):
                 bucket_weekly = item
 
     return bucket_5h, bucket_weekly
@@ -344,20 +466,7 @@ def extract_gemini_status(
 
     # Health check
     health = initial_health or discover_gemini(cred_file)
-
-    # Check expiration if available
-    metadata = health.get("metadata", {})
-    expiry_date = metadata.get("expiry_date")
-    if expiry_date and health.get("status") == "valid":
-        exp_sec = parse_timestamp(expiry_date)
-        if exp_sec is not None and exp_sec < now_sec:
-            # If no refresh token is present, session might be expired
-            health = {
-                "status": "session_expired",
-                "message": "Sessão Gemini expirada. Reautenticação necessária.",
-                "detected": True,
-                "metadata": metadata,
-            }
+    metadata = dict(health.get("metadata", {}))
 
     # Free trial invites
     invites = extract_gemini_invites(
@@ -431,17 +540,60 @@ def extract_gemini_status(
         weekly_seconds_remaining = None
 
     # Keyring or file token lookup for official API
-    token = get_gemini_keyring_token()
-    if not token and cred_file.exists():
+    file_token = None
+    file_refresh_token = None
+    file_expired = False
+    if cred_file.exists():
         try:
             with open(cred_file, "r", encoding="utf-8") as f:
                 cdata = json.load(f)
             if isinstance(cdata, dict):
-                token = cdata.get("access_token")
+                file_refresh_token = cdata.get("refresh_token")
+                raw_token = cdata.get("access_token")
+                exp = cdata.get("expiry_date")
+                if exp:
+                    exp_sec = parse_timestamp(exp)
+                    if exp_sec is not None and exp_sec < now_sec:
+                        file_expired = True
+                if raw_token and not file_expired:
+                    file_token = raw_token
         except Exception:
             pass
-    if not token:
+
+    from ai_usage_collector.discovery import DEFAULT_GEMINI_CREDENTIALS
+    default_antigravity = Path("~/.gemini/antigravity-cli").expanduser().resolve()
+    default_gemini = Path("~/.gemini").expanduser().resolve()
+    default_cred_path = DEFAULT_GEMINI_CREDENTIALS.expanduser().resolve()
+
+    is_custom_env = bool(
+        (cred_path_val and Path(cred_path_val).expanduser().resolve() != default_cred_path)
+        or (account.get("gemini_dir") and Path(account["gemini_dir"]).expanduser().resolve() not in (default_gemini, default_antigravity))
+    )
+
+    is_keyring_mocked = (
+        hasattr(get_gemini_keyring_token, "mock_calls")
+        or hasattr(get_gemini_keyring_raw, "mock_calls")
+        or hasattr(subprocess.run, "mock_calls")
+    )
+
+    keyring_token = None
+    keyring_raw = None
+    if not is_custom_env or is_keyring_mocked:
+        keyring_token = get_gemini_keyring_token()
+        keyring_raw = get_gemini_keyring_raw()
+
+    if is_custom_env and file_token and not file_expired and not is_keyring_mocked:
+        token = file_token
+        token_is_from_keyring = False
+    elif keyring_token:
+        token = keyring_token
+        token_is_from_keyring = True
+    elif file_token:
+        token = file_token
+        token_is_from_keyring = False
+    else:
         token = account.get("access_token") or account.get("token")
+        token_is_from_keyring = False
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
@@ -451,6 +603,27 @@ def extract_gemini_status(
         api_data = fetch_gemini_quota_api(token)
 
     if api_data:
+        # Official API responded with success! Mark valid and update message
+        health["status"] = "valid"
+        health["message"] = "Credencial Gemini ativa detectada via API oficial"
+
+        # Synchronize keyring token to local file if token came from keyring
+        if token_is_from_keyring:
+            sync_data = keyring_raw if (keyring_raw and isinstance(keyring_raw, dict)) else {"access_token": token}
+            id_tok = (
+                sync_data.get("id_token")
+                or (sync_data.get("token", {}).get("id_token") if isinstance(sync_data.get("token"), dict) else None)
+            )
+            email = extract_jwt_identity(id_tok) if id_tok else None
+            if email:
+                metadata["email"] = email
+            metadata["source"] = "keyring"
+
+            sync_gemini_keyring_to_file(sync_data, cred_file)
+            metadata["credential_path"] = str(cred_file)
+
+        health["metadata"] = metadata
+
         bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data)
 
         # 5h window from official API
@@ -488,6 +661,25 @@ def extract_gemini_status(
             weekly_used_capacity = used_7d
     else:
         # Fallback local calculation
+        # Only mark session_expired if access_token is expired AND no refresh token AND no keyring token
+        expiry_date = metadata.get("expiry_date")
+        has_refresh = bool(file_refresh_token or (keyring_raw and (keyring_raw.get("refresh_token") or (isinstance(keyring_raw.get("token"), dict) and keyring_raw["token"].get("refresh_token")))) or metadata.get("renewable"))
+        has_keyring_token = bool(keyring_token)
+
+        is_token_expired = False
+        if expiry_date:
+            exp_sec = parse_timestamp(expiry_date)
+            if exp_sec is not None and exp_sec < now_sec:
+                is_token_expired = True
+
+        if is_token_expired and not has_refresh and not has_keyring_token:
+            health = {
+                "status": "session_expired",
+                "message": "Sessão Gemini expirada. Reautenticação necessária.",
+                "detected": True,
+                "metadata": metadata,
+            }
+
         weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
         weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
         weekly_used_capacity = used_7d

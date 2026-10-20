@@ -519,3 +519,177 @@ def test_extract_gemini_status_fallback_when_api_fails(tmp_path):
     assert ww["used_capacity"] == 2
     assert ww["available_capacity"] == (100 * 7) - 2
     assert ww["usage_percentage"] == round((2 / (100 * 7)) * 100, 1)
+
+
+def test_extract_gemini_status_expired_file_overridden_by_keyring_and_api(tmp_path):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir()
+    cred_file = gemini_dir / "oauth_creds.json"
+
+    # Outdated credentials with past expiry_date
+    expired_creds = {
+        "access_token": "ya29.expired_old",
+        "expiry_date": 1000000000000,  # Sep 2001
+        "token_type": "Bearer",
+    }
+    cred_file.write_text(json.dumps(expired_creds))
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {
+        "id": "default",
+        "provider": "gemini",
+        "gemini_dir": str(gemini_dir),
+        "credential_path": str(cred_file),
+    }
+
+    id_tok = "h." + "eyJlbWFpbCI6ICJhY3RpdmVAZ21haWwuY29tIn0" + ".s"
+    fake_keyring_raw = {
+        "token": {
+            "access_token": "ya29.keyring_active_token",
+            "token_type": "Bearer",
+            "refresh_token": "1//refresh_active",
+            "expiry": "2026-10-20T18:00:00Z",
+        },
+        "id_token": id_tok,
+    }
+
+    fake_api_response = {
+        "groups": [
+            {
+                "displayName": "Gemini Models",
+                "buckets": [
+                    {
+                        "bucketId": "gemini-5h",
+                        "window": "5h",
+                        "remainingFraction": 0.85,
+                        "resetTime": "2026-10-20T20:00:00Z",
+                    },
+                    {
+                        "bucketId": "gemini-weekly",
+                        "window": "weekly",
+                        "remainingFraction": 0.90,
+                        "resetTime": "2026-10-25T12:00:00Z",
+                    },
+                ],
+            }
+        ]
+    }
+
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value="ya29.keyring_active_token"), \
+         patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_raw", return_value=fake_keyring_raw), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=fake_api_response):
+        res = extract_gemini_status(account, now=now)
+
+    assert res["health"]["status"] == "valid"
+    assert res["health"]["message"] == "Credencial Gemini ativa detectada via API oficial"
+    assert res["health"]["metadata"]["email"] == "active@gmail.com"
+    assert res["native_window"]["usage_percentage"] == 15.0  # (1.0 - 0.85) * 100
+    assert res["native_window"]["available_capacity"] == 85
+    assert res["weekly_window"]["usage_percentage"] == 10.0  # (1.0 - 0.90) * 100
+    assert res["weekly_window"]["available_capacity"] == 630
+
+    # Verify file was synchronized with 0600 permissions and active token
+    assert cred_file.exists()
+    assert (cred_file.stat().st_mode & 0o777) == 0o600
+    synced = json.loads(cred_file.read_text(encoding="utf-8"))
+    assert synced["access_token"] == "ya29.keyring_active_token"
+    assert synced["refresh_token"] == "1//refresh_active"
+
+
+def test_collector_gemini_status_json_reflects_ok_with_expired_file_but_active_keyring(tmp_path):
+    config_dir = tmp_path / "config"
+    cache_dir = tmp_path / "cache"
+    gemini_dir = tmp_path / "gemini"
+    gemini_dir.mkdir(parents=True)
+    cred_file = gemini_dir / "oauth_creds.json"
+
+    # Expired token in file
+    cred_file.write_text(json.dumps({
+        "access_token": "ya29.expired",
+        "expiry_date": 1000000000000,
+    }))
+
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    config_path = config_dir / "config.json"
+    config_content = {
+        "version": 1,
+        "agents": {
+            "claude": {"accounts": []},
+            "codex": {"accounts": []},
+            "gemini": {
+                "accounts": [
+                    {
+                        "id": "default",
+                        "label": "Gemini (Padrão)",
+                        "source": "auto",
+                        "credential_path": str(cred_file),
+                        "gemini_dir": str(gemini_dir),
+                    }
+                ]
+            },
+        },
+    }
+    config_path.parent.mkdir(parents=True, exist_ok=True)
+    config_path.write_text(json.dumps(config_content))
+
+    cache_path = cache_dir / "status.json"
+
+    id_tok = "h." + "eyJlbWFpbCI6ICJ1c2VyLmtleXJpbmdAZ21haWwuY29tIn0" + ".s"
+    fake_keyring_raw = {
+        "token": {
+            "access_token": "ya29.keyring_token",
+            "token_type": "Bearer",
+            "refresh_token": "1//refresh_val",
+            "expiry": "2026-10-20T18:00:00Z",
+        },
+        "id_token": id_tok,
+    }
+
+    fake_api_response = {
+        "groups": [
+            {
+                "displayName": "Gemini Models",
+                "buckets": [
+                    {
+                        "bucketId": "gemini-5h",
+                        "window": "5h",
+                        "remainingFraction": 1.0,
+                    },
+                    {
+                        "bucketId": "gemini-weekly",
+                        "window": "weekly",
+                        "remainingFraction": 0.95,
+                    },
+                ],
+            }
+        ]
+    }
+
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value="ya29.keyring_token"), \
+         patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_raw", return_value=fake_keyring_raw), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=fake_api_response), \
+         patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value={
+             "access_token": "ya29.keyring_token",
+             "refresh_token": "1//refresh_val",
+             "id_token": id_tok,
+             "expiry": "2026-10-20T18:00:00Z",
+             "token_type": "Bearer",
+         }):
+        status = collect_and_save(config_path=config_path, cache_path=cache_path, now=now)
+
+    assert validate_status_contract(status)
+    gemini_agent = status["agents"]["gemini"]
+    assert gemini_agent["status"] == "ok"
+    assert len(gemini_agent["accounts"]) == 1
+
+    acc = gemini_agent["accounts"][0]
+    assert acc["health"]["status"] == "valid"
+    assert "user.keyring@gmail.com" in acc["label"]
+    assert acc["native_window"]["usage_percentage"] == 0.0
+    assert acc["native_window"]["available_capacity"] == 100
+
+    # Verify status.json persisted on disk
+    assert cache_path.exists()
+    disk_data = json.loads(cache_path.read_text(encoding="utf-8"))
+    assert disk_data["agents"]["gemini"]["status"] == "ok"
+    assert disk_data["agents"]["gemini"]["accounts"][0]["health"]["status"] == "valid"

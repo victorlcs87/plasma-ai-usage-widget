@@ -20,12 +20,12 @@ Identificação e correção do bug de falso positivo de sessão expirada do Gem
 
 ## Acceptance criteria
 
-- [ ] `extractors/gemini.py` atualiza `health.status = "valid"` quando a chamada à API oficial de cotas tem sucesso com o token do chaveiro.
-- [ ] `discovery.py` verifica o chaveiro (`secret-tool`) como fonte prioritária de credenciais ativas do Gemini.
-- [ ] O token ativo do chaveiro é sincronizado para `~/.gemini/oauth_creds.json` com permissões `0600`.
-- [ ] `ai-usage-collector --status` exibe `status: "valid"` e cotas reais para o Gemini sem erro de `session_expired`.
-- [ ] Testes unitários dedicados em `tests/test_gemini_extractor.py` e `tests/test_discovery.py` cobrindo o cenário de token do chaveiro ativo sobrepondo arquivo com timestamp antigo.
-- [ ] Todos os testes passando (145+ testes).
+- [x] `extractors/gemini.py` atualiza `health.status = "valid"` quando a chamada à API oficial de cotas tem sucesso com o token do chaveiro.
+- [x] `discovery.py` verifica o chaveiro (`secret-tool`) como fonte prioritária de credenciais ativas do Gemini.
+- [x] O token ativo do chaveiro é sincronizado para `~/.gemini/oauth_creds.json` com permissões `0600`.
+- [x] `ai-usage-collector --status` exibe `status: "valid"` e cotas reais para o Gemini sem erro de `session_expired`.
+- [x] Testes unitários dedicados em `tests/test_gemini_extractor.py` e `tests/test_discovery.py` cobrindo o cenário de token do chaveiro ativo sobrepondo arquivo com timestamp antigo.
+- [x] Todos os testes passando (145+ testes).
 
 ## Blocked by
 

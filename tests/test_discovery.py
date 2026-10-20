@@ -1,5 +1,7 @@
 import base64
 import json
+from unittest.mock import patch
+
 from ai_usage_collector.discovery import (
     discover_claude,
     discover_codex,
@@ -124,3 +126,84 @@ def test_discover_account_dispatcher(tmp_path):
 
     h_gemini = discover_account("gemini", cred_file)
     assert h_gemini["status"] == "valid"
+
+
+def test_discover_gemini_expired_file_overridden_by_keyring(tmp_path):
+    cred_file = tmp_path / "gemini_expired.json"
+    expired_data = {
+        "access_token": "ya29.expired_token",
+        "expiry_date": 1000000000000,  # 2001
+        "token_type": "Bearer",
+    }
+    cred_file.write_text(json.dumps(expired_data))
+
+    id_tok = make_jwt({"email": "active-keyring@gmail.com"})
+    mock_keyring = {
+        "access_token": "ya29.active_keyring",
+        "refresh_token": "1//refresh",
+        "id_token": id_tok,
+        "token_type": "Bearer",
+        "expiry": "2026-10-25T12:00:00Z",
+    }
+
+    with patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value=mock_keyring):
+        health = discover_gemini(cred_file)
+
+    assert health["status"] == "valid"
+    assert health["detected"] is True
+    assert health["metadata"]["email"] == "active-keyring@gmail.com"
+    assert health["metadata"]["source"] == "keyring"
+
+
+def test_discover_gemini_expired_file_with_refresh_token_remains_valid(tmp_path):
+    cred_file = tmp_path / "gemini_renewable.json"
+    renewable_data = {
+        "access_token": "ya29.expired_token",
+        "refresh_token": "1//refresh_token_available",
+        "expiry_date": 1000000000000,
+        "token_type": "Bearer",
+    }
+    cred_file.write_text(json.dumps(renewable_data))
+
+    with patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value=None):
+        health = discover_gemini(cred_file)
+
+    assert health["status"] == "valid"
+    assert health["detected"] is True
+    assert health["metadata"]["renewable"] is True
+    assert "renovável" in health["message"].lower()
+
+
+def test_discover_gemini_expired_file_without_refresh_token_and_no_keyring_is_expired(tmp_path):
+    cred_file = tmp_path / "gemini_truly_expired.json"
+    expired_data = {
+        "access_token": "ya29.expired_token",
+        "expiry_date": 1000000000000,
+        "token_type": "Bearer",
+    }
+    cred_file.write_text(json.dumps(expired_data))
+
+    with patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value=None):
+        health = discover_gemini(cred_file)
+
+    assert health["status"] == "session_expired"
+    assert health["detected"] is True
+    assert "expirada" in health["message"].lower()
+
+
+def test_discover_gemini_missing_file_falls_back_to_keyring(tmp_path):
+    missing_file = tmp_path / "nonexistent.json"
+    id_tok = make_jwt({"email": "keyring-only@gmail.com"})
+    mock_keyring = {
+        "access_token": "ya29.keyring_only",
+        "id_token": id_tok,
+        "expiry": "2026-10-25T12:00:00Z",
+    }
+
+    with patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value=mock_keyring):
+        health = discover_gemini(missing_file)
+
+    assert health["status"] == "valid"
+    assert health["detected"] is True
+    assert health["metadata"]["email"] == "keyring-only@gmail.com"
+    assert health["metadata"]["source"] == "keyring"
