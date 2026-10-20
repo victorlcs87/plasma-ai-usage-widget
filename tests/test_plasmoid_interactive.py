@@ -62,7 +62,7 @@ def test_config_qml_registration():
 
 
 def test_config_general_qml_structure_and_bindings():
-    """Verify that configGeneral.qml contains account management, addition and deletion bindings."""
+    """Verify that configGeneral.qml contains account management, addition, capture and deletion bindings."""
     config_general_path = UI_DIR / "configGeneral.qml"
     assert config_general_path.is_file(), "contents/ui/configGeneral.qml must exist"
 
@@ -73,11 +73,15 @@ def test_config_general_qml_structure_and_bindings():
     assert "requestDeleteAccount" in content
     assert "confirmDelete" in content
     assert "addAccount" in content
+    assert "captureCurrentAccount" in content
+    assert "interactiveLoginAccount" in content
     assert "getDefaultPath" in content
     assert "clearAddAccountForm" in content
     assert "buildCollectorCommand" in content
     assert "--remove-account" in content
     assert "--add-account" in content
+    assert "--capture-current" in content
+    assert "--interactive-login" in content
 
     # UI Elements: trash/delete icon, dialog, inline message, add form
     assert "delete" in content or "trash-empty" in content
@@ -86,11 +90,14 @@ def test_config_general_qml_structure_and_bindings():
     assert "statusMessage" in content
     assert "errorMessage" in content
     assert "isAdding" in content
+    assert "isCapturing" in content
+    assert "isInteractiveLogin" in content
     assert "isAddFormExpanded" in content
+    assert "isAdvancedExpanded" in content
 
 
 def test_config_general_gui_add_account_form_elements():
-    """Verify that configGeneral.qml contains all required controls for adding accounts."""
+    """Verify that configGeneral.qml contains all required controls for adding, capturing and logging in."""
     config_general_path = UI_DIR / "configGeneral.qml"
     content = config_general_path.read_text(encoding="utf-8")
 
@@ -105,29 +112,45 @@ def test_config_general_gui_add_account_form_elements():
     assert "getProviderColor" in content
     assert "Claude" in content and "Codex" in content and "Gemini" in content
 
-    # 3. Label/Nickname and Path TextFields
+    # 3. Label/Nickname TextField
     assert "accountNameField" in content
-    assert "credentialPathField" in content
 
-    # 4. Auxiliary button "Usar Caminho Padrão" with default paths
+    # 4. Quick Action Buttons: Capture Current CLI Login and Interactive Terminal Login
+    assert "captureCurrentAccountBtn" in content
+    assert "Capturar Login Atual do CLI" in content
+    assert "captureCurrentAccount" in content
+
+    assert "interactiveLoginAccountBtn" in content
+    assert "Fazer Login no Terminal..." in content
+    assert "interactiveLoginAccount" in content
+
+    # 5. Collapsible Advanced Options Section (Manual Configuration)
+    assert "Opções Avançadas (Configuração Manual)" in content
+    assert "toggleAdvancedBtn" in content
+    assert "isAdvancedExpanded" in content
+
+    # 6. Manual Path and Default button
+    assert "credentialPathField" in content
     assert "useDefaultPathBtn" in content
     assert "Usar Caminho Padrão" in content
     assert "~/.claude" in content
     assert "~/.codex" in content
     assert "~/.gemini" in content
 
-    # 5. Optional invite URL TextField
+    # 7. Optional invite URL TextField
     assert "inviteUrlField" in content
     assert "https://... (opcional)" in content
 
-    # 6. Save Account button and Clear button
+    # 8. Save Account button and Clear button
     assert "saveAccountBtn" in content
-    assert "Salvar Conta" in content
+    assert "Salvar Manualmente" in content
     assert "document-save" in content or "list-add" in content
     assert "clearFormBtn" in content
 
-    # 7. Safe execution and DataSource bindings
+    # 9. Safe execution and DataSource bindings
     assert "additionDataSource" in content
+    assert "captureDataSource" in content
+    assert "interactiveLoginDataSource" in content
     assert "shellQuote" in content
     assert "--provider" in content
     assert "--label" in content

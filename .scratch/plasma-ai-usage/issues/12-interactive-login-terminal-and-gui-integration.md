@@ -4,13 +4,13 @@
 
 **Blocked by:** 10: Correção Visual do Seletor ComboBox no Plasmoid, 11: Backend de Captura de Sessão Ativa (`--capture-current`) e Isolamento de Perfis
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Comando CLI `ai-usage-collector --interactive-login <provider>` implementado, configurando pastas isoladas e executando `claude auth login`, `codex login` ou `agy`.
-- [ ] Detecção e suporte a emuladores de terminal (`konsole -e`, `x-terminal-emulator`, etc.) com passagem segura de comandos.
-- [ ] Monitoramento do término da autenticação e registro automático do perfil resultante com permissões `0600`.
-- [ ] Inclusão dos botões de ação rápida no formulário de `configGeneral.qml`: "Capturar Login Atual do CLI" e "Fazer Login no Terminal...".
-- [ ] Realocação do campo "Caminho das Credenciais" para uma seção retrátil "Configuração Avançada (Opcional)", dispensando digitação manual de caminhos.
-- [ ] Invocação assíncrona segura no Plasmoid via `Plasma5Support.DataSource` com `shellQuote`.
-- [ ] Feedback visual claro em `Kirigami.InlineMessage` com o e-mail/identidade da conta adicionada e atualização imediata do desktop.
-- [ ] Revalidação do pacote Plasmoid com `kpackagetool6` e suíte completa de testes no pytest.
+- [x] Comando CLI `ai-usage-collector --interactive-login <provider>` implementado, configurando pastas isoladas e executando `claude auth login`, `codex login` ou `agy`.
+- [x] Detecção e suporte a emuladores de terminal (`konsole -e`, `x-terminal-emulator`, etc.) com passagem segura de comandos.
+- [x] Monitoramento do término da autenticação e registro automático do perfil resultante com permissões `0600`.
+- [x] Inclusão dos botões de ação rápida no formulário de `configGeneral.qml`: "Capturar Login Atual do CLI" e "Fazer Login no Terminal...".
+- [x] Realocação do campo "Caminho das Credenciais" para uma seção retrátil "Configuração Avançada (Opcional)", dispensando digitação manual de caminhos.
+- [x] Invocação assíncrona segura no Plasmoid via `Plasma5Support.DataSource` com `shellQuote`.
+- [x] Feedback visual claro em `Kirigami.InlineMessage` com o e-mail/identidade da conta adicionada e atualização imediata do desktop.
+- [x] Revalidação do pacote Plasmoid com `kpackagetool6` e suíte completa de testes no pytest.

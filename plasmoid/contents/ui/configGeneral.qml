@@ -19,10 +19,15 @@ Item {
     property bool isLoading: false
     property bool isDeleting: false
     property bool isAdding: false
+    property bool isCapturing: false
+    property bool isInteractiveLogin: false
     property bool isAddFormExpanded: false
+    property bool isAdvancedExpanded: false
     property string statusMessage: ""
     property string errorMessage: ""
     property var accountPendingDeletion: null
+
+    readonly property bool isBusy: isLoading || isDeleting || isAdding || isCapturing || isInteractiveLogin
 
     function safeI18n(text, arg1, arg2, arg3) {
         if (!text) return "";
@@ -145,6 +150,42 @@ Item {
         additionDataSource.connectSource(cmd);
     }
 
+    function captureCurrentAccount() {
+        var prov = (providerComboBox.currentText || "Claude").toLowerCase().trim();
+        var label = (accountNameField.text || "").trim();
+
+        configRoot.isCapturing = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+
+        var safeArgs = shellQuote("--capture-current") + " " + shellQuote(prov);
+        if (label.length > 0) {
+            safeArgs += " " + shellQuote("--name") + " " + shellQuote(label);
+        }
+        safeArgs += " " + shellQuote("--status");
+
+        var cmd = configRoot.buildCollectorCommand(safeArgs);
+        captureDataSource.connectSource(cmd);
+    }
+
+    function interactiveLoginAccount() {
+        var prov = (providerComboBox.currentText || "Claude").toLowerCase().trim();
+        var label = (accountNameField.text || "").trim();
+
+        configRoot.isInteractiveLogin = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+
+        var safeArgs = shellQuote("--interactive-login") + " " + shellQuote(prov);
+        if (label.length > 0) {
+            safeArgs += " " + shellQuote("--name") + " " + shellQuote(label);
+        }
+        safeArgs += " " + shellQuote("--status");
+
+        var cmd = configRoot.buildCollectorCommand(safeArgs);
+        interactiveLoginDataSource.connectSource(cmd);
+    }
+
     // Leitor de status para a tela de configurações
     Plasma5Support.DataSource {
         id: configStatusDataSource
@@ -216,6 +257,78 @@ Item {
         }
     }
 
+    // Executor de captura de sessão ativa do CLI
+    Plasma5Support.DataSource {
+        id: captureDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isCapturing = false;
+            var exitCode = data["exit code"];
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+
+            if (exitCode === 0) {
+                var lines = stdout.split("\n");
+                var msg = lines[0] || configRoot.safeI18n("Sessão ativa capturada com sucesso!");
+                configRoot.statusMessage = msg;
+                configRoot.errorMessage = "";
+                configRoot.clearAddAccountForm();
+                var jsonStart = stdout.indexOf("{");
+                if (jsonStart !== -1) {
+                    try {
+                        configRoot.statusData = JSON.parse(stdout.substring(jsonStart));
+                    } catch (e) {
+                        configRoot.loadStatus();
+                    }
+                } else {
+                    configRoot.loadStatus();
+                }
+            } else {
+                configRoot.errorMessage = configRoot.safeI18n("Falha ao capturar login atual: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.statusMessage = "";
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Executor de login interativo no terminal
+    Plasma5Support.DataSource {
+        id: interactiveLoginDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isInteractiveLogin = false;
+            var exitCode = data["exit code"];
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+
+            if (exitCode === 0) {
+                var lines = stdout.split("\n");
+                var msg = lines[0] || configRoot.safeI18n("Login interativo concluído com sucesso!");
+                configRoot.statusMessage = msg;
+                configRoot.errorMessage = "";
+                configRoot.clearAddAccountForm();
+                var jsonStart = stdout.indexOf("{");
+                if (jsonStart !== -1) {
+                    try {
+                        configRoot.statusData = JSON.parse(stdout.substring(jsonStart));
+                    } catch (e) {
+                        configRoot.loadStatus();
+                    }
+                } else {
+                    configRoot.loadStatus();
+                }
+            } else {
+                configRoot.errorMessage = configRoot.safeI18n("Falha no login interativo: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.statusMessage = "";
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
     function loadStatus() {
         configRoot.isLoading = true;
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
@@ -267,7 +380,7 @@ Item {
                 icon.name: "view-refresh"
                 text: configRoot.safeI18n("Recarregar")
                 display: QQC2.AbstractButton.IconOnly
-                enabled: !configRoot.isLoading && !configRoot.isDeleting && !configRoot.isAdding
+                enabled: !configRoot.isBusy
                 QQC2.ToolTip.text: configRoot.safeI18n("Atualizar lista de contas")
                 QQC2.ToolTip.visible: hovered
                 onClicked: {
@@ -291,7 +404,7 @@ Item {
             Layout.fillWidth: true
             Layout.preferredHeight: 4
             indeterminate: true
-            visible: configRoot.isLoading || configRoot.isDeleting || configRoot.isAdding
+            visible: configRoot.isBusy
         }
 
         // Mensagem de sucesso
@@ -412,7 +525,7 @@ Item {
                             Layout.fillWidth: true
                             model: ["Claude", "Codex", "Gemini"]
                             currentIndex: 0
-                            enabled: !configRoot.isAdding
+                            enabled: !configRoot.isBusy
                         }
                     }
 
@@ -430,88 +543,174 @@ Item {
                         QQC2.TextField {
                             id: accountNameField
                             Layout.fillWidth: true
-                            placeholderText: configRoot.safeI18n("Ex: Claude Trabalho, Codex Pessoal")
-                            enabled: !configRoot.isAdding
+                            placeholderText: configRoot.safeI18n("Ex: Claude Trabalho, Codex Pessoal (opcional)")
+                            enabled: !configRoot.isBusy
                         }
                     }
 
-                    // Campo 3: Caminho das Credenciais / Diretório
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        QQC2.Label {
-                            text: configRoot.safeI18n("Caminho:")
-                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                            font.bold: true
-                        }
-
-                        QQC2.TextField {
-                            id: credentialPathField
-                            Layout.fillWidth: true
-                            placeholderText: configRoot.safeI18n("Ex: %1", configRoot.getDefaultPath(providerComboBox.currentText))
-                            enabled: !configRoot.isAdding
-                        }
-
-                        PlasmaComponents3.Button {
-                            id: useDefaultPathBtn
-                            text: configRoot.safeI18n("Usar Caminho Padrão")
-                            icon.name: "document-open"
-                            enabled: !configRoot.isAdding
-                            QQC2.ToolTip.text: configRoot.safeI18n("Preencher com o diretório padrão '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
-                            QQC2.ToolTip.visible: hovered
-                            onClicked: {
-                                credentialPathField.text = configRoot.getDefaultPath(providerComboBox.currentText);
-                            }
-                        }
-                    }
-
-                    // Campo 4: Link de Convite Opcional
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        QQC2.Label {
-                            text: configRoot.safeI18n("Link de Convite:")
-                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                        }
-
-                        QQC2.TextField {
-                            id: inviteUrlField
-                            Layout.fillWidth: true
-                            placeholderText: configRoot.safeI18n("https://... (opcional)")
-                            enabled: !configRoot.isAdding
-                        }
-                    }
-
-                    // Ações do Formulário: Limpar e Salvar
+                    // Ações Rápidas: Captura Direta e Login no Terminal
                     RowLayout {
                         Layout.fillWidth: true
                         Layout.topMargin: Kirigami.Units.smallSpacing
                         spacing: Kirigami.Units.smallSpacing
 
-                        Item {
-                            Layout.fillWidth: true
-                        }
-
                         PlasmaComponents3.Button {
-                            id: clearFormBtn
-                            text: configRoot.safeI18n("Limpar")
-                            icon.name: "edit-clear"
-                            enabled: !configRoot.isAdding
+                            id: captureCurrentAccountBtn
+                            text: configRoot.safeI18n("Capturar Login Atual do CLI")
+                            icon.name: "document-import"
+                            highlighted: true
+                            enabled: !configRoot.isBusy
+                            QQC2.ToolTip.text: configRoot.safeI18n("Detecta e importa a sessão ativa atual no sistema para %1 sem exigir digitação de caminhos", providerComboBox.currentText)
+                            QQC2.ToolTip.visible: hovered
                             onClicked: {
-                                configRoot.clearAddAccountForm();
+                                configRoot.captureCurrentAccount();
                             }
                         }
 
                         PlasmaComponents3.Button {
-                            id: saveAccountBtn
-                            text: configRoot.safeI18n("Salvar Conta")
-                            icon.name: "document-save"
-                            highlighted: true
-                            enabled: !configRoot.isAdding && !configRoot.isLoading && !configRoot.isDeleting
+                            id: interactiveLoginAccountBtn
+                            text: configRoot.safeI18n("Fazer Login no Terminal...")
+                            icon.name: "utilities-terminal"
+                            enabled: !configRoot.isBusy
+                            QQC2.ToolTip.text: configRoot.safeI18n("Abre terminal isolado para autenticar nova conta de %1 sem sobrescrever o login principal", providerComboBox.currentText)
+                            QQC2.ToolTip.visible: hovered
                             onClicked: {
-                                configRoot.addAccount();
+                                configRoot.interactiveLoginAccount();
+                            }
+                        }
+
+                        Item {
+                            Layout.fillWidth: true
+                        }
+                    }
+
+                    // Subseção retrátil: Opções Avançadas (Configuração Manual)
+                    Kirigami.Separator {
+                        Layout.fillWidth: true
+                        Layout.topMargin: Kirigami.Units.smallSpacing
+                    }
+
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
+
+                        Kirigami.Icon {
+                            source: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
+                            implicitWidth: Kirigami.Units.iconSizes.small
+                            implicitHeight: Kirigami.Units.iconSizes.small
+                        }
+
+                        QQC2.Label {
+                            text: configRoot.safeI18n("Opções Avançadas (Configuração Manual)")
+                            font.bold: false
+                            color: Kirigami.Theme.disabledTextColor
+                            Layout.fillWidth: true
+
+                            MouseArea {
+                                anchors.fill: parent
+                                cursorShape: Qt.PointingHandCursor
+                                onClicked: {
+                                    configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
+                                }
+                            }
+                        }
+
+                        PlasmaComponents3.Button {
+                            id: toggleAdvancedBtn
+                            text: configRoot.isAdvancedExpanded ? configRoot.safeI18n("Ocultar") : configRoot.safeI18n("Configurar Manualmente")
+                            icon.name: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
+                            display: QQC2.AbstractButton.TextBesideIcon
+                            onClicked: {
+                                configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
+                            }
+                        }
+                    }
+
+                    ColumnLayout {
+                        id: advancedFieldsLayout
+                        Layout.fillWidth: true
+                        visible: configRoot.isAdvancedExpanded
+                        spacing: Kirigami.Units.smallSpacing
+
+                        // Campo: Caminho das Credenciais / Diretório
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Caminho:")
+                                Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                                font.bold: true
+                            }
+
+                            QQC2.TextField {
+                                id: credentialPathField
+                                Layout.fillWidth: true
+                                placeholderText: configRoot.safeI18n("Ex: %1", configRoot.getDefaultPath(providerComboBox.currentText))
+                                enabled: !configRoot.isBusy
+                            }
+
+                            PlasmaComponents3.Button {
+                                id: useDefaultPathBtn
+                                text: configRoot.safeI18n("Usar Caminho Padrão")
+                                icon.name: "document-open"
+                                enabled: !configRoot.isBusy
+                                QQC2.ToolTip.text: configRoot.safeI18n("Preencher com o diretório padrão '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
+                                QQC2.ToolTip.visible: hovered
+                                onClicked: {
+                                    credentialPathField.text = configRoot.getDefaultPath(providerComboBox.currentText);
+                                }
+                            }
+                        }
+
+                        // Campo: Link de Convite Opcional
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Link de Convite:")
+                                Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                            }
+
+                            QQC2.TextField {
+                                id: inviteUrlField
+                                Layout.fillWidth: true
+                                placeholderText: configRoot.safeI18n("https://... (opcional)")
+                                enabled: !configRoot.isBusy
+                            }
+                        }
+
+                        // Ações Manuais: Limpar e Salvar
+                        RowLayout {
+                            Layout.fillWidth: true
+                            Layout.topMargin: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Item {
+                                Layout.fillWidth: true
+                            }
+
+                            PlasmaComponents3.Button {
+                                id: clearFormBtn
+                                text: configRoot.safeI18n("Limpar")
+                                icon.name: "edit-clear"
+                                enabled: !configRoot.isBusy
+                                onClicked: {
+                                    configRoot.clearAddAccountForm();
+                                }
+                            }
+
+                            PlasmaComponents3.Button {
+                                id: saveAccountBtn
+                                text: configRoot.safeI18n("Salvar Manualmente")
+                                icon.name: "document-save"
+                                enabled: !configRoot.isBusy
+                                QQC2.ToolTip.text: configRoot.safeI18n("Salvar Conta informando o caminho customizado manualmente")
+                                QQC2.ToolTip.visible: hovered
+                                onClicked: {
+                                    configRoot.addAccount();
+                                }
                             }
                         }
                     }
@@ -626,7 +825,7 @@ Item {
                             icon.name: "delete"
                             text: configRoot.safeI18n("Remover conta")
                             display: QQC2.AbstractButton.IconOnly
-                            enabled: !configRoot.isDeleting && !configRoot.isAdding
+                            enabled: !configRoot.isBusy
 
                             QQC2.ToolTip.visible: hovered
                             QQC2.ToolTip.text: configRoot.safeI18n("Remover conta '%1'", modelData.name || modelData.id)
@@ -691,7 +890,7 @@ Item {
                     text: configRoot.safeI18n("Remover Conta")
                     icon.name: "delete"
                     highlighted: true
-                    enabled: !configRoot.isDeleting && !configRoot.isAdding
+                    enabled: !configRoot.isBusy
                     onClicked: {
                         confirmDialog.close();
                         configRoot.confirmDelete();

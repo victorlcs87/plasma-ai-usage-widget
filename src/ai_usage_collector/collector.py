@@ -357,3 +357,45 @@ def capture_current_account(
 
     return True, message, status_payload
 
+
+def interactive_login_account(
+    provider: str,
+    label: str | None = None,
+    no_terminal: bool = False,
+    invite_url: str | None = None,
+    total_capacity: int | None = None,
+    config_path: str | Path | None = None,
+    cache_path: str | Path | None = None,
+    now: datetime | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """Execute interactive login in isolated profile and sync status cache.
+
+    Returns:
+        tuple[bool, str, dict[str, Any] | None]: (success, status_message, status_payload)
+    """
+    from ai_usage_collector.capture import run_interactive_login
+
+    success, message, new_acc = run_interactive_login(
+        provider=provider,
+        label=label,
+        no_terminal=no_terminal,
+        invite_url=invite_url,
+        total_capacity=total_capacity,
+        config_path=config_path,
+    )
+    if not success or new_acc is None:
+        return False, message, None
+
+    # Immediately execute collection and update status cache
+    try:
+        status_payload = collect_and_save(config_path=config_path, cache_path=cache_path, now=now)
+    except Exception as e:
+        return (
+            True,
+            f"{message} (Aviso: falha ao sincronizar status: {e})",
+            None,
+        )
+
+    return True, message, status_payload
+
+

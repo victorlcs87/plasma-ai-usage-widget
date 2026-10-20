@@ -249,6 +249,8 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     assert "PlasmaComponents3.ComboBox" in content
     assert "providerIndicator" in content
     assert "accountNameField" in content
+    assert "captureCurrentAccountBtn" in content
+    assert "interactiveLoginAccountBtn" in content
     assert "credentialPathField" in content
     assert "useDefaultPathBtn" in content
     assert "inviteUrlField" in content
@@ -258,8 +260,14 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     assert "getDefaultPath" in content
     assert "clearAddAccountForm" in content
     assert "addAccount" in content
+    assert "captureCurrentAccount" in content
+    assert "interactiveLoginAccount" in content
     assert "shellQuote" in content
     assert "buildCollectorCommand" in content
     assert "additionDataSource" in content
+    assert "captureDataSource" in content
+    assert "interactiveLoginDataSource" in content
+    assert "--capture-current" in content
+    assert "--interactive-login" in content
 
 
