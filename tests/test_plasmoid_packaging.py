@@ -34,6 +34,7 @@ def test_plasmoid_directory_structure():
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
         "AccountCard.qml",
+        "TokenHistory.qml",
         "configGeneral.qml",
     ]
     for qml_file in expected_qml_files:
@@ -107,6 +108,7 @@ def test_qml_components_syntax_validity():
     """Verify that standalone QML components parse without syntax errors using qml6."""
     components_to_check = [
         "AccountCard.qml",
+        "TokenHistory.qml",
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
         "configGeneral.qml",
@@ -271,3 +273,14 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     assert "--interactive-login" in content
 
 
+
+
+def test_account_card_shows_optional_token_history():
+    """AccountCard usa TokenHistory e tolera a ausencia de token_history (contrato v1)."""
+    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    assert "TokenHistory {" in card
+    assert "token_history ?? null" in card
+    comp = (UI_DIR / "TokenHistory.qml").read_text(encoding="utf-8")
+    for key in ["today", "week", "month", "daily_30d", "weekly_3m", "monthly_12m", "Repeater", "Rectangle"]:
+        assert key in comp
+    assert "visible: Boolean(history)" in comp
