@@ -438,3 +438,66 @@ def test_interactive_login_duplicate_slug_handling(capsys, tmp_path):
     assert len(claude_accs) == 2
     assert claude_accs[0]["id"] != claude_accs[1]["id"]
     assert claude_accs[0]["claude_dir"] != claude_accs[1]["claude_dir"]
+
+
+def test_interactive_login_rollback_on_config_failure(capsys, tmp_path):
+    """Verify that profile dir is completely cleaned up if saving config fails during interactive login."""
+    config_path = tmp_path / "config.json"
+    cache_path = tmp_path / "status.json"
+
+    def mock_subprocess_run(cmd, *args, **kwargs):
+        env = kwargs.get("env", os.environ)
+        prof_dir = Path(env["CLAUDE_CONFIG_DIR"])
+        (prof_dir / ".credentials.json").write_text(json.dumps({
+            "claudeAiOauth": {"accessToken": make_jwt({"email": "fail@test.com"})}
+        }))
+        res = MagicMock()
+        res.returncode = 0
+        return res
+
+    with patch("subprocess.run", side_effect=mock_subprocess_run), \
+         patch("ai_usage_collector.capture.save_config", side_effect=IOError("Simulated disk error")):
+        code = main([
+            "--interactive-login", "claude",
+            "--no-terminal",
+            "--config-path", str(config_path),
+            "--cache-path", str(cache_path),
+        ])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "Falha ao salvar configuração" in captured.err
+
+    # Profile directory should NOT remain on disk
+    profiles_base = tmp_path / "profiles"
+    if profiles_base.exists():
+        subdirs = [p for p in profiles_base.iterdir() if p.is_dir()]
+        assert len(subdirs) == 0
+
+
+def test_interactive_login_recursive_permissions(tmp_path):
+    """Verify that all files in profile directory get 0600 and directories get 0700."""
+    from ai_usage_collector.capture import enforce_profile_security_permissions
+
+    test_prof = tmp_path / "test_prof"
+    test_prof.mkdir()
+    sub_dir = test_prof / "subdir"
+    sub_dir.mkdir()
+    f1 = test_prof / "cred.json"
+    f1.write_text("{}")
+    f2 = sub_dir / "token.txt"
+    f2.write_text("secret")
+
+    # Give them lax permissions initially
+    os.chmod(f1, 0o666)
+    os.chmod(f2, 0o644)
+    os.chmod(sub_dir, 0o777)
+    os.chmod(test_prof, 0o755)
+
+    enforce_profile_security_permissions(test_prof)
+
+    assert stat.S_IMODE(os.stat(test_prof).st_mode) == 0o700
+    assert stat.S_IMODE(os.stat(sub_dir).st_mode) == 0o700
+    assert stat.S_IMODE(os.stat(f1).st_mode) == 0o600
+    assert stat.S_IMODE(os.stat(f2).st_mode) == 0o600
+

@@ -451,3 +451,56 @@ def test_cli_executable_capture_current(tmp_path, monkeypatch):
     assert res.returncode == 0
     assert "capturada com sucesso" in res.stdout
     assert "Codex Executable Test" in res.stdout
+
+
+def test_capture_current_rollback_on_failure(capsys, tmp_path, monkeypatch):
+    """Verify that profiles dir is removed/rolled back if saving config fails."""
+    config_path = tmp_path / "config.json"
+    cache_path = tmp_path / "status.json"
+    cred_file = tmp_path / "auth.json"
+    cred_file.write_text(json.dumps({
+        "tokens": {"access_token": "sk-token", "account_id": "act-test"}
+    }))
+    monkeypatch.setenv("CODEX_AUTH_PATH", str(cred_file))
+
+    from unittest.mock import patch
+    with patch("ai_usage_collector.capture.save_config", side_effect=IOError("Disk write failed")):
+        code = main([
+            "--capture-current", "codex",
+            "--config-path", str(config_path),
+            "--cache-path", str(cache_path),
+        ])
+
+    captured = capsys.readouterr()
+    assert code == 1
+    assert "Falha ao salvar configuração" in captured.err
+
+    # Profile directory should NOT remain on disk
+    profiles_base = tmp_path / "profiles"
+    if profiles_base.exists():
+        subdirs = [p for p in profiles_base.iterdir() if p.is_dir()]
+        assert len(subdirs) == 0
+
+
+def test_capture_current_recursive_permissions(tmp_path, monkeypatch):
+    """Verify that all files in profile directory have 0600 and directory has 0700."""
+    config_path = tmp_path / "config.json"
+    cred_file = tmp_path / "auth.json"
+    cred_file.write_text(json.dumps({
+        "tokens": {"access_token": "sk-token", "account_id": "act-test"}
+    }))
+    monkeypatch.setenv("CODEX_AUTH_PATH", str(cred_file))
+
+    from ai_usage_collector.capture import capture_current_session
+    success, msg, acc = capture_current_session("codex", config_path=config_path)
+    assert success
+    assert acc is not None
+
+    profile_dir = Path(acc["codex_dir"])
+    assert profile_dir.exists()
+    assert stat.S_IMODE(os.stat(profile_dir).st_mode) == 0o700
+
+    cred_path = Path(acc["credential_path"])
+    assert cred_path.exists()
+    assert stat.S_IMODE(os.stat(cred_path).st_mode) == 0o600
+

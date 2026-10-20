@@ -535,5 +535,51 @@ def test_config_general_qml_combobox_native_breeze_compliance():
     assert "configRoot.getProviderColor(providerComboBox.currentText)" in content
 
 
+def test_gui_capture_and_login_shell_injection_resilience(tmp_path: Path):
+    """Verify that captureCurrentAccount and interactiveLoginAccount command formatting is safe."""
+    config_general_path = UI_DIR / "configGeneral.qml"
+    content = config_general_path.read_text(encoding="utf-8")
+
+    # Verify captureCurrentAccount uses shellQuote for all parts
+    capture_func_start = content.find("function captureCurrentAccount()")
+    assert capture_func_start != -1
+    capture_func_end = content.find("}", content.find("captureDataSource.connectSource", capture_func_start))
+    capture_code = content[capture_func_start:capture_func_end]
+
+    assert 'shellQuote("--capture-current")' in capture_code
+    assert 'shellQuote(prov)' in capture_code
+    assert 'shellQuote("--name")' in capture_code
+    assert 'shellQuote(label)' in capture_code
+    assert 'shellQuote("--status")' in capture_code
+
+    # Verify interactiveLoginAccount uses shellQuote for all parts
+    login_func_start = content.find("function interactiveLoginAccount()")
+    assert login_func_start != -1
+    login_func_end = content.find("}", content.find("interactiveLoginDataSource.connectSource", login_func_start))
+    login_code = content[login_func_start:login_func_end]
+
+    assert 'shellQuote("--interactive-login")' in login_code
+    assert 'shellQuote(prov)' in login_code
+    assert 'shellQuote("--name")' in login_code
+    assert 'shellQuote(label)' in login_code
+    assert 'shellQuote("--status")' in login_code
+
+    # Test malicious command injection simulation for both
+    pwned_marker = tmp_path / "pwned_interactive.txt"
+    malicious_inputs = [
+        f"hack'; touch {pwned_marker}; echo '",
+        f'hack"$(touch {pwned_marker})"',
+        f"hack`touch {pwned_marker}`",
+        f"hack && touch {pwned_marker}",
+    ]
+
+    for evil_input in malicious_inputs:
+        safe_quoted = "'" + evil_input.replace("'", "'\\''") + "'"
+        cmd = f"bash -c 'for a in \"$@\"; do :; done' _ --capture-current {safe_quoted} --status"
+        subprocess.run(cmd, shell=True, check=True)
+        assert not pwned_marker.exists(), f"Vulnerability detected with payload: {evil_input}"
+
+
+
 
 

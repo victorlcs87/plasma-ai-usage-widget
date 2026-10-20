@@ -381,9 +381,10 @@ def capture_current_session(
     try:
         save_secure_json(creds_data, target_cred_file, prefix="cred_")
     except Exception as e:
+        _cleanup_profile_if_empty(profile_dir)
         return False, f"Falha ao persistir credencial isolada no perfil: {e}", None
 
-    ensure_secure_file(target_cred_file)
+    enforce_profile_security_permissions(profile_dir)
 
     account_entry: dict[str, Any] = {
         "id": account_id,
@@ -411,8 +412,12 @@ def capture_current_session(
         except (ValueError, TypeError):
             pass
 
-    updated_cfg = add_account_to_config(cfg, prov, account_entry)
-    save_config(updated_cfg, config_path)
+    try:
+        updated_cfg = add_account_to_config(cfg, prov, account_entry)
+        save_config(updated_cfg, config_path)
+    except Exception as e:
+        _cleanup_profile_if_empty(profile_dir)
+        return False, f"Falha ao salvar configuração: {e}", None
 
     return (
         True,
@@ -541,6 +546,18 @@ def build_terminal_exec_args(terminal_bin: str, command_str: str) -> list[str]:
     else:
         # konsole, x-terminal-emulator, xterm, etc.
         return [terminal_bin, "-e", "bash", "-c", command_str]
+
+
+def enforce_profile_security_permissions(profile_dir: Path) -> None:
+    """Recursively enforce 0700 on directories and 0600 on files within profile_dir."""
+    if not profile_dir.exists():
+        return
+    ensure_secure_dir(profile_dir)
+    for p in profile_dir.rglob("*"):
+        if p.is_dir():
+            ensure_secure_dir(p)
+        elif p.is_file():
+            ensure_secure_file(p)
 
 
 def _cleanup_profile_if_empty(profile_dir: Path) -> None:
@@ -722,8 +739,7 @@ def run_interactive_login(
         )
 
     # Enforce secure permissions 0600 on credential file and 0700 on profile directory
-    ensure_secure_file(cred_file)
-    ensure_secure_dir(profile_dir)
+    enforce_profile_security_permissions(profile_dir)
 
     # Determine final label and rename profile dir if appropriate
     if clean_label:
@@ -748,8 +764,7 @@ def run_interactive_login(
                 profile_dir = final_profile_dir
                 account_id = final_account_id
                 cred_file = profile_dir / cred_file.name
-                ensure_secure_dir(profile_dir)
-                ensure_secure_file(cred_file)
+                enforce_profile_security_permissions(profile_dir)
             except Exception:
                 pass
 
@@ -779,8 +794,12 @@ def run_interactive_login(
         except (ValueError, TypeError):
             pass
 
-    updated_cfg = add_account_to_config(cfg, prov, account_entry)
-    save_config(updated_cfg, config_path)
+    try:
+        updated_cfg = add_account_to_config(cfg, prov, account_entry)
+        save_config(updated_cfg, config_path)
+    except Exception as e:
+        _cleanup_profile_if_empty(profile_dir)
+        return False, f"Falha ao salvar configuração: {e}", None
 
     return (
         True,
