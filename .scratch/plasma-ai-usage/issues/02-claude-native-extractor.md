@@ -4,7 +4,7 @@
 
 **Blocked by:** 01: Core CLI Coletor, Contrato de Estado e Descoberta Automatica
 
-**Status:** in-review
+**Status:** closed
 
 - [x] Extracao correta do consumo de tokens/mensagens na janela movel de 5 horas a partir dos dados locais do Claude.
 - [x] Extracao do consumo acumulado na janela semanal (ultimos 7 dias).

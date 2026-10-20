@@ -3,9 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import stat
-import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -14,8 +11,6 @@ from datetime import datetime, timezone
 from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
-    ensure_secure_dir,
-    ensure_secure_file,
     get_accounts_for_agent,
     load_config,
     save_secure_json,
