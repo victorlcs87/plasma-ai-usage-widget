@@ -41,8 +41,23 @@ def _load_json(path: Path | None) -> dict[str, Any]:
         return {}
 
 
+def _load_json_strict(path: Path) -> dict[str, Any]:
+    """Le um arquivo de estado existente; erro se ilegivel (nunca sobrescrever estado corrompido)."""
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"Arquivo de estado '{path}' não contém um objeto JSON.")
+    return data
+
+
 def write_json_atomic(data: dict[str, Any], path: Path, mode: int = 0o600) -> None:
-    """Grava JSON atomicamente sem alterar as permissoes do diretorio pai (ex.: $HOME)."""
+    """Grava JSON atomicamente no alvo real (preserva symlinks) sem alterar as permissoes do
+    diretorio pai (ex.: $HOME). Rele o arquivo apos gravar: se outro processo o regravou no
+    intervalo, lanca erro para o chamador acionar o rollback.
+    """
+    path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".identity_", suffix=".tmp")
     try:
@@ -54,6 +69,8 @@ def write_json_atomic(data: dict[str, Any], path: Path, mode: int = 0o600) -> No
     except Exception:
         Path(tmp).unlink(missing_ok=True)
         raise
+    if _load_json(path) != data:
+        raise RuntimeError(f"Arquivo '{path}' foi alterado por outro processo durante a gravação.")
 
 
 # --- Claude ------------------------------------------------------------------
@@ -63,10 +80,10 @@ def write_json_atomic(data: dict[str, Any], path: Path, mode: int = 0o600) -> No
 
 
 def _claude_state_file(cred_file: Path) -> Path:
-    config_dir = cred_file.expanduser().resolve().parent
+    config_dir = cred_file.expanduser().absolute().parent.resolve()
     if config_dir == Path("~/.claude").expanduser().resolve():
-        return Path("~/.claude.json").expanduser()
-    return config_dir / ".claude.json"
+        return Path("~/.claude.json").expanduser().resolve()
+    return (config_dir / ".claude.json").resolve()
 
 
 def _claude_read(cred_file: Path) -> Identity | None:
@@ -83,11 +100,11 @@ def _claude_read(cred_file: Path) -> Identity | None:
 
 
 def _claude_copy_state(src_cred_file: Path, dst_cred_file: Path) -> None:
-    oauth = _load_json(_claude_state_file(src_cred_file)).get("oauthAccount")
+    oauth = _load_json_strict(_claude_state_file(src_cred_file)).get("oauthAccount")
     dst = _claude_state_file(dst_cred_file)
     if not dst.exists() and not isinstance(oauth, dict):
         return
-    data = _load_json(dst)  # preserva as demais chaves do estado do Claude Code
+    data = _load_json_strict(dst)  # preserva as demais chaves do estado do Claude Code
     if isinstance(oauth, dict):
         data["oauthAccount"] = oauth
     else:
