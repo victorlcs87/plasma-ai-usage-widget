@@ -37,11 +37,16 @@ Item {
         return res;
     }
 
-    function buildCollectorCommand(args) {
-        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector " + args + "; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" " + args + "; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" " + args + "; " +
-               "else python3 -m ai_usage_collector " + args + "; fi'";
+    function shellQuote(str) {
+        if (str === null || str === undefined) return "''";
+        return "'" + String(str).replace(/'/g, "'\\''") + "'";
+    }
+
+    function buildCollectorCommand(quotedArgs) {
+        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
+               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
+               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
     }
 
     function getProviderColor(provider) {
@@ -138,7 +143,7 @@ Item {
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
         var cachePath = (typeof cacheLoc === "string" ? cacheLoc : cacheLoc.toString()).replace(/^file:\/\//, "");
         var statusFilePath = cachePath + "/plasma-ai-usage/status.json";
-        var cmd = "cat \"" + statusFilePath + "\" 2>/dev/null";
+        var cmd = "cat " + shellQuote(statusFilePath) + " 2>/dev/null";
         configStatusDataSource.connectSource(cmd);
     }
 
@@ -154,8 +159,9 @@ Item {
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
 
-        var args = "--remove-account \"" + acc.provider + "\" \"" + acc.id + "\"";
-        var cmd = configRoot.buildCollectorCommand(args);
+        var provClean = String(acc.provider).toLowerCase().trim();
+        var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(acc.id);
+        var cmd = configRoot.buildCollectorCommand(safeArgs);
         removalDataSource.connectSource(cmd);
     }
 

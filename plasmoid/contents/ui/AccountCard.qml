@@ -34,6 +34,11 @@ Kirigami.AbstractCard {
         visible: false
     }
 
+    function shellQuote(str) {
+        if (str === null || str === undefined) return "''";
+        return "'" + String(str).replace(/'/g, "'\\''") + "'";
+    }
+
     function copyToClipboard(text) {
         if (!text) return;
         // 1. Cópia local Qt/QML
@@ -42,10 +47,11 @@ Kirigami.AbstractCard {
         clipHelper.copy();
 
         // 2. Cópia segura para o clipboard do sistema (Wayland wl-copy ou X11 xclip)
-        // Passa o texto como argumento posicional $1 via JSON.stringify para prevenir qualquer expansão shell
+        // Passa o texto seguro entre aspas simples POSIX como argumento posicional $1 para bash
+        var safeText = shellQuote(text);
         var cmd = "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"$1\" | wl-copy; " +
                   "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; fi' _ " +
-                  JSON.stringify(text);
+                  safeText;
         clipboardDataSource.connectSource(cmd);
 
         // 3. Feedback visual imediato

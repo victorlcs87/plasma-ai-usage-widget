@@ -261,15 +261,14 @@ def test_clipboard_fallback_shell_safety():
     ]
 
     for url in test_urls:
-        json_arg = json.dumps(url)
+        safe_quoted = "'" + url.replace("'", "'\\''") + "'"
         bash_cmd = (
             "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"$1\" | wl-copy; "
             "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; "
-            "else printf \"%s\" \"$1\"; fi' _ " + json_arg
+            "else printf \"%s\" \"$1\"; fi' _ " + safe_quoted
         )
         res = subprocess.run(bash_cmd, shell=True, capture_output=True, text=True, check=True)
-        # Even if wl-copy / xclip aren't mocked here or are mocked, the string passed as $1 is guaranteed literal
-        assert "pwned" not in res.stdout or url.find("pwned") != -1
+        assert res.stdout == url, f"URL alterada ou comando expandido indevidamente: {res.stdout!r} != {url!r}"
 
 
 
@@ -291,12 +290,12 @@ def test_build_collector_command_resolution_in_shell():
     venv_bin = REPO_ROOT / ".venv" / "bin" / "ai-usage-collector"
     assert venv_bin.is_file() and os.access(venv_bin, os.X_OK)
 
-    args = "--version"
+    args = "'--version'"
     bash_cmd = (
-        f"if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector {args}; "
-        f"elif [ -x '{venv_bin}' ]; then '{venv_bin}' {args}; "
-        f"elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" {args}; "
-        f"else python3 -m ai_usage_collector {args}; fi"
+        f"bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; "
+        f"elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; "
+        f"elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; "
+        f"else python3 -m ai_usage_collector \"$@\"; fi' _ {args}"
     )
     res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True, check=False)
     assert res.returncode == 0

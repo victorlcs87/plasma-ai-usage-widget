@@ -116,11 +116,16 @@ PlasmoidItem {
         return lines.join(" • ");
     }
 
-    function buildCollectorCommand(args) {
-        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector " + args + "; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" " + args + "; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" " + args + "; " +
-               "else python3 -m ai_usage_collector " + args + "; fi'";
+    function shellQuote(str) {
+        if (str === null || str === undefined) return "''";
+        return "'" + String(str).replace(/'/g, "'\\''") + "'";
+    }
+
+    function buildCollectorCommand(quotedArgs) {
+        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
+               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
+               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
     }
 
     // Executor assíncrono de comandos do coletor (refresh / remoção)
@@ -150,16 +155,19 @@ PlasmoidItem {
         if (root.isRefreshing) return;
         root.isRefreshing = true;
         root.lastError = "";
-        var cmd = buildCollectorCommand("--refresh");
+        var cmd = buildCollectorCommand(shellQuote("--refresh"));
         collectorDataSource.connectSource(cmd);
     }
 
     function removeAccount(provider, accountId) {
         if (!provider || !accountId) return;
+        var provClean = String(provider).toLowerCase().trim();
+        if (["claude", "codex", "gemini"].indexOf(provClean) === -1) return;
+
         root.isRefreshing = true;
         root.lastError = "";
-        var escapedArgs = "--remove-account \"" + provider + "\" \"" + accountId + "\"";
-        var cmd = buildCollectorCommand(escapedArgs);
+        var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(accountId);
+        var cmd = buildCollectorCommand(safeArgs);
         collectorDataSource.connectSource(cmd);
     }
 
@@ -197,7 +205,7 @@ PlasmoidItem {
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
         var cachePath = (typeof cacheLoc === "string" ? cacheLoc : cacheLoc.toString()).replace(/^file:\/\//, "");
         var statusFilePath = cachePath + "/plasma-ai-usage/status.json";
-        var cmd = "cat \"" + statusFilePath + "\" 2>/dev/null";
+        var cmd = "cat " + shellQuote(statusFilePath) + " 2>/dev/null";
         statusDataSource.connectSource(cmd);
     }
 
