@@ -317,3 +317,43 @@ def add_account_entry(
         f"Conta '{clean_label}' ({new_acc['id']}) adicionada com sucesso ao provedor '{prov}'.",
         status_payload,
     )
+
+
+def capture_current_account(
+    provider: str,
+    label: str | None = None,
+    invite_url: str | None = None,
+    total_capacity: int | None = None,
+    config_path: str | Path | None = None,
+    cache_path: str | Path | None = None,
+    now: datetime | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """Capture active CLI session, isolate credentials in profile, and sync status cache.
+
+    Returns:
+        tuple[bool, str, dict[str, Any] | None]: (success, status_message, status_payload)
+    """
+    from ai_usage_collector.capture import capture_current_session
+
+    success, message, new_acc = capture_current_session(
+        provider=provider,
+        label=label,
+        invite_url=invite_url,
+        total_capacity=total_capacity,
+        config_path=config_path,
+    )
+    if not success or new_acc is None:
+        return False, message, None
+
+    # Immediately execute collection and update status cache
+    try:
+        status_payload = collect_and_save(config_path=config_path, cache_path=cache_path, now=now)
+    except Exception as e:
+        return (
+            True,
+            f"{message} (Aviso: falha ao sincronizar status: {e})",
+            None,
+        )
+
+    return True, message, status_payload
+

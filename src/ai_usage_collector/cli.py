@@ -10,6 +10,7 @@ from typing import Sequence
 from ai_usage_collector import __version__
 from ai_usage_collector.collector import (
     add_account_entry,
+    capture_current_account,
     collect_and_save,
     load_status_cache,
     remove_account,
@@ -48,6 +49,16 @@ def build_parser() -> argparse.ArgumentParser:
         "--add-account",
         action="store_true",
         help="Adiciona uma nova conta ao provedor especificado e sincroniza o status",
+    )
+    parser.add_argument(
+        "--capture-current",
+        "--capture-active",
+        dest="capture_current",
+        nargs="?",
+        const="",
+        type=str,
+        metavar="PROVIDER",
+        help="Captura a autenticação ativa do sistema para o provedor selecionado e cria perfil isolado",
     )
     parser.add_argument(
         "--provider",
@@ -161,8 +172,41 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stderr.flush()
                 return 1
 
+        if args.capture_current is not None:
+            target_provider = args.capture_current if args.capture_current != "" else (args.provider or "")
+            if not target_provider:
+                sys.stderr.write("Erro: Parâmetro do provedor é obrigatório para --capture-current. Ex: --capture-current claude\n")
+                sys.stderr.flush()
+                return 1
+
+            success, message, status_data = capture_current_account(
+                provider=target_provider,
+                label=args.label,
+                invite_url=args.invite_url,
+                total_capacity=args.total_capacity,
+                config_path=config_path,
+                cache_path=cache_path,
+            )
+            if success:
+                sys.stdout.write(f"{message}\n")
+                sys.stdout.flush()
+                if args.status and status_data:
+                    sys.stdout.write(json.dumps(status_data, indent=2, ensure_ascii=False) + "\n")
+                    sys.stdout.flush()
+                return 0
+            else:
+                sys.stderr.write(f"Erro: {message}\n")
+                sys.stderr.flush()
+                return 1
+
         # Default behavior: if neither refresh nor status is explicitly given, default to refresh
-        should_refresh = args.refresh or (not args.refresh and not args.status and not args.remove_account and not args.add_account)
+        should_refresh = args.refresh or (
+            not args.refresh
+            and not args.status
+            and not args.remove_account
+            and not args.add_account
+            and args.capture_current is None
+        )
         should_output_status = args.status
 
         status_data = None

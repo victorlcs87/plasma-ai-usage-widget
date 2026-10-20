@@ -4,13 +4,13 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** ready-for-agent
+**Status:** completed
 
-- [ ] Comando CLI `ai-usage-collector --capture-current <provider>` implementado e suportando `--name` e `--invite-url`.
-- [ ] Extração automática da identidade do usuário (e-mail, orgId, account_id) da sessão ativa de Claude, Codex e Gemini.
-- [ ] Criação do diretório de perfil isolado sob `profiles/` com permissão Unix estrita `0700`.
-- [ ] Cópia e persistência atômica das credenciais ativas para a pasta do perfil isolado com permissão `0600`.
-- [ ] Registro automático da nova conta no `config.json` apontando para o caminho do perfil isolado.
-- [ ] Execução de coleta imediata da nova conta com atualização do cache `status.json`.
-- [ ] Mensagens de erro claras quando o provedor selecionado não possuir sessão ativa ou credencial válida no sistema.
-- [ ] Bateria de testes em pytest cobrindo Claude, Codex e Gemini com mocks herméticos de arquivos de sessão e validações de segurança.
+- [x] Comando CLI `ai-usage-collector --capture-current <provider>` implementado e suportando `--name` e `--invite-url`.
+- [x] Extração automática da identidade do usuário (e-mail, orgId, account_id) da sessão ativa de Claude, Codex e Gemini.
+- [x] Criação do diretório de perfil isolado sob `profiles/` com permissão Unix estrita `0700`.
+- [x] Cópia e persistência atômica das credenciais ativas para a pasta do perfil isolado com permissão `0600`.
+- [x] Registro automático da nova conta no `config.json` apontando para o caminho do perfil isolado.
+- [x] Execução de coleta imediata da nova conta com atualização do cache `status.json`.
+- [x] Mensagens de erro claras quando o provedor selecionado não possuir sessão ativa ou credencial válida no sistema.
+- [x] Bateria de testes em pytest cobrindo Claude, Codex e Gemini com mocks herméticos de arquivos de sessão e validações de segurança.
