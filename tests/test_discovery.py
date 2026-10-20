@@ -1,0 +1,109 @@
+import base64
+import json
+from ai_usage_collector.discovery import (
+    discover_claude,
+    discover_codex,
+    discover_gemini,
+    extract_jwt_identity,
+    discover_account,
+)
+
+
+def make_jwt(payload: dict) -> str:
+    header = base64.urlsafe_b64encode(b'{"alg":"none","typ":"JWT"}').rstrip(b"=").decode()
+    body = base64.urlsafe_b64encode(json.dumps(payload).encode()).rstrip(b"=").decode()
+    return f"{header}.{body}.sig"
+
+
+def test_extract_jwt_identity():
+    token = make_jwt({"email": "dev@example.com", "name": "Developer"})
+    assert extract_jwt_identity(token) == "dev@example.com"
+
+    token_sub = make_jwt({"sub": "user-12345"})
+    assert extract_jwt_identity(token_sub) == "user-12345"
+
+    assert extract_jwt_identity("invalid.token") is None
+    assert extract_jwt_identity(None) is None
+
+
+def test_discover_claude_missing_file(tmp_path):
+    cred_file = tmp_path / "missing.json"
+    health = discover_claude(cred_file)
+    assert health["status"] == "missing_credentials"
+    assert health["detected"] is False
+
+
+def test_discover_claude_invalid_json(tmp_path):
+    cred_file = tmp_path / "corrupted.json"
+    cred_file.write_text("invalid json contents")
+    health = discover_claude(cred_file)
+    assert health["status"] == "auth_error"
+    assert health["detected"] is True
+
+
+def test_discover_claude_valid_credentials(tmp_path):
+    cred_file = tmp_path / "claude_creds.json"
+    cred_data = {
+        "claudeAiOauth": {
+            "accessToken": "sk-ant-test-token",
+            "subscriptionType": "pro",
+            "rateLimitTier": "tier_1",
+            "expiresAt": "2026-10-25T12:00:00Z",
+        }
+    }
+    cred_file.write_text(json.dumps(cred_data))
+    health = discover_claude(cred_file)
+    assert health["status"] == "valid"
+    assert health["detected"] is True
+    assert health["metadata"]["subscription_type"] == "pro"
+
+
+def test_discover_codex_valid_tokens(tmp_path):
+    cred_file = tmp_path / "codex_auth.json"
+    id_tok = make_jwt({"email": "codex-user@company.com"})
+    cred_data = {
+        "auth_mode": "chatgpt",
+        "tokens": {
+            "access_token": "token-123",
+            "id_token": id_tok,
+            "account_id": "acc-987",
+        },
+        "last_refresh": "2026-10-20T08:00:00Z",
+    }
+    cred_file.write_text(json.dumps(cred_data))
+    health = discover_codex(cred_file)
+    assert health["status"] == "valid"
+    assert health["detected"] is True
+    assert health["metadata"]["email"] == "codex-user@company.com"
+    assert health["metadata"]["account_id"] == "acc-987"
+
+
+def test_discover_gemini_valid_tokens(tmp_path):
+    cred_file = tmp_path / "gemini_creds.json"
+    id_tok = make_jwt({"email": "gemini-user@gmail.com"})
+    cred_data = {
+        "access_token": "ya29.test",
+        "refresh_token": "1//refresh",
+        "id_token": id_tok,
+        "expiry_date": 1800000000,
+        "token_type": "Bearer",
+    }
+    cred_file.write_text(json.dumps(cred_data))
+    health = discover_gemini(cred_file)
+    assert health["status"] == "valid"
+    assert health["detected"] is True
+    assert health["metadata"]["email"] == "gemini-user@gmail.com"
+
+
+def test_discover_account_dispatcher(tmp_path):
+    cred_file = tmp_path / "creds.json"
+    cred_file.write_text(json.dumps({"access_token": "test"}))
+
+    h_claude = discover_account("claude", cred_file)
+    assert h_claude["detected"] is True
+
+    h_codex = discover_account("codex", cred_file)
+    assert h_codex["detected"] is True
+
+    h_gemini = discover_account("gemini", cred_file)
+    assert h_gemini["status"] == "valid"
