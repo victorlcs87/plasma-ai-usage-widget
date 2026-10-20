@@ -78,37 +78,38 @@ def read_codex_sqlite_timestamps(db_path: Path) -> list[float]:
     try:
         uri = f"file:{db_path.resolve()}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        # Check existing tables
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
-        tables = {row[0] for row in cursor.fetchall()}
+            # Check existing tables
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table'")
+            tables = {row[0] for row in cursor.fetchall()}
 
-        if "thread_turns" in tables:
-            try:
-                cursor.execute(
-                    "SELECT started_at, completed_at FROM thread_turns WHERE started_at IS NOT NULL"
-                )
-                for started_at, completed_at in cursor.fetchall():
-                    ts = parse_timestamp(started_at) or parse_timestamp(completed_at)
-                    if ts is not None:
-                        timestamps.append(ts)
-            except sqlite3.Error:
-                pass
+            if "thread_turns" in tables:
+                try:
+                    cursor.execute(
+                        "SELECT started_at, completed_at FROM thread_turns WHERE started_at IS NOT NULL"
+                    )
+                    for started_at, completed_at in cursor.fetchall():
+                        ts = parse_timestamp(started_at) or parse_timestamp(completed_at)
+                        if ts is not None:
+                            timestamps.append(ts)
+                except sqlite3.Error:
+                    pass
 
-        if "thread_items" in tables:
-            try:
-                cursor.execute(
-                    "SELECT created_at_ms FROM thread_items WHERE item_type IN ('userMessage', 'turnContext') OR item_type != ''"
-                )
-                for (created_at_ms,) in cursor.fetchall():
-                    ts = parse_timestamp(created_at_ms)
-                    if ts is not None:
-                        timestamps.append(ts)
-            except sqlite3.Error:
-                pass
-
-        conn.close()
+            if "thread_items" in tables:
+                try:
+                    cursor.execute(
+                        "SELECT created_at_ms FROM thread_items WHERE item_type IN ('userMessage', 'turnContext') OR item_type != ''"
+                    )
+                    for (created_at_ms,) in cursor.fetchall():
+                        ts = parse_timestamp(created_at_ms)
+                        if ts is not None:
+                            timestamps.append(ts)
+                except sqlite3.Error:
+                    pass
+        finally:
+            conn.close()
     except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError):
         return []
 
@@ -124,19 +125,20 @@ def read_codex_logs_timestamps(logs_db_path: Path) -> list[float]:
     try:
         uri = f"file:{logs_db_path.resolve()}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='logs'")
-        if cursor.fetchone():
-            cursor.execute(
-                "SELECT ts FROM logs WHERE (target LIKE '%session%' OR target LIKE '%thread%' OR feedback_log_body LIKE '%thread%') AND ts IS NOT NULL"
-            )
-            for (ts_val,) in cursor.fetchall():
-                ts = parse_timestamp(ts_val)
-                if ts is not None:
-                    timestamps.append(ts)
-
-        conn.close()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='logs'")
+            if cursor.fetchone():
+                cursor.execute(
+                    "SELECT ts FROM logs WHERE (target LIKE '%session%' OR target LIKE '%thread%' OR feedback_log_body LIKE '%thread%') AND ts IS NOT NULL"
+                )
+                for (ts_val,) in cursor.fetchall():
+                    ts = parse_timestamp(ts_val)
+                    if ts is not None:
+                        timestamps.append(ts)
+        finally:
+            conn.close()
     except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError):
         return []
 

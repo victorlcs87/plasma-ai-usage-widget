@@ -4,7 +4,7 @@
 
 **Blocked by:** 02: Extrator Nativo Claude (Janela de 5h, Semanal, Liberacao e Convites)
 
-**Status:** in-review
+**Status:** closed
 
 - [x] Extracao de turnos e consumo do Codex na janela nativa de 3 horas e agregacao semanal a partir do SQLite local.
 - [x] Calculo de tempo de liberacao para o Codex.

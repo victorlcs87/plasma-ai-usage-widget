@@ -78,21 +78,22 @@ def read_gemini_sqlite_summaries(db_path: Path) -> tuple[list[float], int]:
     try:
         uri = f"file:{db_path.resolve()}?mode=ro"
         conn = sqlite3.connect(uri, uri=True, timeout=2.0)
-        cursor = conn.cursor()
+        try:
+            cursor = conn.cursor()
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_summaries'")
-        if cursor.fetchone():
-            cursor.execute(
-                "SELECT step_count, last_modified_time, last_user_input_time FROM conversation_summaries"
-            )
-            for step_count, last_modified, last_user_input in cursor.fetchall():
-                if isinstance(step_count, int):
-                    total_steps += max(0, step_count)
-                ts = parse_timestamp(last_user_input) or parse_timestamp(last_modified)
-                if ts is not None:
-                    timestamps.append(ts)
-
-        conn.close()
+            cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='conversation_summaries'")
+            if cursor.fetchone():
+                cursor.execute(
+                    "SELECT step_count, last_modified_time, last_user_input_time FROM conversation_summaries"
+                )
+                for step_count, last_modified, last_user_input in cursor.fetchall():
+                    if isinstance(step_count, int):
+                        total_steps += max(0, step_count)
+                    ts = parse_timestamp(last_user_input) or parse_timestamp(last_modified)
+                    if ts is not None:
+                        timestamps.append(ts)
+        finally:
+            conn.close()
     except (sqlite3.DatabaseError, sqlite3.OperationalError, OSError):
         return [], 0
 
