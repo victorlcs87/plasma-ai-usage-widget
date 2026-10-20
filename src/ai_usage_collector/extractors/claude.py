@@ -562,6 +562,8 @@ def extract_claude_status(
 
     native_window = {
         "type": "5h",
+        # five_hour/seven_day buckets of the usage API (and the local heuristic) define the durations
+        "window_seconds": CLAUDE_5H_SECONDS,
         "total_capacity": total_capacity,
         "used_capacity": used_5h,
         "available_capacity": available_capacity,
@@ -582,6 +584,7 @@ def extract_claude_status(
         "messages_used": total_weekly_messages,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
+        "window_seconds": CLAUDE_7D_SECONDS,
     }
 
     # Breakdown since the last weekly reset (API reset - 7d, else rolling 7d)

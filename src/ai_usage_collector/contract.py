@@ -2,9 +2,11 @@
 
 from __future__ import annotations
 
+import re
 from datetime import datetime, timezone
 from typing import Any
 
+# Fallback Native Window type when an extractor reports none; the provider's duration takes precedence
 AGENT_NATIVE_WINDOWS: dict[str, str] = {
     "claude": "5h",
     "codex": "3h",
@@ -12,7 +14,12 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 }
 
 # v2: optional per-account "usage_details" (absent when nothing was collected)
-CONTRACT_VERSION = 2
+# v3: optional "window_seconds" and "elapsed_fraction" on native_window/weekly_window
+CONTRACT_VERSION = 3
+SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3)
+
+_UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
+_NAMED_WINDOWS = {"daily": 86400, "weekly": 604800}
 
 AGENT_NAMES: dict[str, str] = {
     "claude": "Claude",
@@ -24,6 +31,42 @@ AGENT_NAMES: dict[str, str] = {
 def get_current_iso_timestamp() -> str:
     """Return current UTC timestamp in ISO 8601 format."""
     return datetime.now(timezone.utc).isoformat()
+
+
+def parse_window_seconds(value: Any) -> int | None:
+    """Window duration in seconds from 18000, "18000s", "5h", "7d", "daily" or "weekly"; None if unknown."""
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, (int, float)):
+        return int(value) if value > 0 else None
+    if not isinstance(value, str):
+        return None
+    text = value.strip().lower()
+    if text in _NAMED_WINDOWS:
+        return _NAMED_WINDOWS[text]
+    match = re.fullmatch(r"(\d+(?:\.\d+)?)([smhdw])", text)
+    if not match:
+        return None
+    seconds = int(float(match.group(1)) * _UNIT_SECONDS[match.group(2)])
+    return seconds or None
+
+
+def window_type_from_seconds(seconds: int) -> str:
+    """Short label for a Native Window duration ("5h", "daily", "90m")."""
+    if seconds == 86400:
+        return "daily"
+    if seconds % 3600 == 0:
+        return f"{seconds // 3600}h"
+    return f"{seconds // 60}m"
+
+
+def _elapsed_fraction(window: dict[str, Any]) -> float | None:
+    """Fraction of the window already elapsed, from its duration and the time until release."""
+    total = window.get("window_seconds")
+    remaining = window.get("seconds_remaining")
+    if not isinstance(total, (int, float)) or total <= 0 or not isinstance(remaining, (int, float)):
+        return None
+    return round(min(1.0, max(0.0, 1.0 - remaining / total)), 4)
 
 
 def build_empty_status_contract(now_iso: str | None = None) -> dict[str, Any]:
@@ -70,9 +113,11 @@ def build_agent_account_status(
         "usage_percentage": 0.0,
         "release_time": None,
         "seconds_remaining": None,
+        "window_seconds": None,
     }
     if native_window:
         default_native_window.update(native_window)
+    default_native_window["elapsed_fraction"] = _elapsed_fraction(default_native_window)
 
     default_weekly_window: dict[str, Any] = {
         "total_tokens_or_turns": None,
@@ -82,6 +127,7 @@ def build_agent_account_status(
         "usage_percentage": 0.0,
         "cycle_reset_time": None,
         "seconds_remaining": None,
+        "window_seconds": None,
     }
     if weekly_window:
         default_weekly_window.update(weekly_window)
@@ -92,6 +138,7 @@ def build_agent_account_status(
                 default_weekly_window["usage_percentage"] = 0.0
         else:
             default_weekly_window["usage_percentage"] = 0.0
+    default_weekly_window["elapsed_fraction"] = _elapsed_fraction(default_weekly_window)
 
     default_invites: dict[str, Any] = {
         "available_count": manual_invite_count if manual_invite_count is not None else 0,
@@ -129,7 +176,7 @@ def validate_status_contract(data: Any) -> bool:
     if not isinstance(data, dict):
         return False
 
-    if data.get("version") not in (1, CONTRACT_VERSION):
+    if data.get("version") not in SUPPORTED_CONTRACT_VERSIONS:
         return False
 
     if not isinstance(data.get("last_updated"), str):

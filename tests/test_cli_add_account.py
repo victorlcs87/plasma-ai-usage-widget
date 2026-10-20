@@ -153,7 +153,7 @@ def test_cli_add_account_with_status_flag(capsys, tmp_path):
     json_start = captured.out.find("{")
     assert json_start != -1
     parsed_json = json.loads(captured.out[json_start:])
-    assert parsed_json["version"] == 2
+    assert parsed_json["version"] == 3
     assert any(a["id"] == "claude-test" for a in parsed_json["agents"]["claude"]["accounts"])
 
 

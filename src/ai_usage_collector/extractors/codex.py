@@ -13,8 +13,10 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector.contract import parse_window_seconds, window_type_from_seconds
 from ai_usage_collector.discovery import discover_codex
 
+# Fallback of the local heuristic only; the API reports the real Native Window duration
 CODEX_3H_SECONDS = 3 * 3600  # 10800s
 CODEX_7D_SECONDS = 7 * 86400  # 604800s
 
@@ -224,7 +226,7 @@ def extract_codex_invites(
 
 
 def resolve_codex_capacity(account: dict[str, Any], health: dict[str, Any]) -> int:
-    """Resolve total capacity for 3h window based on config or account metadata."""
+    """Resolve total capacity for the Native Window based on config or account metadata."""
     for key in ["rate_limit_capacity", "capacity_limit", "quota_limit"]:
         val = account.get(key)
         if isinstance(val, (int, float)) and val > 0:
@@ -301,6 +303,15 @@ def parse_codex_credits(api_data: dict[str, Any] | None) -> dict[str, Any] | Non
         return None
 
 
+def codex_window_seconds(window: dict[str, Any]) -> int | None:
+    """Duration reported by wham/usage for a rate-limit window (limit_window_seconds or window_minutes)."""
+    seconds = parse_window_seconds(window.get("limit_window_seconds"))
+    if seconds:
+        return seconds
+    minutes = parse_window_seconds(window.get("window_minutes"))
+    return minutes * 60 if minutes else None
+
+
 def read_codex_current_model(codex_dir: Path) -> str | None:
     """Model of the latest session turn (sessions rollout), else the `model` key of config.toml."""
     rollouts = glob.glob(str(codex_dir / "sessions" / "*" / "*" / "*" / "rollout-*.jsonl"))
@@ -336,7 +347,7 @@ def extract_codex_status(
     initial_health: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Extract metrics, calculate 3h and weekly windows, and format Codex status."""
+    """Extract metrics, calculate Native Window and weekly windows, and format Codex status."""
     now_dt = now or datetime.now(timezone.utc)
     now_sec = now_dt.timestamp()
 
@@ -385,7 +396,9 @@ def extract_codex_status(
 
     all_timestamps = deduplicate_timestamps(raw_timestamps)
 
-    # 3-hour window calculations
+    # Native Window via local heuristic (fallback duration; overridden by the API below)
+    native_window_seconds = CODEX_3H_SECONDS
+    weekly_window_seconds = CODEX_7D_SECONDS
     start_3h_sec = now_sec - CODEX_3H_SECONDS
     in_3h_ts = [t for t in all_timestamps if start_3h_sec <= t <= now_sec]
     used_3h = len(in_3h_ts)
@@ -454,6 +467,8 @@ def extract_codex_status(
         rate_limit = api_data.get("rate_limit") or api_data
         primary = rate_limit.get("primary_window") or {}
         secondary = rate_limit.get("secondary_window") or {}
+        native_window_seconds = codex_window_seconds(primary) or native_window_seconds
+        weekly_window_seconds = codex_window_seconds(secondary) or weekly_window_seconds
 
         # Primary window (active window)
         used_pct_primary = primary.get("used_percent")
@@ -508,7 +523,8 @@ def extract_codex_status(
         weekly_used_capacity = used_7d
 
     native_window = {
-        "type": "3h",
+        "type": window_type_from_seconds(native_window_seconds),
+        "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
         "used_capacity": used_3h,
         "available_capacity": available_capacity,
@@ -529,6 +545,7 @@ def extract_codex_status(
         "tokens_used": 0,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
+        "window_seconds": weekly_window_seconds,
     }
 
     usage_details: dict[str, Any] = {}

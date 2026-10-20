@@ -554,3 +554,55 @@ def test_extract_codex_status_fallback_when_api_fails(tmp_path):
     assert ww["used_capacity"] == 2
     assert ww["available_capacity"] == (50 * 7) - 2
     assert ww["usage_percentage"] == round((2 / (50 * 7)) * 100, 1)
+
+    # Sem API: a constante vira fallback da heuristica local
+    assert nw["type"] == "3h"
+    assert nw["window_seconds"] == 3 * 3600
+    assert ww["window_seconds"] == 7 * 86400
+
+
+def test_extract_codex_status_uses_provider_window_duration(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    fake_api_response = {
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 10.0,
+                "limit_window_seconds": 18000,
+                "reset_at": "2026-10-20T16:00:00Z",
+            },
+            "secondary_window": {
+                "used_percent": 20.0,
+                "limit_window_seconds": 604800,
+                "reset_at": "2026-10-25T12:00:00Z",
+            },
+        },
+    }
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=fake_api_response):
+        res = extract_codex_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["type"] == "5h"
+    assert nw["window_seconds"] == 18000
+    assert nw["seconds_remaining"] == 3600
+    assert res["weekly_window"]["window_seconds"] == 604800
+
+
+def test_extract_codex_status_window_minutes_and_missing_duration(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+    api = {"rate_limit": {"primary_window": {"used_percent": 1.0, "window_minutes": 300}}}
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=api):
+        res = extract_codex_status(account, now=now)
+    assert res["native_window"]["window_seconds"] == 18000
+    assert res["native_window"]["type"] == "5h"
+    # secundaria sem duracao informada: fallback semanal
+    assert res["weekly_window"]["window_seconds"] == 7 * 86400

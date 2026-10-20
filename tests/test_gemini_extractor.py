@@ -519,6 +519,30 @@ def test_extract_gemini_status_fallback_when_api_fails(tmp_path):
     assert ww["used_capacity"] == 2
     assert ww["available_capacity"] == (100 * 7) - 2
     assert ww["usage_percentage"] == round((2 / (100 * 7)) * 100, 1)
+    # Sem resumo de cota: fallback da heuristica local (janela diaria)
+    assert nw["type"] == "daily"
+    assert nw["window_seconds"] == 86400
+    assert ww["window_seconds"] == 7 * 86400
+
+
+def test_extract_gemini_status_window_duration_from_quota_summary(tmp_path):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir()
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps({"access_token": "ya29.x"}))
+    api = {"buckets": [
+        {"bucketId": "gemini-5h", "remainingFraction": 0.5, "resetTime": "2026-10-20T16:00:00Z"},
+        {"bucketId": "gemini-weekly", "remainingFraction": 0.5},
+    ]}
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "g", "provider": "gemini", "gemini_dir": str(gemini_dir)}
+
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=api):
+        res = extract_gemini_status(account, now=now)
+
+    assert res["native_window"]["type"] == "5h"
+    assert res["native_window"]["window_seconds"] == 18000
+    assert res["weekly_window"]["window_seconds"] == 7 * 86400
 
 
 def test_extract_gemini_status_expired_file_overridden_by_keyring_and_api(tmp_path):
