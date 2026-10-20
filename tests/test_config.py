@@ -10,6 +10,8 @@ from ai_usage_collector.config import (
     get_default_config,
     rename_account,
     rename_account_in_config,
+    set_active_account,
+    set_active_account_in_config,
 )
 
 
@@ -170,3 +172,102 @@ def test_rename_account_persistence(tmp_path):
     assert loaded["agents"]["codex"]["accounts"][0]["label"] == "Codex Pro"
     assert loaded["agents"]["codex"]["accounts"][0]["name"] == "Codex Pro"
     assert loaded["agents"]["codex"]["accounts"][0]["id"] == "codex-1"
+
+
+def test_set_active_account_in_config_standard_format():
+    cfg = {
+        "version": 1,
+        "agents": {
+            "claude": {
+                "accounts": [
+                    {"id": "acc-1", "label": "Conta 1", "active": True},
+                    {"id": "acc-2", "label": "Conta 2", "active": False},
+                    {"id": "acc-3", "label": "Conta 3"},
+                ]
+            }
+        },
+    }
+
+    updated_cfg, was_set = set_active_account_in_config(cfg, "claude", "acc-2")
+    assert was_set is True
+
+    accs = updated_cfg["agents"]["claude"]["accounts"]
+    assert accs[0]["active"] is False
+    assert accs[1]["active"] is True
+    assert accs[2]["active"] is False
+
+
+def test_set_active_account_in_config_legacy_formats():
+    # Legacy format 1: config["accounts"]["codex"] = [...]
+    cfg_legacy1 = {
+        "version": 1,
+        "accounts": {
+            "codex": [
+                {"id": "codex-1", "label": "Conta 1"},
+                {"id": "codex-2", "label": "Conta 2"},
+            ]
+        },
+    }
+    updated_1, was_set_1 = set_active_account_in_config(cfg_legacy1, "codex", "codex-2")
+    assert was_set_1 is True
+    assert updated_1["accounts"]["codex"][0]["active"] is False
+    assert updated_1["accounts"]["codex"][1]["active"] is True
+
+    # Legacy format 2: config["accounts"] = [{"provider": "gemini", "id": ...}]
+    cfg_legacy2 = {
+        "version": 1,
+        "accounts": [
+            {"provider": "gemini", "id": "gemini-1", "active": True},
+            {"provider": "gemini", "id": "gemini-2", "active": False},
+        ],
+    }
+    updated_2, was_set_2 = set_active_account_in_config(cfg_legacy2, "gemini", "gemini-2")
+    assert was_set_2 is True
+    assert updated_2["accounts"][0]["active"] is False
+    assert updated_2["accounts"][1]["active"] is True
+
+
+def test_set_active_account_in_config_not_found():
+    cfg = {
+        "version": 1,
+        "agents": {
+            "claude": {
+                "accounts": [{"id": "acc-1", "label": "Conta 1", "active": True}]
+            }
+        },
+    }
+
+    # Unknown account id
+    updated_cfg, was_set = set_active_account_in_config(cfg, "claude", "non-existent")
+    assert was_set is False
+    assert updated_cfg["agents"]["claude"]["accounts"][0]["active"] is True
+
+    # Unsupported provider
+    updated_cfg, was_set = set_active_account_in_config(cfg, "unknown_prov", "acc-1")
+    assert was_set is False
+
+
+def test_set_active_account_persistence(tmp_path):
+    config_path = tmp_path / "config.json"
+    cfg = {
+        "version": 1,
+        "agents": {
+            "gemini": {
+                "accounts": [
+                    {"id": "gem-1", "label": "Gemini 1", "active": True},
+                    {"id": "gem-2", "label": "Gemini 2", "active": False},
+                ]
+            }
+        },
+    }
+    save_config(cfg, config_path)
+
+    updated_cfg, was_set = set_active_account("gemini", "gem-2", config_path=config_path)
+    assert was_set is True
+    assert stat.S_IMODE(os.stat(config_path).st_mode) == 0o600
+
+    loaded = load_config(config_path)
+    accs = loaded["agents"]["gemini"]["accounts"]
+    assert accs[0]["active"] is False
+    assert accs[1]["active"] is True
+

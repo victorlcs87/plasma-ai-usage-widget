@@ -806,3 +806,294 @@ def run_interactive_login(
         f"Login interativo de '{prov}' concluído com sucesso como '{final_label}' ({account_id}) no perfil isolado.",
         account_entry,
     )
+
+
+def get_system_credential_file(provider: str) -> Path:
+    """Return default system credentials file path for provider, respecting env overrides."""
+    prov = provider.lower().strip()
+    if prov == "claude":
+        env_path = os.environ.get("CLAUDE_CREDENTIALS_PATH")
+        if env_path:
+            return Path(env_path).expanduser().resolve()
+        if os.environ.get("CLAUDE_CONFIG_DIR"):
+            return Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser().resolve() / ".credentials.json"
+        return Path("~/.claude/.credentials.json").expanduser().resolve()
+    elif prov == "codex":
+        env_path = os.environ.get("CODEX_AUTH_PATH")
+        if env_path:
+            return Path(env_path).expanduser().resolve()
+        if os.environ.get("CODEX_HOME"):
+            return Path(os.environ["CODEX_HOME"]).expanduser().resolve() / "auth.json"
+        return Path("~/.codex/auth.json").expanduser().resolve()
+    elif prov == "gemini":
+        env_path = os.environ.get("GEMINI_CREDENTIALS_PATH")
+        if env_path:
+            return Path(env_path).expanduser().resolve()
+        if os.environ.get("GEMINI_CONFIG_DIR"):
+            return Path(os.environ["GEMINI_CONFIG_DIR"]).expanduser().resolve() / "oauth_creds.json"
+        return Path("~/.gemini/oauth_creds.json").expanduser().resolve()
+    raise ValueError(f"Provedor '{provider}' não suportado.")
+
+
+def _extract_credential_signature(provider: str, creds: dict[str, Any] | None) -> dict[str, Any]:
+    """Extract comparable tokens and identity attributes from credentials dictionary."""
+    if not isinstance(creds, dict):
+        return {}
+
+    prov = provider.lower().strip()
+    sig: dict[str, Any] = {
+        "access_token": None,
+        "refresh_token": None,
+        "id_token": None,
+        "email": None,
+        "account_id": None,
+    }
+
+    if prov == "claude":
+        oauth = creds.get("claudeAiOauth")
+        if isinstance(oauth, dict):
+            sig["access_token"] = oauth.get("accessToken")
+            sig["refresh_token"] = oauth.get("refreshToken")
+            sig["email"] = oauth.get("email") or oauth.get("account", {}).get("email")
+            sig["account_id"] = oauth.get("accountId") or oauth.get("account", {}).get("id")
+        if not sig["access_token"]:
+            sig["access_token"] = creds.get("accessToken")
+        if not sig["refresh_token"]:
+            sig["refresh_token"] = creds.get("refreshToken")
+        if not sig["email"]:
+            sig["email"] = creds.get("email")
+        if not sig["email"] and sig["access_token"]:
+            sig["email"] = extract_jwt_identity(str(sig["access_token"]))
+
+    elif prov == "codex":
+        tokens = creds.get("tokens")
+        if isinstance(tokens, dict):
+            sig["access_token"] = tokens.get("access_token")
+            sig["refresh_token"] = tokens.get("refresh_token")
+            sig["id_token"] = tokens.get("id_token")
+            sig["account_id"] = tokens.get("account_id")
+        if not sig["access_token"]:
+            sig["access_token"] = creds.get("access_token")
+        if not sig["refresh_token"]:
+            sig["refresh_token"] = creds.get("refresh_token")
+        if not sig["account_id"]:
+            sig["account_id"] = creds.get("account_id")
+        if sig["id_token"]:
+            sig["email"] = extract_jwt_identity(str(sig["id_token"]))
+        if not sig["email"] and sig["access_token"]:
+            sig["email"] = extract_jwt_identity(str(sig["access_token"]))
+        if not sig["email"]:
+            sig["email"] = creds.get("email")
+
+    elif prov == "gemini":
+        tok_dict = creds.get("token") if isinstance(creds.get("token"), dict) else {}
+        sig["access_token"] = tok_dict.get("access_token") or creds.get("access_token")
+        sig["refresh_token"] = tok_dict.get("refresh_token") or creds.get("refresh_token")
+        sig["id_token"] = tok_dict.get("id_token") or creds.get("id_token")
+        sig["email"] = creds.get("email")
+        if not sig["email"] and sig["id_token"]:
+            sig["email"] = extract_jwt_identity(str(sig["id_token"]))
+        if not sig["email"] and isinstance(sig["access_token"], str):
+            sig["email"] = extract_jwt_identity(sig["access_token"])
+
+    return sig
+
+
+def _signatures_match(sig1: dict[str, Any], sig2: dict[str, Any]) -> bool:
+    """Check if two credential signatures correspond to the same account."""
+    if not sig1 or not sig2:
+        return False
+
+    # 1. Match by refresh token (strongest persistent identity across renewals)
+    if sig1.get("refresh_token") and sig2.get("refresh_token") and sig1["refresh_token"] == sig2["refresh_token"]:
+        return True
+
+    # 2. Match by email
+    if sig1.get("email") and sig2.get("email") and str(sig1["email"]).lower() == str(sig2["email"]).lower():
+        return True
+
+    # 3. Match by account_id
+    if sig1.get("account_id") and sig2.get("account_id") and str(sig1["account_id"]) == str(sig2["account_id"]):
+        return True
+
+    # 4. Match by access token
+    if sig1.get("access_token") and sig2.get("access_token") and sig1["access_token"] == sig2["access_token"]:
+        return True
+
+    return False
+
+
+def backup_active_to_profile(provider: str, config_path: str | Path | None = None) -> tuple[bool, str]:
+    """Inspect active system credentials and synchronize back to matching isolated profile.
+
+    Preserves refreshed OAuth tokens generated during CLI tool execution.
+
+    Returns:
+        tuple[bool, str]: (success, status_message)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return False, f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+
+    if prov == "claude":
+        sys_creds, _ = get_active_claude_credentials()
+    elif prov == "codex":
+        sys_creds, _ = get_active_codex_credentials()
+    elif prov == "gemini":
+        sys_creds, _ = get_active_gemini_credentials()
+    else:
+        sys_creds = None
+
+    if sys_creds is None:
+        return True, "Nenhuma sessão ativa encontrada no sistema para backup."
+
+    sys_sig = _extract_credential_signature(prov, sys_creds)
+    cfg = load_config(config_path)
+    accounts = get_accounts_for_agent(cfg, prov)
+    if not accounts:
+        return True, "Nenhuma conta cadastrada para backup."
+
+    sys_file = get_system_credential_file(prov).resolve()
+
+    matched_account: dict[str, Any] | None = None
+    matched_file: Path | None = None
+
+    # Step 1: Search by signature match in profile credentials files
+    for acc in accounts:
+        cred_p_val = acc.get("credential_path")
+        if not cred_p_val:
+            dir_key = f"{prov}_dir"
+            if acc.get(dir_key):
+                filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
+                cred_p_val = str(Path(acc[dir_key]) / filename)
+
+        if cred_p_val:
+            file_p = Path(cred_p_val).expanduser().resolve()
+            if file_p.exists() and file_p.is_file():
+                try:
+                    with open(file_p, "r", encoding="utf-8") as f:
+                        acc_data = json.load(f)
+                    if isinstance(acc_data, dict):
+                        acc_sig = _extract_credential_signature(prov, acc_data)
+                        if _signatures_match(sys_sig, acc_sig):
+                            matched_account = acc
+                            matched_file = file_p
+                            break
+                except Exception:
+                    pass
+
+    # Step 2: If no signature match, check for account flagged active in config
+    if not matched_account:
+        for acc in accounts:
+            if acc.get("active") is True:
+                cred_p_val = acc.get("credential_path")
+                if not cred_p_val:
+                    dir_key = f"{prov}_dir"
+                    if acc.get(dir_key):
+                        filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
+                        cred_p_val = str(Path(acc[dir_key]) / filename)
+                if cred_p_val:
+                    file_p = Path(cred_p_val).expanduser().resolve()
+                    if file_p.exists() and file_p.is_file():
+                        matched_account = acc
+                        matched_file = file_p
+                        break
+
+    if matched_account and matched_file:
+        if matched_file == sys_file:
+            return True, "Sessão ativa já reside no caminho padrão do sistema."
+
+        try:
+            save_secure_json(sys_creds, matched_file, prefix="backup_")
+            enforce_profile_security_permissions(matched_file.parent)
+            acc_id = matched_account.get("id", "desconhecido")
+            return True, f"Credenciais da sessão ativa sincronizadas de volta para o perfil '{acc_id}'."
+        except Exception as e:
+            return False, f"Falha ao realizar backup da sessão ativa para '{matched_file}': {e}"
+
+    return True, "Nenhum perfil isolado correspondente para sincronizar sessão ativa."
+
+
+def activate_profile_to_system(
+    provider: str,
+    account_id: str,
+    config_path: str | Path | None = None,
+) -> tuple[bool, str]:
+    """Atomically copy isolated profile credentials to system default path with 0600 permissions.
+
+    For Gemini, also updates system keyring via secret-tool if available.
+
+    Returns:
+        tuple[bool, str]: (success, status_message)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return False, f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+
+    acc_id = str(account_id).strip() if account_id is not None else ""
+    if not acc_id:
+        return False, "Identificador da conta não pode ser vazio."
+
+    cfg = load_config(config_path)
+    accounts = get_accounts_for_agent(cfg, prov)
+    target_acc = next((a for a in accounts if str(a.get("id")) == acc_id), None)
+    if not target_acc:
+        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
+
+    cred_path_val = target_acc.get("credential_path")
+    if not cred_path_val:
+        dir_key = f"{prov}_dir"
+        if target_acc.get(dir_key):
+            filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
+            cred_path_val = str(Path(target_acc[dir_key]) / filename)
+
+    if not cred_path_val:
+        return False, f"Caminho de credenciais não configurado para a conta '{account_id}'."
+
+    source_file = Path(cred_path_val).expanduser().resolve()
+    if not source_file.exists() or not source_file.is_file():
+        return False, f"Arquivo de credenciais da conta '{account_id}' não encontrado em '{source_file}'."
+
+    try:
+        with open(source_file, "r", encoding="utf-8") as f:
+            creds_data = json.load(f)
+    except Exception as e:
+        return False, f"Falha ao ler credenciais de '{source_file}': {e}"
+
+    if not isinstance(creds_data, dict):
+        return False, f"Formato de credencial inválido no arquivo '{source_file}'."
+
+    # Write atomically to system destination with strict 0600 permissions
+    sys_target = get_system_credential_file(prov)
+    try:
+        save_secure_json(creds_data, sys_target, prefix=f"{prov}_sys_")
+        ensure_secure_file(sys_target)
+        ensure_secure_dir(sys_target.parent)
+    except Exception as e:
+        return False, f"Falha ao gravar credencial no caminho do sistema '{sys_target}': {e}"
+
+    # For Gemini, update system keyring via secret-tool
+    if prov == "gemini":
+        try:
+            raw_payload = json.dumps(creds_data, ensure_ascii=False)
+            subprocess.run(
+                [
+                    "secret-tool",
+                    "store",
+                    "--label=Antigravity Token",
+                    "service",
+                    "gemini",
+                    "username",
+                    "antigravity",
+                ],
+                input=raw_payload,
+                text=True,
+                capture_output=True,
+                timeout=3.0,
+                check=False,
+            )
+        except Exception:
+            pass
+
+    return True, f"Perfil '{account_id}' ativado com sucesso no sistema para '{provider}'."
+

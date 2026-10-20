@@ -53,6 +53,7 @@ def build_agent_account_status(
     free_trial_invites: dict[str, Any] | None = None,
     name: str | None = None,
     manual_invite_count: int | None = None,
+    is_active: bool = False,
 ) -> dict[str, Any]:
     """Build a standardized account entry for the status contract."""
     window_type = AGENT_NATIVE_WINDOWS.get(provider.lower(), "custom")
@@ -108,6 +109,7 @@ def build_agent_account_status(
         "label": label,
         "provider": provider,
         "source": source,
+        "isActive": bool(is_active),
         "health": health,
         "native_window": default_native_window,
         "weekly_window": default_weekly_window,
@@ -150,6 +152,9 @@ def validate_status_contract(data: Any) -> bool:
             for field in ["id", "label", "provider", "source", "health", "native_window", "weekly_window", "free_trial_invites"]:
                 if field not in acc:
                     return False
+
+            if "isActive" in acc and not isinstance(acc["isActive"], bool):
+                return False
 
             ww = acc.get("weekly_window")
             if not isinstance(ww, dict):

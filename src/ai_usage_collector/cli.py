@@ -16,6 +16,7 @@ from ai_usage_collector.collector import (
     load_status_cache,
     remove_account,
     rename_account,
+    switch_account,
 )
 from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
 
@@ -40,6 +41,14 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         action="store_true",
         help="Exibe o payload canônico de status atual em JSON na saída padrão",
+    )
+    parser.add_argument(
+        "--switch-account",
+        "--activate-account",
+        dest="switch_account",
+        nargs=2,
+        metavar=("PROVIDER", "ACCOUNT_ID"),
+        help="Alterna e ativa a conta no sistema para o provedor especificado e sincroniza o status",
     )
     parser.add_argument(
         "--remove-account",
@@ -138,6 +147,28 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache_path = args.cache_path
 
     try:
+        if args.switch_account:
+            provider, account_id = args.switch_account
+            success, message, status_data = switch_account(
+                provider=provider,
+                account_id=account_id,
+                config_path=config_path,
+                cache_path=cache_path,
+            )
+            if success:
+                sys.stdout.write(f"{message}\n")
+                sys.stdout.flush()
+                if args.status:
+                    out_status = status_data or load_status_cache(cache_path)
+                    if out_status:
+                        sys.stdout.write(json.dumps(out_status, indent=2, ensure_ascii=False) + "\n")
+                        sys.stdout.flush()
+                return 0
+            else:
+                sys.stderr.write(f"Erro: {message}\n")
+                sys.stderr.flush()
+                return 1
+
         if args.remove_account:
             provider, account_id = args.remove_account
             success, message = remove_account(
@@ -288,6 +319,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         should_refresh = args.refresh or (
             not args.refresh
             and not args.status
+            and not args.switch_account
             and not args.remove_account
             and not args.rename_account
             and not args.add_account

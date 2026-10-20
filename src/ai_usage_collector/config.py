@@ -412,3 +412,81 @@ def create_account_entry(
     updated_cfg = add_account_to_config(cfg, prov, account_entry)
     save_config(updated_cfg, config_path)
     return updated_cfg, account_entry
+
+
+def set_active_account_in_config(
+    config_data: dict[str, Any],
+    provider: str,
+    account_id: str,
+) -> tuple[dict[str, Any], bool]:
+    """Set specified account as active ("active": True) and others as inactive ("active": False).
+
+    Supports standard format and legacy formats.
+
+    Returns:
+        tuple[dict[str, Any], bool]: (updated_config, was_found_and_updated)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return config_data, False
+
+    acc_id = str(account_id).strip() if account_id is not None else ""
+    if not acc_id:
+        return config_data, False
+
+    found = False
+
+    # Standard format: config["agents"][prov]["accounts"]
+    if "agents" in config_data and isinstance(config_data["agents"], dict):
+        agent_entry = config_data["agents"].get(prov)
+        if isinstance(agent_entry, dict) and "accounts" in agent_entry and isinstance(agent_entry["accounts"], list):
+            target_exists = any(
+                isinstance(acc, dict) and str(acc.get("id")) == acc_id
+                for acc in agent_entry["accounts"]
+            )
+            if target_exists:
+                found = True
+                for acc in agent_entry["accounts"]:
+                    if isinstance(acc, dict):
+                        acc["active"] = (str(acc.get("id")) == acc_id)
+
+    # Alternative format 1: config["accounts"][prov] = [...]
+    if "accounts" in config_data and isinstance(config_data["accounts"], dict):
+        if prov in config_data["accounts"] and isinstance(config_data["accounts"][prov], list):
+            target_exists = any(
+                isinstance(acc, dict) and str(acc.get("id")) == acc_id
+                for acc in config_data["accounts"][prov]
+            )
+            if target_exists:
+                found = True
+                for acc in config_data["accounts"][prov]:
+                    if isinstance(acc, dict):
+                        acc["active"] = (str(acc.get("id")) == acc_id)
+
+    # Alternative format 2: config["accounts"] = [{"provider": "...", "id": "..."}, ...]
+    if "accounts" in config_data and isinstance(config_data["accounts"], list):
+        target_exists = any(
+            isinstance(acc, dict) and acc.get("provider") == prov and str(acc.get("id")) == acc_id
+            for acc in config_data["accounts"]
+        )
+        if target_exists:
+            found = True
+            for acc in config_data["accounts"]:
+                if isinstance(acc, dict) and acc.get("provider") == prov:
+                    acc["active"] = (str(acc.get("id")) == acc_id)
+
+    return config_data, found
+
+
+def set_active_account(
+    provider: str,
+    account_id: str,
+    config_path: str | Path | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Load config, mark account active, persist atomically with 0600 if updated, and return (config, was_set)."""
+    cfg = load_config(config_path)
+    updated_cfg, was_set = set_active_account_in_config(cfg, provider, account_id)
+    if was_set:
+        save_config(updated_cfg, config_path)
+    return updated_cfg, was_set
+

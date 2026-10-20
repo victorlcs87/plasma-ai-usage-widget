@@ -8,6 +8,16 @@ from typing import Any
 
 from datetime import datetime, timezone
 
+from ai_usage_collector.capture import (
+    activate_profile_to_system,
+    backup_active_to_profile,
+    get_active_claude_credentials,
+    get_active_codex_credentials,
+    get_active_gemini_credentials,
+    get_system_credential_file,
+    _extract_credential_signature,
+    _signatures_match,
+)
 from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
@@ -19,6 +29,7 @@ from ai_usage_collector.config import (
     rename_account as config_rename_account,
     save_config,
     save_secure_json,
+    set_active_account,
 )
 from ai_usage_collector.contract import (
     build_agent_account_status,
@@ -51,6 +62,71 @@ def load_status_cache(path: str | Path | None = None) -> dict[str, Any] | None:
         return None
 
 
+def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> str | None:
+    """Detect which account is currently active in the system for the given provider."""
+    if not accounts:
+        return None
+
+    prov = provider.lower().strip()
+    if prov == "claude":
+        sys_creds, _ = get_active_claude_credentials()
+    elif prov == "codex":
+        sys_creds, _ = get_active_codex_credentials()
+    elif prov == "gemini":
+        sys_creds, _ = get_active_gemini_credentials()
+    else:
+        sys_creds = None
+
+    sys_file = None
+    try:
+        sys_file = get_system_credential_file(prov).resolve()
+    except Exception:
+        pass
+
+    sys_sig = _extract_credential_signature(prov, sys_creds) if sys_creds else {}
+
+    # Check 1: If system credentials exist, check signature match against account credential files
+    if sys_sig:
+        for acc in accounts:
+            cred_p_val = acc.get("credential_path") or acc.get("credentials_path")
+            if not cred_p_val:
+                dir_key = f"{prov}_dir"
+                if acc.get(dir_key):
+                    filename = ".credentials.json" if prov == "claude" else ("auth.json" if prov == "codex" else "oauth_creds.json")
+                    cred_p_val = str(Path(acc[dir_key]) / filename)
+
+            if cred_p_val:
+                p = Path(cred_p_val).expanduser().resolve()
+                if p.exists() and p.is_file():
+                    try:
+                        with open(p, "r", encoding="utf-8") as f:
+                            acc_data = json.load(f)
+                        if isinstance(acc_data, dict):
+                            acc_sig = _extract_credential_signature(prov, acc_data)
+                            if _signatures_match(sys_sig, acc_sig):
+                                return str(acc.get("id"))
+                    except Exception:
+                        pass
+
+    # Check 2: Account explicitly flagged with "active": True in config
+    for acc in accounts:
+        if acc.get("active") is True:
+            return str(acc.get("id"))
+
+    # Check 3: If system file exists and matches an account's credential_path
+    if sys_file and sys_file.exists():
+        for acc in accounts:
+            cred_p_val = acc.get("credential_path") or acc.get("credentials_path")
+            if cred_p_val and Path(cred_p_val).expanduser().resolve() == sys_file:
+                return str(acc.get("id"))
+
+    # Check 4: If single account and active session exists
+    if len(accounts) == 1 and sys_creds is not None:
+        return str(accounts[0].get("id"))
+
+    return None
+
+
 def collect_and_save(
     config_path: str | Path | None = None,
     cache_path: str | Path | None = None,
@@ -68,9 +144,11 @@ def collect_and_save(
         account_statuses: list[dict[str, Any]] = []
 
         agent_has_valid_account = False
+        active_acc_id = detect_active_account_id(agent_id, accounts)
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
+            is_active = (str(acc_id) == str(active_acc_id)) if active_acc_id is not None else False
             acc_name = acc.get("name")
             acc_label = acc.get("label")
             label = acc_name or acc_label or f"{agent_id.capitalize()} ({acc_id})"
@@ -133,6 +211,7 @@ def collect_and_save(
                 free_trial_invites=invites,
                 name=acc_name or label,
                 manual_invite_count=manual_invite_count,
+                is_active=is_active,
             )
             account_statuses.append(acc_status)
 
@@ -456,5 +535,69 @@ def interactive_login_account(
         )
 
     return True, message, status_payload
+
+
+def switch_account(
+    provider: str,
+    account_id: str,
+    config_path: str | Path | None = None,
+    cache_path: str | Path | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """Switch active account in system and sync config and status cache.
+
+    Steps:
+        1. Validate provider and account existence.
+        2. Backup current active session to its isolated profile.
+        3. Activate selected account credentials to system paths.
+        4. Persist active account flag in config.
+        5. Collect and save updated status.
+
+    Returns:
+        tuple[bool, str, dict[str, Any] | None]: (success, status_message, status_payload)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return (
+            False,
+            f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}",
+            None,
+        )
+
+    acc_id = str(account_id).strip() if account_id is not None else ""
+    if not acc_id:
+        return False, "Identificador da conta não pode ser vazio.", None
+
+    cfg = load_config(config_path)
+    accounts = get_accounts_for_agent(cfg, prov)
+    target_acc = next((a for a in accounts if str(a.get("id")) == acc_id), None)
+    if not target_acc:
+        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
+
+    # Step 2: Backup active session to profile
+    backup_ok, backup_msg = backup_active_to_profile(prov, config_path)
+    if not backup_ok:
+        pass
+
+    # Step 3: Activate target profile to system
+    act_ok, act_msg = activate_profile_to_system(prov, acc_id, config_path)
+    if not act_ok:
+        return False, f"Falha ao ativar perfil no sistema: {act_msg}", None
+
+    # Step 4: Persist active account flag in config
+    set_active_account(prov, acc_id, config_path)
+
+    # Step 5: Collect and save updated status
+    target_label = target_acc.get("label") or target_acc.get("name") or acc_id
+    try:
+        status_payload = collect_and_save(config_path=config_path, cache_path=cache_path)
+    except Exception as e:
+        return (
+            True,
+            f"Conta '{target_label}' ativada com sucesso no sistema, mas falhou ao sincronizar status: {e}",
+            None,
+        )
+
+    return True, f"Conta '{target_label}' ativada com sucesso no sistema!", status_payload
+
 
 

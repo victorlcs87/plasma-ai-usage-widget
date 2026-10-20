@@ -125,3 +125,44 @@ def test_validate_status_contract():
     assert validate_status_contract({}) is False
     assert validate_status_contract({"version": 2}) is False
     assert validate_status_contract({"version": 1, "last_updated": "2026-10-20"}) is False
+
+
+def test_build_agent_account_status_is_active():
+    acc_inactive = build_agent_account_status(
+        provider="claude",
+        account_id="claude-1",
+        label="Claude 1",
+        source="manual",
+        health={"status": "valid"},
+        is_active=False,
+    )
+    assert acc_inactive["isActive"] is False
+
+    acc_active = build_agent_account_status(
+        provider="claude",
+        account_id="claude-2",
+        label="Claude 2",
+        source="manual",
+        health={"status": "valid"},
+        is_active=True,
+    )
+    assert acc_active["isActive"] is True
+
+
+def test_validate_status_contract_is_active():
+    contract = build_empty_status_contract()
+    acc = build_agent_account_status(
+        provider="codex",
+        account_id="codex-1",
+        label="Codex 1",
+        source="manual",
+        health={"status": "valid"},
+        is_active=True,
+    )
+    contract["agents"]["codex"]["accounts"].append(acc)
+    assert validate_status_contract(contract) is True
+
+    # If isActive is not a bool, validation should fail
+    acc["isActive"] = "not_a_bool"
+    assert validate_status_contract(contract) is False
+

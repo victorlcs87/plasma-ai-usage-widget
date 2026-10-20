@@ -21,14 +21,14 @@ Implementar o mecanismo de alternância de conta ativa (Account Switching) no si
 
 ## Acceptance criteria
 
-- [ ] `set_active_account_in_config()` atualiza flag ativa por provedor.
-- [ ] `backup_active_to_profile()` sincroniza credenciais da sessão ativa de volta para o perfil correto.
-- [ ] `activate_profile_to_system()` copia credenciais para `~/.claude`, `~/.codex` e `~/.gemini` com permissões `0600`.
-- [ ] `ai-usage-collector --switch-account <provider> <account_id>` executa com sucesso e retorna exit code 0.
-- [ ] `status.json` inclui campo canônico `isActive: true` para a conta em uso e `isActive: false` para as demais.
-- [ ] Detecção automática no `collect_and_save()` identifica a conta ativa mesmo sem chamada explícita de switch.
-- [ ] Diagnóstico da autenticação do Gemini para manter a saúde válida ou orientar renovação.
-- [ ] Testes automatizados cobrindo switch de Claude, Codex e Gemini, backup prévio e tratamento de erros.
+- [x] `set_active_account_in_config()` atualiza flag ativa por provedor.
+- [x] `backup_active_to_profile()` sincroniza credenciais da sessão ativa de volta para o perfil correto.
+- [x] `activate_profile_to_system()` copia credenciais para `~/.claude`, `~/.codex` e `~/.gemini` com permissões `0600`.
+- [x] `ai-usage-collector --switch-account <provider> <account_id>` executa com sucesso e retorna exit code 0.
+- [x] `status.json` inclui campo canônico `isActive: true` para a conta em uso e `isActive: false` para as demais.
+- [x] Detecção automática no `collect_and_save()` identifica a conta ativa mesmo sem chamada explícita de switch.
+- [x] Diagnóstico da autenticação do Gemini para manter a saúde válida ou orientar renovação.
+- [x] Testes automatizados cobrindo switch de Claude, Codex e Gemini, backup prévio e tratamento de erros.
 
 ## Blocked by
 
