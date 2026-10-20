@@ -308,7 +308,7 @@ def read_codex_current_model(codex_dir: Path) -> str | None:
         try:
             latest = max(rollouts, key=os.path.getmtime)
             model = None
-            with open(latest, "r", encoding="utf-8") as f:
+            with open(latest, "r", encoding="utf-8", errors="replace") as f:
                 for line in f:
                     if '"turn_context"' not in line:
                         continue
@@ -323,7 +323,7 @@ def read_codex_current_model(codex_dir: Path) -> str | None:
         except OSError:
             pass
     try:
-        config_text = (codex_dir / "config.toml").read_text(encoding="utf-8")
+        config_text = (codex_dir / "config.toml").read_text(encoding="utf-8", errors="replace")
     except OSError:
         return None
     # ponytail: top-level `model = "..."` via regex (tomllib needs 3.11); profiles ignored

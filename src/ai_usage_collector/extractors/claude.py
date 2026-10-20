@@ -203,7 +203,7 @@ def resolve_git_repo_root(cwd: str) -> str:
             if git_entry.is_dir():
                 return str(candidate)
             if git_entry.is_file():
-                gitdir = git_entry.read_text(encoding="utf-8").strip().removeprefix("gitdir:").strip()
+                gitdir = git_entry.read_text(encoding="utf-8", errors="replace").strip().removeprefix("gitdir:").strip()
                 if "/.git/worktrees/" in gitdir:
                     return gitdir.split("/.git/worktrees/")[0]
                 return str(candidate)
@@ -223,41 +223,52 @@ def scan_project_token_breakdown(
 
     repo_cache: dict[str, str] = {}
     for file_path in glob.glob(str(projects_dir / "*" / "*.jsonl")):
+        slug = Path(file_path).parent.name
         try:
             if os.path.getmtime(file_path) < since_sec:
                 continue
-            with open(file_path, "r", encoding="utf-8") as f:
-                lines = [line for line in f if '"usage"' in line]
+            with open(file_path, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"usage"' in line:
+                        _add_usage_line(line, since_sec, slug, repo_cache, by_model, by_project)
         except OSError:
             continue
-        slug = Path(file_path).parent.name
-        for line in lines:
-            try:
-                entry = json.loads(line)
-                ts = parse_timestamp(entry.get("timestamp"))
-                if ts is None or ts < since_sec:
-                    continue
-                message = entry.get("message") or {}
-                usage = message.get("usage") or entry.get("usage")
-                if not isinstance(usage, dict):
-                    continue
-                tok = int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
-                if tok <= 0:
-                    continue
-                model = message.get("model")
-                if isinstance(model, str) and model and model != "<synthetic>":
-                    by_model[model] = by_model.get(model, 0) + tok
-                cwd = entry.get("cwd")
-                if isinstance(cwd, str) and cwd:
-                    if cwd not in repo_cache:
-                        repo_cache[cwd] = resolve_git_repo_root(cwd)
-                    project = Path(repo_cache[cwd]).name or slug
-                else:
-                    project = slug
-                by_project[project] = by_project.get(project, 0) + tok
-            except Exception:
-                continue
     return by_model, by_project
+
+
+def _add_usage_line(
+    line: str,
+    since_sec: float,
+    slug: str,
+    repo_cache: dict[str, str],
+    by_model: dict[str, int],
+    by_project: dict[str, int],
+) -> None:
+    try:
+        entry = json.loads(line)
+        ts = parse_timestamp(entry.get("timestamp"))
+        if ts is None or ts < since_sec:
+            return
+        message = entry.get("message") or {}
+        usage = message.get("usage") or entry.get("usage")
+        if not isinstance(usage, dict):
+            return
+        tok = int(usage.get("input_tokens", 0) or 0) + int(usage.get("output_tokens", 0) or 0)
+        if tok <= 0:
+            return
+        model = message.get("model")
+        if isinstance(model, str) and model and model != "<synthetic>":
+            by_model[model] = by_model.get(model, 0) + tok
+        cwd = entry.get("cwd")
+        if isinstance(cwd, str) and cwd:
+            if cwd not in repo_cache:
+                repo_cache[cwd] = resolve_git_repo_root(cwd)
+            project = Path(repo_cache[cwd]).name or slug
+        else:
+            project = slug
+        by_project[project] = by_project.get(project, 0) + tok
+    except Exception:
+        return
 
 
 def _sorted_breakdown(totals: dict[str, int], key: str) -> list[dict[str, Any]]:

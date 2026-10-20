@@ -194,3 +194,17 @@ def test_contract_usage_details_optional_and_versioned():
     assert validate_status_contract(payload) is True
     payload["version"] = 1  # older payloads remain valid
     assert validate_status_contract(payload) is True
+
+
+def test_invalid_utf8_does_not_break_extraction(tmp_path):
+    claude_dir = _write_claude_projects(tmp_path)
+    (claude_dir / "projects" / "-repos-app" / "bad.jsonl").write_bytes(b"\xff\xfe\"usage\"\n")
+    by_model, _ = scan_project_token_breakdown(claude_dir / "projects", 0)
+    assert by_model["claude-opus"] == 150 + 1998
+
+    codex_dir = tmp_path / ".codex"
+    day = codex_dir / "sessions" / "2026" / "10" / "20"
+    day.mkdir(parents=True)
+    (day / "rollout-x.jsonl").write_bytes(b"\xff turn_context\n")
+    (codex_dir / "config.toml").write_bytes(b'\xff\nmodel = "gpt-5"\n')
+    assert read_codex_current_model(codex_dir) == "gpt-5"
