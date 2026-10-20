@@ -856,10 +856,9 @@ Item {
         title: configRoot.safeI18n("Confirmar Remoção de Conta")
         modal: true
         anchors.centerIn: parent
-        standardButtons: QQC2.Dialog.Cancel
 
         ColumnLayout {
-            spacing: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.largeSpacing
 
             QQC2.Label {
                 text: {
@@ -873,12 +872,19 @@ Item {
                     );
                 }
                 wrapMode: Text.WordWrap
+                Layout.fillWidth: true
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 22
             }
 
             RowLayout {
                 Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                Layout.topMargin: Kirigami.Units.smallSpacing
                 spacing: Kirigami.Units.smallSpacing
+
+                Item {
+                    Layout.fillWidth: true
+                }
 
                 PlasmaComponents3.Button {
                     text: configRoot.safeI18n("Cancelar")

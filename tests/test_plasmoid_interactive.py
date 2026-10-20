@@ -580,6 +580,36 @@ def test_gui_capture_and_login_shell_injection_resilience(tmp_path: Path):
         assert not pwned_marker.exists(), f"Vulnerability detected with payload: {evil_input}"
 
 
+def test_config_general_qml_confirm_dialog_clean_layout_and_no_conflicting_standard_buttons():
+    """Verify confirmDialog avoids conflicting standardButtons and has proper layout for custom action buttons."""
+    config_general_path = UI_DIR / "configGeneral.qml"
+    content = config_general_path.read_text(encoding="utf-8")
 
+    # 1. Locate confirmDialog definition
+    dialog_start = content.find("id: confirmDialog")
+    assert dialog_start != -1, "confirmDialog definition not found in configGeneral.qml"
 
+    dialog_end = content.find("\n    }", dialog_start)
+    assert dialog_end != -1, "End of confirmDialog block not found"
+    dialog_block = content[dialog_start:dialog_end]
+
+    # 2. Verify no standardButtons are defined (prevents duplicate Cancel button overlap in Breeze theme)
+    assert "standardButtons" not in dialog_block, (
+        "confirmDialog must not define standardButtons (standardButtons: QQC2.Dialog.Cancel causes "
+        "duplicate Cancel button collision in KDE Plasma 6 Breeze)"
+    )
+
+    # 3. Verify custom action buttons exist and are wired correctly
+    assert "PlasmaComponents3.Button" in dialog_block
+    assert "Cancelar" in dialog_block
+    assert "Remover Conta" in dialog_block
+    assert "confirmDialog.close()" in dialog_block
+    assert "configRoot.confirmDelete()" in dialog_block
+
+    # 4. Verify proper spacing and layout structure for clean Breeze presentation
+    assert "ColumnLayout" in dialog_block
+    assert "Kirigami.Units.largeSpacing" in dialog_block
+    assert "RowLayout" in dialog_block
+    assert "Qt.AlignRight" in dialog_block
+    assert "Kirigami.Units.smallSpacing" in dialog_block
 

@@ -10,10 +10,10 @@ A correção deve remover a propriedade `standardButtons` do diálogo (definindo
 
 ## Acceptance criteria
 
-- [ ] O `confirmDialog` não utiliza `standardButtons` automáticos — apenas os botões customizados `Cancelar` e `Remover Conta` são exibidos.
-- [ ] Os botões têm espaçamento adequado e não se sobrepõem visualmente.
-- [ ] Teste em `test_plasmoid_interactive.py` valida que o QML fonte do `confirmDialog` não contém `standardButtons`.
-- [ ] Todos os testes existentes continuam passando (145+).
+- [x] O `confirmDialog` não utiliza `standardButtons` automáticos — apenas os botões customizados `Cancelar` e `Remover Conta` são exibidos.
+- [x] Os botões têm espaçamento adequado e não se sobrepõem visualmente.
+- [x] Teste em `test_plasmoid_interactive.py` valida que o QML fonte do `confirmDialog` não contém `standardButtons`.
+- [x] Todos os testes existentes continuam passando (145+).
 
 ## Blocked by
 
