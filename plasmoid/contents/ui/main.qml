@@ -153,17 +153,17 @@ PlasmoidItem {
         statusDataSource.connectSource(cmd);
     }
 
-    // Timer para recarregar periodicamente a cada 30 segundos
+    // Timer para recarregar periodicamente a cada 30 segundos (somente quando ativo/visível)
     Timer {
         id: autoReloadTimer
         interval: 30000
         repeat: true
-        running: true
+        running: root.expanded || !root.inPanel
         onTriggered: root.loadStatus()
     }
 
     onExpandedChanged: {
-        if (expanded) {
+        if (root.expanded) {
             root.loadStatus();
         }
     }

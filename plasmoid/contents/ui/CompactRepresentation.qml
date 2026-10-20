@@ -91,12 +91,4 @@ Item {
             color: "white"
         }
     }
-
-    QQC2.ToolTip.visible: mouseArea.containsMouse
-    QQC2.ToolTip.text: {
-        if (compactRoot.plasmoidItem) {
-            return compactRoot.plasmoidItem.toolTipSubText || compactRoot.plasmoidItem.Plasmoid.title || "";
-        }
-        return "";
-    }
 }

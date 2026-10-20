@@ -4,7 +4,7 @@
 
 **Blocked by:** 04: Gestao Multi-Conta e Remocao de Contas via CLI e Configuracao
 
-**Status:** in-review
+**Status:** closed
 
 - [x] Pacote Plasmoid valido com manifesto `metadata.json` compativel com KDE Plasma 6 (`KPackage/GenericQML` e tipo `Plasma/Applet`).
 - [x] Implementacao de visualizacao responsiva baseada em `Plasmoid.formFactor` (Painel com popup vs Desktop com exibicao expandida).
