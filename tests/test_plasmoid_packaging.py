@@ -7,6 +7,7 @@ import os
 from pathlib import Path
 import shutil
 import subprocess
+import zipfile
 
 import pytest
 
@@ -21,6 +22,8 @@ PLASMOID_DIR = REPO_ROOT / "plasmoid"
 METADATA_PATH = PLASMOID_DIR / "metadata.json"
 UI_DIR = PLASMOID_DIR / "contents" / "ui"
 INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install-plasmoid.sh"
+PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-release.sh"
+RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
 
 def test_plasmoid_directory_structure():
@@ -269,5 +272,144 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     assert "interactiveLoginDataSource" in content
     assert "--capture-current" in content
     assert "--interactive-login" in content
+
+
+def test_package_release_script_attributes_and_execution(tmp_path):
+    """Verify package-release.sh exists, is executable, and produces plasmoid and wheel."""
+    assert PACKAGE_SCRIPT.is_file(), "package-release.sh script must exist"
+    assert os.access(PACKAGE_SCRIPT, os.X_OK), "package-release.sh must have executable bit set"
+
+    result = subprocess.run(
+        [str(PACKAGE_SCRIPT), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+
+    plasmoid_file = tmp_path / "org.kde.plasma.aiusage.plasmoid"
+    assert plasmoid_file.is_file(), "Plasmoid package must be generated in target directory"
+
+    wheels = list(tmp_path.glob("plasma_ai_usage_collector-*.whl"))
+    assert len(wheels) == 1, f"Expected exactly one wheel in {tmp_path}, found: {wheels}"
+
+
+def test_plasmoid_package_archive_contents(tmp_path):
+    """Verify generated .plasmoid package is a valid zip with metadata at root and required QML files."""
+    result = subprocess.run(
+        [str(PACKAGE_SCRIPT), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+
+    plasmoid_file = tmp_path / "org.kde.plasma.aiusage.plasmoid"
+    assert plasmoid_file.is_file()
+
+    with zipfile.ZipFile(plasmoid_file, "r") as zf:
+        namelist = zf.namelist()
+
+        # Root metadata.json
+        assert "metadata.json" in namelist, "metadata.json must be located at the root of the .plasmoid archive"
+
+        # Required components
+        expected_files = [
+            "contents/ui/main.qml",
+            "contents/ui/CompactRepresentation.qml",
+            "contents/ui/FullRepresentation.qml",
+            "contents/ui/AccountCard.qml",
+            "contents/ui/configGeneral.qml",
+            "contents/config/main.xml",
+            "contents/config/config.qml",
+        ]
+        for f in expected_files:
+            assert f in namelist, f"Missing file in plasmoid package: {f}"
+
+        # Cleanliness: no temp/swap/cache files
+        for name in namelist:
+            assert not name.endswith("~"), f"Temporary file found in plasmoid: {name}"
+            assert not name.endswith(".swp"), f"Vim swap file found in plasmoid: {name}"
+            assert not name.endswith(".bak"), f"Backup file found in plasmoid: {name}"
+            assert "__pycache__" not in name, f"Python cache found in plasmoid: {name}"
+            assert ".git" not in name, f"Git file found in plasmoid: {name}"
+            assert ".DS_Store" not in name, f"macOS artifact found in plasmoid: {name}"
+
+        # Verify metadata validity inside package
+        meta_data = json.loads(zf.read("metadata.json").decode("utf-8"))
+        assert meta_data.get("KPlugin", {}).get("Id") == "org.kde.plasma.aiusage"
+        assert meta_data.get("KPackageStructure") == "Plasma/Applet"
+
+
+def test_collector_wheel_contents_and_entrypoint(tmp_path):
+    """Verify generated wheel contains collector packages and ai-usage-collector entrypoint."""
+    result = subprocess.run(
+        [str(PACKAGE_SCRIPT), str(tmp_path)],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+
+    wheels = list(tmp_path.glob("plasma_ai_usage_collector-*.whl"))
+    assert len(wheels) == 1, f"Expected exactly one wheel in {tmp_path}, found: {wheels}"
+    wheel_file = wheels[0]
+
+    with zipfile.ZipFile(wheel_file, "r") as zf:
+        namelist = zf.namelist()
+
+        # Verify collector modules are present
+        expected_modules = [
+            "ai_usage_collector/__init__.py",
+            "ai_usage_collector/cli.py",
+            "ai_usage_collector/contract.py",
+            "ai_usage_collector/collector.py",
+            "ai_usage_collector/discovery.py",
+            "ai_usage_collector/config.py",
+            "ai_usage_collector/capture.py",
+            "ai_usage_collector/extractors/claude.py",
+            "ai_usage_collector/extractors/codex.py",
+            "ai_usage_collector/extractors/gemini.py",
+        ]
+        for mod in expected_modules:
+            assert mod in namelist, f"Missing Python module in wheel: {mod}"
+
+        # Verify entry point
+        ep_files = [n for n in namelist if n.endswith("entry_points.txt")]
+        assert ep_files, "entry_points.txt must be present in wheel dist-info"
+        ep_content = zf.read(ep_files[0]).decode("utf-8")
+        assert "ai-usage-collector = ai_usage_collector.cli:main" in ep_content
+
+
+def test_github_actions_release_workflow_configuration():
+    """Verify release.yml workflow has required triggers, permissions, and build/release steps."""
+    assert RELEASE_WORKFLOW.is_file(), ".github/workflows/release.yml must exist"
+
+    content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+
+    # Triggers
+    assert "branches:" in content and "main" in content
+    assert "tags:" in content and "'v*'" in content
+    assert "workflow_dispatch:" in content
+
+    # Permissions
+    assert "contents: write" in content
+
+    # Steps
+    assert "actions/checkout@v4" in content
+    assert "fetch-depth: 0" in content
+    assert "actions/setup-python@v5" in content
+    assert "3.12" in content
+    assert "pip install build" in content
+    assert "scripts/package-release.sh" in content
+    assert "softprops/action-gh-release@v2" in content
+
+    # Artifacts attached
+    assert "dist/*.plasmoid" in content
+    assert "dist/*.whl" in content
+
+    # Release naming & tag logic
+    assert "latest" in content
+
 
 
