@@ -4,11 +4,11 @@
 
 **Blocked by:** 07: Backend e Contrato do Medidor Percentual Semanal e CLI `--add-account`
 
-**Status:** ready-for-agent
+**Status:** closed
 
-- [ ] Remocao dos textos brutos de quantidade de mensagens como capacidade principal.
-- [ ] Renderizacao da barra de progresso da Janela Ativa com porcentagem, volume de tokens e tempo de liberacao.
-- [ ] Renderizacao da barra de progresso da Janela Semanal com porcentagem da semana, volume acumulado de tokens e data/hora de virada do ciclo.
-- [ ] Unificacao das faixas de cores em ambos os medidores (verde < 70%, amarelo 70-90%, vermelho > 90%).
-- [ ] Preservacao do badge e acao de copia segura de convites de teste gratuito.
-- [ ] Revalidacao sintatica do QML com `qml6` e testes automatizados de bindings de contrato.
+- [x] Remocao dos textos brutos de quantidade de mensagens como capacidade principal.
+- [x] Renderizacao da barra de progresso da Janela Ativa com porcentagem, volume de tokens e tempo de liberacao.
+- [x] Renderizacao da barra de progresso da Janela Semanal com porcentagem da semana, volume acumulado de tokens e data/hora de virada do ciclo.
+- [x] Unificacao das faixas de cores em ambos os medidores (verde < 70%, amarelo 70-90%, vermelho > 90%).
+- [x] Preservacao do badge e acao de copia segura de convites de teste gratuito.
+- [x] Revalidacao sintatica do QML com `qml6` e testes automatizados de bindings de contrato.

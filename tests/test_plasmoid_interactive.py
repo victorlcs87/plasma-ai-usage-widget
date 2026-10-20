@@ -301,3 +301,29 @@ def test_build_collector_command_resolution_in_shell():
     assert res.returncode == 0
     assert "ai-usage-collector" in res.stdout
 
+
+def test_account_card_weekly_meter_reactive_bindings():
+    """Verify AccountCard.qml contains reactive countdowns, token formatters and weekly bindings."""
+    card_path = UI_DIR / "AccountCard.qml"
+    content = card_path.read_text(encoding="utf-8")
+
+    # Verification of progress bars and bindings to percentage / 100.0
+    assert "nativeProgressBar" in content
+    assert "weeklyProgressBar" in content
+    assert "/ 100.0" in content
+    assert "usage_percentage" in content
+
+    # Formatter functions for tokens, percentages and timestamps
+    assert "formatPercentage" in content
+    assert "formatNumber" in content
+    assert "formatCountdown" in content
+    assert "formatDateTime" in content
+    assert "getUsageColor" in content
+
+    # Symmetric layout elements
+    assert "activeWindowTitleLabel" in content
+    assert "activeWindowPercentageLabel" in content
+    assert "weeklyWindowTitleLabel" in content
+    assert "weeklyWindowPercentageLabel" in content
+
+

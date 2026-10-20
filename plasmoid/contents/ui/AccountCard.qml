@@ -10,6 +10,7 @@ Kirigami.AbstractCard {
 
     property var accountData: ({})
     property int liveSecondsRemaining: 0
+    property int liveWeeklySecondsRemaining: 0
     property bool copiedFeedback: false
 
     Timer {
@@ -73,28 +74,58 @@ Kirigami.AbstractCard {
         return res;
     }
 
-    // Compute live countdown
+    // Compute live countdowns for both active window and weekly cycle
     function updateCountdown() {
-        if (!accountData || !accountData.native_window) {
+        if (!accountData) {
             liveSecondsRemaining = 0;
+            liveWeeklySecondsRemaining = 0;
             return;
         }
 
+        // 1. Janela Ativa/Horária
         var nw = accountData.native_window;
-        if (nw.release_time) {
-            var targetMs = new Date(nw.release_time).getTime();
-            if (!isNaN(targetMs)) {
-                var nowMs = Date.now();
-                var diffSec = Math.floor((targetMs - nowMs) / 1000);
-                liveSecondsRemaining = Math.max(0, diffSec);
-                return;
+        if (nw) {
+            var releaseIso = nw.release_time || nw.resets_at;
+            if (releaseIso) {
+                var targetMs = new Date(releaseIso).getTime();
+                if (!isNaN(targetMs)) {
+                    var diffSec = Math.floor((targetMs - Date.now()) / 1000);
+                    liveSecondsRemaining = Math.max(0, diffSec);
+                } else {
+                    liveSecondsRemaining = (nw.seconds_remaining !== undefined && nw.seconds_remaining !== null)
+                        ? Math.max(0, nw.seconds_remaining)
+                        : 0;
+                }
+            } else if (nw.seconds_remaining !== undefined && nw.seconds_remaining !== null) {
+                liveSecondsRemaining = Math.max(0, nw.seconds_remaining);
+            } else {
+                liveSecondsRemaining = 0;
             }
-        }
-
-        if (nw.seconds_remaining !== undefined && nw.seconds_remaining !== null) {
-            liveSecondsRemaining = Math.max(0, nw.seconds_remaining);
         } else {
             liveSecondsRemaining = 0;
+        }
+
+        // 2. Janela Semanal (7 dias)
+        var ww = accountData.weekly_window;
+        if (ww) {
+            var weeklyResetIso = ww.resets_at || ww.cycle_reset_time;
+            if (weeklyResetIso) {
+                var weeklyTargetMs = new Date(weeklyResetIso).getTime();
+                if (!isNaN(weeklyTargetMs)) {
+                    var weeklyDiffSec = Math.floor((weeklyTargetMs - Date.now()) / 1000);
+                    liveWeeklySecondsRemaining = Math.max(0, weeklyDiffSec);
+                } else {
+                    liveWeeklySecondsRemaining = (ww.seconds_remaining !== undefined && ww.seconds_remaining !== null)
+                        ? Math.max(0, ww.seconds_remaining)
+                        : 0;
+                }
+            } else if (ww.seconds_remaining !== undefined && ww.seconds_remaining !== null) {
+                liveWeeklySecondsRemaining = Math.max(0, ww.seconds_remaining);
+            } else {
+                liveWeeklySecondsRemaining = 0;
+            }
+        } else {
+            liveWeeklySecondsRemaining = 0;
         }
     }
 
@@ -116,13 +147,13 @@ Kirigami.AbstractCard {
 
     function formatCountdown(sec) {
         if (sec <= 0) {
-            return safeI18n("Cota totalmente liberada");
+            return safeI18n("Liberada");
         }
         var hours = Math.floor(sec / 3600);
         var minutes = Math.floor((sec % 3600) / 60);
         var seconds = Math.floor(sec % 60);
 
-        if (hours > 24) {
+        if (hours >= 24) {
             var days = Math.floor(hours / 24);
             var remH = hours % 24;
             return safeI18n("%1d %2h restantes", days, remH);
@@ -150,18 +181,39 @@ Kirigami.AbstractCard {
         }
     }
 
+    function formatDateTime(isoStr) {
+        if (!isoStr) return "";
+        try {
+            var d = new Date(isoStr);
+            if (isNaN(d.getTime())) return "";
+            var day = ("0" + d.getDate()).slice(-2);
+            var month = ("0" + (d.getMonth() + 1)).slice(-2);
+            var h = ("0" + d.getHours()).slice(-2);
+            var m = ("0" + d.getMinutes()).slice(-2);
+            return day + "/" + month + " " + h + ":" + m;
+        } catch (e) {
+            return "";
+        }
+    }
+
     function formatNumber(num) {
         if (num === null || num === undefined) return "0";
         return num.toLocaleString();
     }
 
+    function formatPercentage(percentage) {
+        if (percentage === null || percentage === undefined || isNaN(percentage)) return "0%";
+        return Math.round(Number(percentage)) + "%";
+    }
+
     function getUsageColor(percentage) {
-        if (percentage < 70) {
-            return "#27ae60"; // Verde (< 70%)
-        } else if (percentage <= 90) {
-            return "#f39c12"; // Amarelo (70% a 90%)
+        var val = (percentage === null || percentage === undefined || isNaN(percentage)) ? 0 : Number(percentage);
+        if (val < 70) {
+            return Kirigami.Theme.positiveTextColor;
+        } else if (val <= 90) {
+            return Kirigami.Theme.neutralTextColor;
         } else {
-            return "#e74c3c"; // Vermelho (> 90%)
+            return Kirigami.Theme.negativeTextColor;
         }
     }
 
@@ -251,151 +303,237 @@ Kirigami.AbstractCard {
             }
         }
 
-        // Linha 2: Janela Nativa - Título e Porcentagem
-        RowLayout {
+        // ==========================================
+        // Medidor 1: Janela Ativa/Horária
+        // ==========================================
+        ColumnLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: Math.round(Kirigami.Units.smallSpacing / 2)
 
-            QQC2.Label {
-                text: {
-                    var winType = cardRoot.accountData?.native_window?.type || "";
-                    if (winType === "5h") return cardRoot.safeI18n("Janela nativa (5h)");
-                    if (winType === "3h") return cardRoot.safeI18n("Janela nativa (3h)");
-                    if (winType === "daily") return cardRoot.safeI18n("Janela nativa (Diária)");
-                    return cardRoot.safeI18n("Janela nativa (%1)", winType);
-                }
-                font.weight: Font.DemiBold
-                color: Kirigami.Theme.textColor
-            }
-
-            Item { Layout.fillWidth: true }
-
-            QQC2.Label {
-                property double pct: cardRoot.accountData?.native_window?.usage_percentage || 0.0
-                text: pct.toFixed(1) + "%"
-                font.bold: true
-                color: cardRoot.getUsageColor(pct)
-            }
-        }
-
-        // Linha 3: Barra de Progresso com Dinamismo de Cores
-        QQC2.ProgressBar {
-            id: nativeProgressBar
-            Layout.fillWidth: true
-            Layout.preferredHeight: 8
-            from: 0
-            to: 100
-            value: cardRoot.accountData?.native_window?.usage_percentage || 0.0
-
-            background: Rectangle {
-                implicitHeight: 8
-                radius: 4
-                color: Kirigami.Theme.alternateBackgroundColor
-                border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.15)
-                border.width: 1
-            }
-
-            contentItem: Item {
-                implicitHeight: 8
-                Rectangle {
-                    width: nativeProgressBar.visualPosition * parent.width
-                    height: parent.height
-                    radius: 4
-                    color: cardRoot.getUsageColor(nativeProgressBar.value)
-                }
-            }
-        }
-
-        // Linha 4: Capacidade Disponível e Utilizada
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                color: Kirigami.Theme.disabledTextColor
-                text: {
-                    var nw = cardRoot.accountData?.native_window;
-                    if (!nw) return "";
-                    var used = nw.used_capacity !== null && nw.used_capacity !== undefined ? nw.used_capacity : 0;
-                    var total = nw.total_capacity !== null && nw.total_capacity !== undefined ? nw.total_capacity : 0;
-                    var avail = nw.available_capacity !== null && nw.available_capacity !== undefined ? nw.available_capacity : Math.max(0, total - used);
-                    return cardRoot.safeI18n("Capacidade: %1 / %2 utilizado • %3 disponível", used, total, avail);
-                }
-            }
-        }
-
-        // Linha 5: Tempo de Liberação com Contagem Regressiva
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            Kirigami.Icon {
-                source: "appointment-soon"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-                color: cardRoot.liveSecondsRemaining > 0 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.positiveTextColor
-            }
-
-            QQC2.Label {
+            // Cabeçalho: Título da Janela e Porcentagem em Destaque
+            RowLayout {
                 Layout.fillWidth: true
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                color: Kirigami.Theme.textColor
-                text: {
-                    var countdownStr = cardRoot.formatCountdown(cardRoot.liveSecondsRemaining);
-                    var releaseIso = cardRoot.accountData?.native_window?.release_time;
-                    var timeStr = cardRoot.formatTime(releaseIso);
-                    if (cardRoot.liveSecondsRemaining > 0 && timeStr.length > 0) {
-                        return cardRoot.safeI18n("Liberação: %1 (%2)", countdownStr, timeStr);
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.Label {
+                    id: activeWindowTitleLabel
+                    text: {
+                        var winType = cardRoot.accountData?.native_window?.type || "";
+                        if (winType === "5h") return cardRoot.safeI18n("Janela Ativa (5h)");
+                        if (winType === "3h") return cardRoot.safeI18n("Janela Ativa (3h)");
+                        if (winType === "daily") return cardRoot.safeI18n("Janela Diária");
+                        if (winType) return cardRoot.safeI18n("Janela Ativa (%1)", winType);
+                        return cardRoot.safeI18n("Janela Ativa");
                     }
-                    return cardRoot.safeI18n("Liberação: %1", countdownStr);
+                    font.weight: Font.DemiBold
+                    color: Kirigami.Theme.textColor
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Label {
+                    id: activeWindowPercentageLabel
+                    property double pct: cardRoot.accountData?.native_window?.usage_percentage || 0.0
+                    text: cardRoot.formatPercentage(pct)
+                    font.bold: true
+                    font.pointSize: Kirigami.Theme.defaultFont.pointSize
+                    color: cardRoot.getUsageColor(pct)
+
+                    QQC2.ToolTip.visible: activePctMouseArea.containsMouse
+                    QQC2.ToolTip.text: cardRoot.safeI18n("%1% consumido da cota horária/ativa", pct.toFixed(1))
+
+                    MouseArea {
+                        id: activePctMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
                 }
             }
-        }
 
-        // Linha 6: Métrica da Janela Semanal (7 dias)
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-            visible: {
-                var ww = cardRoot.accountData?.weekly_window;
-                return Boolean(ww && (ww.used_capacity !== null && ww.used_capacity !== undefined || ww.tokens_used));
-            }
-
-            Kirigami.Icon {
-                source: "view-calendar-timeline"
-                implicitWidth: Kirigami.Units.iconSizes.small
-                implicitHeight: Kirigami.Units.iconSizes.small
-                color: Kirigami.Theme.disabledTextColor
-            }
-
-            QQC2.Label {
+            // Barra de Progresso Proporcional da Janela Ativa
+            QQC2.ProgressBar {
+                id: nativeProgressBar
                 Layout.fillWidth: true
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                color: Kirigami.Theme.disabledTextColor
-                elide: Text.ElideRight
-                text: {
-                    var ww = cardRoot.accountData?.weekly_window;
-                    if (!ww) return "";
-                    var parts = [];
-                    if (ww.used_capacity !== null && ww.used_capacity !== undefined) {
-                        parts.push(cardRoot.safeI18n("Janela semanal (7d): %1 msgs", cardRoot.formatNumber(ww.used_capacity)));
+                Layout.preferredHeight: 6
+                from: 0.0
+                to: 1.0
+                value: (cardRoot.accountData?.native_window ? cardRoot.accountData.native_window.usage_percentage : 0.0) / 100.0
+
+                background: Rectangle {
+                    implicitHeight: 6
+                    radius: 3
+                    color: Kirigami.Theme.alternateBackgroundColor
+                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.15)
+                    border.width: 1
+                }
+
+                contentItem: Item {
+                    implicitHeight: 6
+                    Rectangle {
+                        width: Math.min(parent.width, Math.max(0, nativeProgressBar.visualPosition * parent.width))
+                        height: parent.height
+                        radius: 3
+                        color: cardRoot.getUsageColor(cardRoot.accountData?.native_window?.usage_percentage || 0.0)
                     }
-                    if (ww.tokens_used) {
-                        parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(ww.tokens_used)));
-                    }
-                    if (ww.cycle_reset_time) {
-                        var resetTimeStr = cardRoot.formatTime(ww.cycle_reset_time);
-                        if (resetTimeStr) {
-                            parts.push(cardRoot.safeI18n("renovação às %1", resetTimeStr));
+                }
+            }
+
+            // Detalhes Complementares: Tokens Consumidos e Contagem Regressiva de Liberação
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.Icon {
+                    source: "appointment-soon"
+                    implicitWidth: Kirigami.Units.iconSizes.small
+                    implicitHeight: Kirigami.Units.iconSizes.small
+                    color: cardRoot.liveSecondsRemaining > 0 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.positiveTextColor
+                }
+
+                QQC2.Label {
+                    id: activeWindowDetailsLabel
+                    Layout.fillWidth: true
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Kirigami.Theme.disabledTextColor
+                    elide: Text.ElideRight
+                    text: {
+                        var nw = cardRoot.accountData?.native_window;
+                        var parts = [];
+                        if (nw && nw.tokens_used !== null && nw.tokens_used !== undefined && nw.tokens_used > 0) {
+                            parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(nw.tokens_used)));
                         }
+                        var countdownStr = cardRoot.formatCountdown(cardRoot.liveSecondsRemaining);
+                        var releaseIso = nw ? (nw.release_time || nw.resets_at) : null;
+                        var timeStr = cardRoot.formatTime(releaseIso);
+                        if (cardRoot.liveSecondsRemaining > 0 && timeStr.length > 0) {
+                            parts.push(cardRoot.safeI18n("Liberação: %1 (%2)", countdownStr, timeStr));
+                        } else if (cardRoot.liveSecondsRemaining > 0) {
+                            parts.push(cardRoot.safeI18n("Liberação: %1", countdownStr));
+                        } else {
+                            parts.push(cardRoot.safeI18n("Cota liberada"));
+                        }
+                        return parts.join(" • ");
                     }
-                    return parts.join(" • ");
                 }
             }
         }
 
-        // Linha 7: Badge de Convites de Teste Gratuito
+        // ==========================================
+        // Medidor 2: Janela Semanal (7 dias)
+        // ==========================================
+        ColumnLayout {
+            Layout.fillWidth: true
+            spacing: Math.round(Kirigami.Units.smallSpacing / 2)
+
+            // Cabeçalho: Título da Janela Semanal e Porcentagem em Destaque
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.Label {
+                    id: weeklyWindowTitleLabel
+                    text: cardRoot.safeI18n("Janela Semanal (7 dias)")
+                    font.weight: Font.DemiBold
+                    color: Kirigami.Theme.textColor
+                }
+
+                Item { Layout.fillWidth: true }
+
+                QQC2.Label {
+                    id: weeklyWindowPercentageLabel
+                    property double weeklyPct: (cardRoot.accountData?.weekly_window?.usage_percentage !== undefined && cardRoot.accountData?.weekly_window?.usage_percentage !== null)
+                        ? cardRoot.accountData.weekly_window.usage_percentage
+                        : 0.0
+                    text: cardRoot.formatPercentage(weeklyPct)
+                    font.bold: true
+                    font.pointSize: Kirigami.Theme.defaultFont.pointSize
+                    color: cardRoot.getUsageColor(weeklyPct)
+
+                    QQC2.ToolTip.visible: weeklyPctMouseArea.containsMouse
+                    QQC2.ToolTip.text: cardRoot.safeI18n("%1% consumido da cota semanal", weeklyPct.toFixed(1))
+
+                    MouseArea {
+                        id: weeklyPctMouseArea
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
+                }
+            }
+
+            // Barra de Progresso Proporcional da Janela Semanal
+            QQC2.ProgressBar {
+                id: weeklyProgressBar
+                Layout.fillWidth: true
+                Layout.preferredHeight: 6
+                from: 0.0
+                to: 1.0
+                value: (cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0) / 100.0
+
+                background: Rectangle {
+                    implicitHeight: 6
+                    radius: 3
+                    color: Kirigami.Theme.alternateBackgroundColor
+                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.15)
+                    border.width: 1
+                }
+
+                contentItem: Item {
+                    implicitHeight: 6
+                    Rectangle {
+                        width: Math.min(parent.width, Math.max(0, weeklyProgressBar.visualPosition * parent.width))
+                        height: parent.height
+                        radius: 3
+                        color: cardRoot.getUsageColor(cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0)
+                    }
+                }
+            }
+
+            // Detalhes Complementares: Tokens Acumulados na Semana e Data/Hora de Virada do Ciclo
+            RowLayout {
+                Layout.fillWidth: true
+                spacing: Kirigami.Units.smallSpacing
+
+                Kirigami.Icon {
+                    source: "view-calendar-timeline"
+                    implicitWidth: Kirigami.Units.iconSizes.small
+                    implicitHeight: Kirigami.Units.iconSizes.small
+                    color: Kirigami.Theme.disabledTextColor
+                }
+
+                QQC2.Label {
+                    id: weeklyWindowDetailsLabel
+                    Layout.fillWidth: true
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Kirigami.Theme.disabledTextColor
+                    elide: Text.ElideRight
+                    text: {
+                        var ww = cardRoot.accountData?.weekly_window;
+                        if (!ww) return cardRoot.safeI18n("Ciclo semanal regular");
+                        var parts = [];
+                        if (ww.tokens_used !== null && ww.tokens_used !== undefined && ww.tokens_used > 0) {
+                            parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(ww.tokens_used)));
+                        }
+                        var resetIso = ww.resets_at || ww.cycle_reset_time;
+                        var dateStr = cardRoot.formatDateTime(resetIso);
+                        var countdownStr = cardRoot.formatCountdown(cardRoot.liveWeeklySecondsRemaining);
+                        if (cardRoot.liveWeeklySecondsRemaining > 0 && dateStr.length > 0) {
+                            parts.push(cardRoot.safeI18n("Virada: %1 (%2)", dateStr, countdownStr));
+                        } else if (dateStr.length > 0) {
+                            parts.push(cardRoot.safeI18n("Virada: %1", dateStr));
+                        } else if (cardRoot.liveWeeklySecondsRemaining > 0) {
+                            parts.push(cardRoot.safeI18n("Virada: %1", countdownStr));
+                        } else {
+                            parts.push(cardRoot.safeI18n("Ciclo regular"));
+                        }
+                        return parts.join(" • ");
+                    }
+                }
+            }
+        }
+
+        // ==========================================
+        // Medidor 3: Badge de Convites de Teste Gratuito
+        // ==========================================
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing

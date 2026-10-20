@@ -187,8 +187,47 @@ def test_qml_contract_keys_compatibility():
     assert "seconds_remaining" in acc["native_window"]
 
     assert "used_capacity" in acc["weekly_window"]
+    assert "usage_percentage" in acc["weekly_window"]
+    assert "tokens_used" in acc["weekly_window"]
     assert "cycle_reset_time" in acc["weekly_window"]
     assert "seconds_remaining" in acc["weekly_window"]
 
     assert "available_count" in acc["free_trial_invites"]
     assert "invite_url" in acc["free_trial_invites"]
+
+
+def test_account_card_qml_symmetric_meters_and_clean_capacity():
+    """Verify AccountCard.qml implements symmetric meters without raw message counts."""
+    card_path = UI_DIR / "AccountCard.qml"
+    assert card_path.is_file()
+    content = card_path.read_text(encoding="utf-8")
+
+    # 1. Raw message counters removed from primary capacity display
+    assert "Capacidade:" not in content
+    assert "msgs" not in content
+
+    # 2. Symmetric Active Window Meter
+    assert "Janela Ativa (5h)" in content
+    assert "Janela Ativa (3h)" in content
+    assert "Janela Diária" in content
+    assert "nativeProgressBar" in content
+    assert "liveSecondsRemaining" in content
+
+    # 3. Symmetric Weekly Window Meter
+    assert "Janela Semanal (7 dias)" in content
+    assert "weeklyProgressBar" in content
+    assert "weekly_window" in content
+    assert "liveWeeklySecondsRemaining" in content
+    assert "cycle_reset_time" in content
+
+    # 4. Unified dynamic color thresholds (< 70%, 70-90%, > 90%)
+    assert "Kirigami.Theme.positiveTextColor" in content
+    assert "Kirigami.Theme.neutralTextColor" in content
+    assert "Kirigami.Theme.negativeTextColor" in content
+    assert "70" in content and "90" in content
+
+    # 5. Free trial invite preservation
+    assert "free_trial_invites" in content
+    assert "copyToClipboard" in content
+    assert "shellQuote" in content
+
