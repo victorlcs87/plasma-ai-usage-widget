@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import shlex
 import shutil
 import subprocess
 import sys
@@ -523,9 +524,9 @@ def build_login_command_for_provider(provider: str, profile_dir: Path) -> tuple[
     profile_path = str(profile_dir.expanduser().resolve())
 
     if prov == "claude":
-        return f"env CLAUDE_CONFIG_DIR={profile_path} claude auth login", {"CLAUDE_CONFIG_DIR": profile_path}
+        return f"env CLAUDE_CONFIG_DIR={shlex.quote(profile_path)} claude auth login", {"CLAUDE_CONFIG_DIR": profile_path}
     elif prov == "codex":
-        return f"env CODEX_HOME={profile_path} codex login", {"CODEX_HOME": profile_path}
+        return f"env CODEX_HOME={shlex.quote(profile_path)} codex login", {"CODEX_HOME": profile_path}
     elif prov == "gemini":
         return "agy", {"GEMINI_CONFIG_DIR": profile_path}
     else:
