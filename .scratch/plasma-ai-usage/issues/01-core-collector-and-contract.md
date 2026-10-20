@@ -4,7 +4,7 @@
 
 **Blocked by:** None (can start immediately)
 
-**Status:** in-review
+**Status:** closed
 
 - [x] Modulo Python executavel com entrypoint de CLI (`ai-usage-collector --refresh` e `ai-usage-collector --status`) funcional.
 - [x] Criacao automatica do diretorio e arquivo `~/.config/plasma-ai-usage/config.json` com permissoes estritas `0600`.
