@@ -653,6 +653,11 @@ Kirigami.AbstractCard {
             }
         }
 
+        UsageDetails {
+            Layout.fillWidth: true
+            details: cardRoot.accountData?.usage_details ?? null
+        }
+
         // ==========================================
         // Medidor 3: Badge de Convites de Teste Gratuito
         // ==========================================

@@ -34,6 +34,7 @@ def test_plasmoid_directory_structure():
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
         "AccountCard.qml",
+        "UsageDetails.qml",
         "configGeneral.qml",
     ]
     for qml_file in expected_qml_files:
@@ -107,6 +108,7 @@ def test_qml_components_syntax_validity():
     """Verify that standalone QML components parse without syntax errors using qml6."""
     components_to_check = [
         "AccountCard.qml",
+        "UsageDetails.qml",
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
         "configGeneral.qml",

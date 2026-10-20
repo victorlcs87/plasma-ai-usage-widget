@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+import glob
 import json
+import os
+import re
 import sqlite3
 import urllib.error
 import urllib.request
@@ -283,6 +286,51 @@ def fetch_codex_usage_api(
     return None
 
 
+def parse_codex_credits(api_data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Map the optional credits block of wham/usage ({has_credits, unlimited, balance})."""
+    credits = (api_data or {}).get("credits")
+    if not isinstance(credits, dict):
+        return None
+    if credits.get("unlimited") is True:
+        return {"unlimited": True}
+    if not credits.get("has_credits"):
+        return None
+    try:
+        return {"unlimited": False, "balance": float(credits.get("balance"))}
+    except (TypeError, ValueError):
+        return None
+
+
+def read_codex_current_model(codex_dir: Path) -> str | None:
+    """Model of the latest session turn (sessions rollout), else the `model` key of config.toml."""
+    rollouts = glob.glob(str(codex_dir / "sessions" / "*" / "*" / "*" / "rollout-*.jsonl"))
+    if rollouts:
+        try:
+            latest = max(rollouts, key=os.path.getmtime)
+            model = None
+            with open(latest, "r", encoding="utf-8") as f:
+                for line in f:
+                    if '"turn_context"' not in line:
+                        continue
+                    try:
+                        payload = json.loads(line).get("payload") or {}
+                    except ValueError:
+                        continue
+                    if isinstance(payload.get("model"), str) and payload["model"]:
+                        model = payload["model"]
+            if model:
+                return model
+        except OSError:
+            pass
+    try:
+        config_text = (codex_dir / "config.toml").read_text(encoding="utf-8")
+    except OSError:
+        return None
+    # ponytail: top-level `model = "..."` via regex (tomllib needs 3.11); profiles ignored
+    match = re.search(r'^model\s*=\s*["\']([^"\']+)["\']', config_text, re.MULTILINE)
+    return match.group(1) if match else None
+
+
 def extract_codex_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
@@ -483,9 +531,20 @@ def extract_codex_status(
         "seconds_remaining": weekly_seconds_remaining,
     }
 
-    return {
+    usage_details: dict[str, Any] = {}
+    credits = parse_codex_credits(api_data)
+    if credits:
+        usage_details["credits"] = credits
+    current_model = read_codex_current_model(codex_dir)
+    if current_model:
+        usage_details["current_model"] = current_model
+
+    result = {
         "health": health,
         "native_window": native_window,
         "weekly_window": weekly_window,
         "free_trial_invites": invites,
     }
+    if usage_details:
+        result["usage_details"] = usage_details
+    return result

@@ -162,6 +162,7 @@ def collect_and_save(
             native_window = None
             weekly_window = None
             invites = None
+            usage_details = None
 
             if agent_id == "claude":
                 claude_data = extract_claude_status(acc, initial_health=health, now=now_dt)
@@ -169,12 +170,14 @@ def collect_and_save(
                 native_window = claude_data.get("native_window")
                 weekly_window = claude_data.get("weekly_window")
                 invites = claude_data.get("free_trial_invites")
+                usage_details = claude_data.get("usage_details")
             elif agent_id == "codex":
                 codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
                 health = codex_data.get("health", health)
                 native_window = codex_data.get("native_window")
                 weekly_window = codex_data.get("weekly_window")
                 invites = codex_data.get("free_trial_invites")
+                usage_details = codex_data.get("usage_details")
             elif agent_id == "gemini":
                 gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
                 health = gemini_data.get("health", health)
@@ -205,6 +208,7 @@ def collect_and_save(
                 name=acc_name or label,
                 manual_invite_count=manual_invite_count,
                 is_active=is_active,
+                usage_details=usage_details,
             )
             account_statuses.append(acc_status)
 

@@ -11,6 +11,9 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
     "gemini": "daily",
 }
 
+# v2: optional per-account "usage_details" (absent when nothing was collected)
+CONTRACT_VERSION = 2
+
 AGENT_NAMES: dict[str, str] = {
     "claude": "Claude",
     "codex": "Codex",
@@ -27,7 +30,7 @@ def build_empty_status_contract(now_iso: str | None = None) -> dict[str, Any]:
     """Construct an initial or empty canonical status.json payload."""
     timestamp = now_iso or get_current_iso_timestamp()
     return {
-        "version": 1,
+        "version": CONTRACT_VERSION,
         "last_updated": timestamp,
         "status": "ok",
         "agents": {
@@ -54,6 +57,7 @@ def build_agent_account_status(
     name: str | None = None,
     manual_invite_count: int | None = None,
     is_active: bool = False,
+    usage_details: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Build a standardized account entry for the status contract."""
     window_type = AGENT_NATIVE_WINDOWS.get(provider.lower(), "custom")
@@ -103,7 +107,7 @@ def build_agent_account_status(
 
     account_name = name or label
 
-    return {
+    entry = {
         "id": account_id,
         "name": account_name,
         "label": label,
@@ -115,6 +119,9 @@ def build_agent_account_status(
         "weekly_window": default_weekly_window,
         "free_trial_invites": default_invites,
     }
+    if usage_details:
+        entry["usage_details"] = usage_details
+    return entry
 
 
 def validate_status_contract(data: Any) -> bool:
@@ -122,7 +129,7 @@ def validate_status_contract(data: Any) -> bool:
     if not isinstance(data, dict):
         return False
 
-    if data.get("version") != 1:
+    if data.get("version") not in (1, CONTRACT_VERSION):
         return False
 
     if not isinstance(data.get("last_updated"), str):
