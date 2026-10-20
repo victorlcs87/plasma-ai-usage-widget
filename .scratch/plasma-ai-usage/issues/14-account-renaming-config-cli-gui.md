@@ -14,15 +14,15 @@ O usuário pode renomear qualquer conta cadastrada (capturada automaticamente ou
 
 ## Acceptance criteria
 
-- [ ] Função `rename_account_in_config()` altera `label` e `name` corretamente, preservando `id` e demais campos.
-- [ ] Função retorna `(config, False)` se a conta não for encontrada.
-- [ ] CLI `--rename-account claude <id> --label "Novo Nome"` altera o `config.json` e retorna exit code 0.
-- [ ] CLI rejeita label vazia com mensagem de erro e exit code 1.
-- [ ] CLI com `--status` emite JSON atualizado contendo o novo nome.
-- [ ] QML contém botão `document-edit` em cada item da lista de contas.
-- [ ] QML contém diálogo de renomeação com `QQC2.TextField` e botões `Salvar`/`Cancelar`, sem `standardButtons`.
-- [ ] QML invoca `--rename-account` via `DataSource` e recarrega a lista após sucesso.
-- [ ] Todos os testes existentes continuam passando.
+- [x] Função `rename_account_in_config()` altera `label` e `name` corretamente, preservando `id` e demais campos.
+- [x] Função retorna `(config, False)` se a conta não for encontrada.
+- [x] CLI `--rename-account claude <id> --label "Novo Nome"` altera o `config.json` e retorna exit code 0.
+- [x] CLI rejeita label vazia com mensagem de erro e exit code 1.
+- [x] CLI com `--status` emite JSON atualizado contendo o novo nome.
+- [x] QML contém botão `document-edit` em cada item da lista de contas.
+- [x] QML contém diálogo de renomeação com `QQC2.TextField` e botões `Salvar`/`Cancelar`, sem `standardButtons`.
+- [x] QML invoca `--rename-account` via `DataSource` e recarrega a lista após sucesso.
+- [x] Todos os testes existentes continuam passando.
 
 ## Blocked by
 

@@ -8,6 +8,8 @@ from ai_usage_collector.config import (
     ensure_secure_file,
     ensure_secure_dir,
     get_default_config,
+    rename_account,
+    rename_account_in_config,
 )
 
 
@@ -79,3 +81,92 @@ def test_save_secure_json_atomic_and_permissions(tmp_path):
     with open(target_path, "r", encoding="utf-8") as f:
         loaded = json.load(f)
     assert loaded == data
+
+
+def test_rename_account_in_config_standard_format():
+    cfg = {
+        "version": 1,
+        "agents": {
+            "claude": {
+                "accounts": [
+                    {
+                        "id": "acc-1",
+                        "label": "Nome Antigo",
+                        "name": "Nome Antigo",
+                        "source": "manual",
+                        "credential_path": "/path/to/creds",
+                        "claude_dir": "/path/to/claude",
+                        "manual_invite_url": "https://example.com/invite",
+                    }
+                ]
+            }
+        },
+    }
+
+    updated_cfg, was_renamed = rename_account_in_config(cfg, "claude", "acc-1", "Novo Nome Incrível")
+    assert was_renamed is True
+    acc = updated_cfg["agents"]["claude"]["accounts"][0]
+    assert acc["label"] == "Novo Nome Incrível"
+    assert acc["name"] == "Novo Nome Incrível"
+    # Preserves all other attributes
+    assert acc["id"] == "acc-1"
+    assert acc["source"] == "manual"
+    assert acc["credential_path"] == "/path/to/creds"
+    assert acc["claude_dir"] == "/path/to/claude"
+    assert acc["manual_invite_url"] == "https://example.com/invite"
+
+
+def test_rename_account_in_config_not_found():
+    cfg = {
+        "version": 1,
+        "agents": {
+            "claude": {
+                "accounts": [
+                    {"id": "acc-1", "label": "Nome 1"}
+                ]
+            }
+        },
+    }
+    updated_cfg, was_renamed = rename_account_in_config(cfg, "claude", "non-existent", "Novo Nome")
+    assert was_renamed is False
+    assert updated_cfg["agents"]["claude"]["accounts"][0]["label"] == "Nome 1"
+
+
+def test_rename_account_in_config_empty_label():
+    cfg = {
+        "version": 1,
+        "agents": {
+            "claude": {
+                "accounts": [
+                    {"id": "acc-1", "label": "Nome 1"}
+                ]
+            }
+        },
+    }
+    updated_cfg, was_renamed = rename_account_in_config(cfg, "claude", "acc-1", "   ")
+    assert was_renamed is False
+    assert updated_cfg["agents"]["claude"]["accounts"][0]["label"] == "Nome 1"
+
+
+def test_rename_account_persistence(tmp_path):
+    config_path = tmp_path / "config.json"
+    cfg = {
+        "version": 1,
+        "agents": {
+            "codex": {
+                "accounts": [
+                    {"id": "codex-1", "label": "Codex Antigo", "source": "auto"}
+                ]
+            }
+        },
+    }
+    save_config(cfg, config_path)
+
+    updated_cfg, was_renamed = rename_account("codex", "codex-1", "Codex Pro", config_path=config_path)
+    assert was_renamed is True
+    assert stat.S_IMODE(os.stat(config_path).st_mode) == 0o600
+
+    loaded = load_config(config_path)
+    assert loaded["agents"]["codex"]["accounts"][0]["label"] == "Codex Pro"
+    assert loaded["agents"]["codex"]["accounts"][0]["name"] == "Codex Pro"
+    assert loaded["agents"]["codex"]["accounts"][0]["id"] == "codex-1"

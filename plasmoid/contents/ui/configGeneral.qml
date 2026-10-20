@@ -18,6 +18,7 @@ Item {
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
+    property bool isRenaming: false
     property bool isAdding: false
     property bool isCapturing: false
     property bool isInteractiveLogin: false
@@ -26,8 +27,9 @@ Item {
     property string statusMessage: ""
     property string errorMessage: ""
     property var accountPendingDeletion: null
+    property var accountPendingRename: null
 
-    readonly property bool isBusy: isLoading || isDeleting || isAdding || isCapturing || isInteractiveLogin
+    readonly property bool isBusy: isLoading || isDeleting || isRenaming || isAdding || isCapturing || isInteractiveLogin
 
     function safeI18n(text, arg1, arg2, arg3) {
         if (!text) return "";
@@ -232,6 +234,41 @@ Item {
         }
     }
 
+    // Executor de renomeação de conta
+    Plasma5Support.DataSource {
+        id: renameDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isRenaming = false;
+            var exitCode = data["exit code"];
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+
+            if (exitCode === 0) {
+                var lines = stdout.split("\n");
+                var msg = lines[0] || configRoot.safeI18n("Conta renomeada com sucesso!");
+                configRoot.statusMessage = msg;
+                configRoot.errorMessage = "";
+                var jsonStart = stdout.indexOf("{");
+                if (jsonStart !== -1) {
+                    try {
+                        configRoot.statusData = JSON.parse(stdout.substring(jsonStart));
+                    } catch (e) {
+                        configRoot.loadStatus();
+                    }
+                } else {
+                    configRoot.loadStatus();
+                }
+            } else {
+                configRoot.errorMessage = configRoot.safeI18n("Falha ao renomear conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.statusMessage = "";
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
     // Executor de adição de conta
     Plasma5Support.DataSource {
         id: additionDataSource
@@ -354,6 +391,36 @@ Item {
         var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(acc.id);
         var cmd = configRoot.buildCollectorCommand(safeArgs);
         removalDataSource.connectSource(cmd);
+    }
+
+    function requestRenameAccount(account) {
+        configRoot.accountPendingRename = account;
+        renameAccountField.text = account.name || account.id || "";
+        renameDialog.open();
+        renameAccountField.forceActiveFocus();
+    }
+
+    function confirmRename() {
+        if (!configRoot.accountPendingRename) return;
+        var newName = (renameAccountField.text || "").trim();
+        if (!newName) {
+            configRoot.errorMessage = configRoot.safeI18n("O nome da conta não pode ser vazio.");
+            return;
+        }
+        var acc = configRoot.accountPendingRename;
+        configRoot.isRenaming = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+
+        var provClean = String(acc.provider).toLowerCase().trim();
+        var safeArgs = shellQuote("--rename-account") + " " +
+                       shellQuote(provClean) + " " +
+                       shellQuote(acc.id) + " " +
+                       shellQuote("--label") + " " +
+                       shellQuote(newName) + " " +
+                       shellQuote("--status");
+        var cmd = configRoot.buildCollectorCommand(safeArgs);
+        renameDataSource.connectSource(cmd);
     }
 
     Component.onCompleted: {
@@ -819,6 +886,22 @@ Item {
                             }
                         }
 
+                        // Botão de Renomear Conta
+                        PlasmaComponents3.Button {
+                            id: renameAccountBtn
+                            icon.name: "document-edit"
+                            text: configRoot.safeI18n("Renomear conta")
+                            display: QQC2.AbstractButton.IconOnly
+                            enabled: !configRoot.isBusy
+
+                            QQC2.ToolTip.visible: hovered
+                            QQC2.ToolTip.text: configRoot.safeI18n("Renomear conta '%1'", modelData.name || modelData.id)
+
+                            onClicked: {
+                                configRoot.requestRenameAccount(modelData);
+                            }
+                        }
+
                         // Botão de Excluir / Remover Conta
                         PlasmaComponents3.Button {
                             id: deleteAccountBtn
@@ -900,6 +983,74 @@ Item {
                     onClicked: {
                         confirmDialog.close();
                         configRoot.confirmDelete();
+                    }
+                }
+            }
+        }
+    }
+
+    // Diálogo nativo de renomeação de conta (sem standardButtons para compatibilidade com Breeze)
+    QQC2.Dialog {
+        id: renameDialog
+        title: configRoot.safeI18n("Renomear Conta")
+        modal: true
+        anchors.centerIn: parent
+
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+
+            QQC2.Label {
+                text: {
+                    var acc = configRoot.accountPendingRename;
+                    if (!acc) return "";
+                    return configRoot.safeI18n(
+                        "Digite o novo nome para a conta '%1' (ID: %2) do provedor %3:",
+                        acc.name || acc.id,
+                        acc.id,
+                        (acc.provider || "").toUpperCase()
+                    );
+                }
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            }
+
+            QQC2.TextField {
+                id: renameAccountField
+                Layout.fillWidth: true
+                placeholderText: configRoot.safeI18n("Novo nome da conta")
+                enabled: !configRoot.isBusy
+                onAccepted: {
+                    if (saveRenameButton.enabled) {
+                        saveRenameButton.clicked();
+                    }
+                }
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                Layout.fillWidth: true
+                Layout.topMargin: Kirigami.Units.smallSpacing
+                spacing: Kirigami.Units.smallSpacing
+
+                Item {
+                    Layout.fillWidth: true
+                }
+
+                PlasmaComponents3.Button {
+                    text: configRoot.safeI18n("Cancelar")
+                    onClicked: renameDialog.close()
+                }
+
+                PlasmaComponents3.Button {
+                    id: saveRenameButton
+                    text: configRoot.safeI18n("Salvar")
+                    icon.name: "document-save"
+                    highlighted: true
+                    enabled: !configRoot.isBusy && (renameAccountField.text || "").trim().length > 0
+                    onClicked: {
+                        renameDialog.close();
+                        configRoot.confirmRename();
                     }
                 }
             }

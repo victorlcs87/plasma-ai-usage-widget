@@ -68,10 +68,12 @@ def test_config_general_qml_structure_and_bindings():
 
     content = config_general_path.read_text(encoding="utf-8")
 
-    # Essential methods and properties for deletion and addition
+    # Essential methods and properties for deletion, renaming, and addition
     assert "getAccountsList" in content
     assert "requestDeleteAccount" in content
     assert "confirmDelete" in content
+    assert "requestRenameAccount" in content
+    assert "confirmRename" in content
     assert "addAccount" in content
     assert "captureCurrentAccount" in content
     assert "interactiveLoginAccount" in content
@@ -79,16 +81,23 @@ def test_config_general_qml_structure_and_bindings():
     assert "clearAddAccountForm" in content
     assert "buildCollectorCommand" in content
     assert "--remove-account" in content
+    assert "--rename-account" in content
     assert "--add-account" in content
     assert "--capture-current" in content
     assert "--interactive-login" in content
 
-    # UI Elements: trash/delete icon, dialog, inline message, add form
+    # UI Elements: trash/delete icon, edit icon, dialogs, inline message, add form
     assert "delete" in content or "trash-empty" in content
+    assert "document-edit" in content
+    assert "renameAccountBtn" in content
     assert "confirmDialog" in content or "Dialog" in content
+    assert "renameDialog" in content
+    assert "renameAccountField" in content
     assert "InlineMessage" in content
     assert "statusMessage" in content
     assert "errorMessage" in content
+    assert "isDeleting" in content
+    assert "isRenaming" in content
     assert "isAdding" in content
     assert "isCapturing" in content
     assert "isInteractiveLogin" in content
@@ -612,4 +621,66 @@ def test_config_general_qml_confirm_dialog_clean_layout_and_no_conflicting_stand
     assert "RowLayout" in dialog_block
     assert "Qt.AlignRight" in dialog_block
     assert "Kirigami.Units.smallSpacing" in dialog_block
+
+
+def test_config_general_qml_rename_dialog_clean_layout_and_no_conflicting_standard_buttons(tmp_path: Path):
+    """Verify renameDialog avoids conflicting standardButtons, validates inputs, and executes safely."""
+    config_general_path = UI_DIR / "configGeneral.qml"
+    content = config_general_path.read_text(encoding="utf-8")
+
+    # 1. Locate renameDialog definition
+    dialog_start = content.find("id: renameDialog")
+    assert dialog_start != -1, "renameDialog definition not found in configGeneral.qml"
+
+    dialog_end = content.find("\n    }", dialog_start)
+    assert dialog_end != -1, "End of renameDialog block not found"
+    dialog_block = content[dialog_start:dialog_end]
+
+    # 2. Verify no standardButtons are defined (prevents collision in KDE Plasma 6 Breeze)
+    assert "standardButtons" not in dialog_block, (
+        "renameDialog must not define standardButtons (prevents duplicate Cancel button collision in KDE Plasma 6 Breeze)"
+    )
+
+    # 3. Verify TextField and custom action buttons
+    assert "renameAccountField" in dialog_block
+    assert "QQC2.TextField" in dialog_block
+    assert "PlasmaComponents3.Button" in dialog_block
+    assert "Cancelar" in dialog_block
+    assert "Salvar" in dialog_block
+    assert "saveRenameButton" in dialog_block
+    assert "highlighted: true" in dialog_block
+    assert "renameDialog.close()" in dialog_block
+    assert "configRoot.confirmRename()" in dialog_block
+
+    # 4. Verify GUI validation: does not allow saving if input is empty
+    assert 'trim().length > 0' in dialog_block, "Save button should be disabled if field is empty"
+
+    # 5. Verify confirmRename function formatting and shell injection resilience
+    rename_func_start = content.find("function confirmRename()")
+    assert rename_func_start != -1
+    rename_func_end = content.find("}", content.find("renameDataSource.connectSource", rename_func_start))
+    rename_code = content[rename_func_start:rename_func_end]
+
+    assert 'shellQuote("--rename-account")' in rename_code
+    assert 'shellQuote(provClean)' in rename_code
+    assert 'shellQuote(acc.id)' in rename_code
+    assert 'shellQuote("--label")' in rename_code
+    assert 'shellQuote(newName)' in rename_code
+    assert 'shellQuote("--status")' in rename_code
+
+    # 6. Test shell injection safety
+    pwned_marker = tmp_path / "pwned_rename.txt"
+    malicious_inputs = [
+        f"hack'; touch {pwned_marker}; echo '",
+        f'hack"$(touch {pwned_marker})"',
+        f"hack`touch {pwned_marker}`",
+        f"hack && touch {pwned_marker}",
+    ]
+
+    for evil_input in malicious_inputs:
+        safe_quoted = "'" + evil_input.replace("'", "'\\''") + "'"
+        cmd = f"bash -c 'for a in \"$@\"; do :; done' _ --rename-account claude {safe_quoted} --label {safe_quoted} --status"
+        subprocess.run(cmd, shell=True, check=True)
+        assert not pwned_marker.exists(), f"Vulnerability detected with payload: {evil_input}"
+
 

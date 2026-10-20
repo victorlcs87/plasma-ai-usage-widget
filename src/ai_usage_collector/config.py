@@ -261,6 +261,78 @@ def remove_account_from_config(
     return config_data, removed
 
 
+def rename_account_in_config(
+    config_data: dict[str, Any],
+    provider: str,
+    account_id: str,
+    new_label: str,
+) -> tuple[dict[str, Any], bool]:
+    """Rename an account (label and name) in config structure, preserving other fields.
+
+    Returns:
+        tuple[dict[str, Any], bool]: (updated_config, was_renamed)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return config_data, False
+
+    acc_id = str(account_id).strip() if account_id is not None else ""
+    if not acc_id:
+        return config_data, False
+
+    clean_label = str(new_label).strip() if new_label is not None else ""
+    if not clean_label:
+        return config_data, False
+
+    renamed = False
+
+    # Standard format: config["agents"][prov]["accounts"]
+    if "agents" in config_data and isinstance(config_data["agents"], dict):
+        agent_entry = config_data["agents"].get(prov)
+        if isinstance(agent_entry, dict) and "accounts" in agent_entry and isinstance(agent_entry["accounts"], list):
+            for acc in agent_entry["accounts"]:
+                if isinstance(acc, dict) and str(acc.get("id")) == acc_id:
+                    acc["label"] = clean_label
+                    acc["name"] = clean_label
+                    renamed = True
+                    break
+
+    # Alternative format 1: config["accounts"][prov] = [...]
+    if not renamed and "accounts" in config_data and isinstance(config_data["accounts"], dict):
+        if prov in config_data["accounts"] and isinstance(config_data["accounts"][prov], list):
+            for acc in config_data["accounts"][prov]:
+                if isinstance(acc, dict) and str(acc.get("id")) == acc_id:
+                    acc["label"] = clean_label
+                    acc["name"] = clean_label
+                    renamed = True
+                    break
+
+    # Alternative format 2: config["accounts"] = [{"provider": "...", "id": "..."}, ...]
+    if not renamed and "accounts" in config_data and isinstance(config_data["accounts"], list):
+        for acc in config_data["accounts"]:
+            if isinstance(acc, dict) and acc.get("provider") == prov and str(acc.get("id")) == acc_id:
+                acc["label"] = clean_label
+                acc["name"] = clean_label
+                renamed = True
+                break
+
+    return config_data, renamed
+
+
+def rename_account(
+    provider: str,
+    account_id: str,
+    new_label: str,
+    config_path: str | Path | None = None,
+) -> tuple[dict[str, Any], bool]:
+    """Load config, rename account, persist atomically with 0600 if changed, and return (config, was_renamed)."""
+    cfg = load_config(config_path)
+    updated_cfg, was_renamed = rename_account_in_config(cfg, provider, account_id, new_label)
+    if was_renamed:
+        save_config(updated_cfg, config_path)
+    return updated_cfg, was_renamed
+
+
 def generate_account_slug(label: str, existing_ids: set[str] | None = None) -> str:
     """Generate a clean, safe, and unique slug identifier for an account."""
     normalized = unicodedata.normalize("NFKD", str(label or "")).encode("ascii", "ignore").decode("ascii")

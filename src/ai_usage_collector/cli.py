@@ -15,6 +15,7 @@ from ai_usage_collector.collector import (
     interactive_login_account,
     load_status_cache,
     remove_account,
+    rename_account,
 )
 from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
 
@@ -45,6 +46,12 @@ def build_parser() -> argparse.ArgumentParser:
         nargs=2,
         metavar=("PROVIDER", "ACCOUNT_ID"),
         help="Remove uma conta cadastrada do provedor e sincroniza o status",
+    )
+    parser.add_argument(
+        "--rename-account",
+        nargs=2,
+        metavar=("PROVIDER", "ACCOUNT_ID"),
+        help="Renomeia uma conta cadastrada do provedor e sincroniza o status",
     )
     parser.add_argument(
         "--add-account",
@@ -153,6 +160,40 @@ def main(argv: Sequence[str] | None = None) -> int:
                 sys.stderr.flush()
                 return 1
 
+        if args.rename_account:
+            provider, account_id = args.rename_account
+            if not args.label:
+                sys.stderr.write("Erro: Parâmetro --label / --name é obrigatório para --rename-account.\n")
+                sys.stderr.flush()
+                return 1
+
+            clean_label = args.label.strip()
+            if not clean_label:
+                sys.stderr.write("Erro: Rótulo/nome da conta não pode ser vazio.\n")
+                sys.stderr.flush()
+                return 1
+
+            success, message, status_data = rename_account(
+                provider=provider,
+                account_id=account_id,
+                new_label=clean_label,
+                config_path=config_path,
+                cache_path=cache_path,
+            )
+            if success:
+                sys.stdout.write(f"{message}\n")
+                sys.stdout.flush()
+                if args.status:
+                    out_status = status_data or load_status_cache(cache_path)
+                    if out_status:
+                        sys.stdout.write(json.dumps(out_status, indent=2, ensure_ascii=False) + "\n")
+                        sys.stdout.flush()
+                return 0
+            else:
+                sys.stderr.write(f"Erro: {message}\n")
+                sys.stderr.flush()
+                return 1
+
         if args.add_account:
             if not args.provider:
                 sys.stderr.write("Erro: Parâmetro --provider é obrigatório para --add-account.\n")
@@ -248,6 +289,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             not args.refresh
             and not args.status
             and not args.remove_account
+            and not args.rename_account
             and not args.add_account
             and args.capture_current is None
             and args.interactive_login is None

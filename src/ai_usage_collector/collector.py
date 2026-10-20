@@ -16,6 +16,7 @@ from ai_usage_collector.config import (
     get_accounts_for_agent,
     load_config,
     remove_account_from_config,
+    rename_account as config_rename_account,
     save_config,
     save_secure_json,
 )
@@ -257,6 +258,64 @@ def remove_account(
                 save_status_cache(updated_cache, c_file)
 
     return True, f"Conta '{account_id}' removida com sucesso do provedor '{provider}'."
+
+
+def rename_account(
+    provider: str,
+    account_id: str,
+    new_label: str,
+    config_path: str | Path | None = None,
+    cache_path: str | Path | None = None,
+) -> tuple[bool, str, dict[str, Any] | None]:
+    """Rename an account in config and synchronize with status cache.
+
+    Returns:
+        tuple[bool, str, dict[str, Any] | None]: (success, status_message, status_payload)
+    """
+    prov = provider.lower().strip() if provider else ""
+    if prov not in SUPPORTED_PROVIDERS:
+        return (
+            False,
+            f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}",
+            None,
+        )
+
+    acc_id = str(account_id).strip() if account_id is not None else ""
+    if not acc_id:
+        return False, "Identificador da conta não pode ser vazio", None
+
+    clean_label = str(new_label).strip() if new_label is not None else ""
+    if not clean_label:
+        return False, "Rótulo/nome da conta não pode ser vazio", None
+
+    cfg_file = Path(config_path).expanduser().resolve() if config_path else DEFAULT_CONFIG_PATH
+    if not cfg_file.exists():
+        return False, f"Arquivo de configuração não encontrado: {cfg_file}", None
+
+    try:
+        updated_cfg, was_renamed = config_rename_account(
+            provider=prov,
+            account_id=acc_id,
+            new_label=clean_label,
+            config_path=cfg_file,
+        )
+    except Exception as e:
+        return False, f"Falha ao renomear conta no arquivo de configuração: {e}", None
+
+    if not was_renamed:
+        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
+
+    # Sync status cache via collect_and_save
+    try:
+        status_payload = collect_and_save(config_path=config_path, cache_path=cache_path)
+    except Exception as e:
+        return (
+            True,
+            f"Conta '{clean_label}' renomeada com sucesso, mas falhou ao sincronizar status: {e}",
+            None,
+        )
+
+    return True, f"Conta '{clean_label}' renomeada com sucesso!", status_payload
 
 
 def add_account_entry(
