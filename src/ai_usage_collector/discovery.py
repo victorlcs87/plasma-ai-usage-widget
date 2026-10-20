@@ -247,15 +247,19 @@ def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]
     }
 
 
-def discover_account(provider: str, credential_path: str | Path | None = None) -> dict[str, Any]:
+def discover_account(
+    provider: str,
+    credential_path: str | Path | None = None,
+    account_data: dict[str, Any] | None = None,
+) -> dict[str, Any]:
     """Discover credential health for a given provider."""
     provider_lower = provider.lower()
     if provider_lower == "claude":
-        return discover_claude(credential_path)
+        res = discover_claude(credential_path)
     elif provider_lower == "codex":
-        return discover_codex(credential_path)
+        res = discover_codex(credential_path)
     elif provider_lower == "gemini":
-        return discover_gemini(credential_path)
+        res = discover_gemini(credential_path)
     else:
         return {
             "status": "error",
@@ -263,3 +267,25 @@ def discover_account(provider: str, credential_path: str | Path | None = None) -
             "detected": False,
             "metadata": {},
         }
+
+    # If file credentials not found or unauthenticated, but account_data contains inline credentials:
+    if account_data and res.get("status") in ("missing_credentials", "unauthenticated"):
+        token = (
+            account_data.get("token")
+            or account_data.get("access_token")
+            or account_data.get("session_token")
+            or account_data.get("api_key")
+        )
+        if token:
+            email = extract_jwt_identity(str(token)) if isinstance(token, str) else None
+            return {
+                "status": "valid",
+                "message": f"Credencial {provider.capitalize()} configurada",
+                "detected": True,
+                "metadata": {
+                    "source": account_data.get("source", "manual"),
+                    "email": email,
+                },
+            }
+
+    return res

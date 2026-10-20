@@ -11,8 +11,11 @@ from datetime import datetime, timezone
 from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
+    SUPPORTED_PROVIDERS,
     get_accounts_for_agent,
     load_config,
+    remove_account_from_config,
+    save_config,
     save_secure_json,
 )
 from ai_usage_collector.contract import (
@@ -66,12 +69,23 @@ def collect_and_save(
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
-            label = acc.get("label", f"{agent_id.capitalize()} ({acc_id})")
+            acc_name = acc.get("name")
+            acc_label = acc.get("label")
+            label = acc_name or acc_label or f"{agent_id.capitalize()} ({acc_id})"
             source = acc.get("source", "auto")
-            cred_path = acc.get("credential_path")
-            manual_invite = acc.get("manual_invite_url")
+            cred_path = acc.get("credential_path") or acc.get("credentials_path")
+            if not cred_path:
+                if agent_id == "claude" and acc.get("claude_dir"):
+                    cred_path = str(Path(acc["claude_dir"]).expanduser().resolve() / ".credentials.json")
+                elif agent_id == "codex" and acc.get("codex_dir"):
+                    cred_path = str(Path(acc["codex_dir"]).expanduser().resolve() / "auth.json")
+                elif agent_id == "gemini" and acc.get("gemini_dir"):
+                    cred_path = str(Path(acc["gemini_dir"]).expanduser().resolve() / "oauth_creds.json")
 
-            health = discover_account(agent_id, cred_path)
+            manual_invite = acc.get("manual_invite_url")
+            manual_invite_count = acc.get("manual_invite_count")
+
+            health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None
             invites = None
@@ -99,7 +113,7 @@ def collect_and_save(
                 agent_has_valid_account = True
                 # If label was generic and user identity or subscription was discovered, enrich label display
                 meta = health.get("metadata", {})
-                if label.endswith("(Padrão)"):
+                if not acc_name and (label.endswith("(Padrão)") or label == f"{agent_id.capitalize()} ({acc_id})"):
                     if meta.get("email"):
                         label = f"{agent_id.capitalize()} ({meta['email']})"
                     elif meta.get("subscription_type"):
@@ -115,6 +129,8 @@ def collect_and_save(
                 native_window=native_window,
                 weekly_window=weekly_window,
                 free_trial_invites=invites,
+                name=acc_name or label,
+                manual_invite_count=manual_invite_count,
             )
             account_statuses.append(acc_status)
 
@@ -137,3 +153,106 @@ def collect_and_save(
     # Save to disk
     save_status_cache(status_payload, cache_path)
     return status_payload
+
+
+def remove_account_from_cache(
+    cache_data: dict[str, Any],
+    provider: str,
+    account_id: str,
+) -> tuple[dict[str, Any], bool]:
+    """Remove an account by provider and id from cache structure.
+
+    Returns:
+        tuple[dict[str, Any], bool]: (updated_cache, was_removed)
+    """
+    prov = provider.lower().strip()
+    acc_id = account_id.strip()
+
+    if not isinstance(cache_data, dict) or "agents" not in cache_data or not isinstance(cache_data["agents"], dict):
+        return cache_data, False
+
+    agent_entry = cache_data["agents"].get(prov)
+    if not isinstance(agent_entry, dict) or "accounts" not in agent_entry:
+        return cache_data, False
+
+    accounts = agent_entry.get("accounts")
+    if not isinstance(accounts, list):
+        return cache_data, False
+
+    initial_count = len(accounts)
+    new_accounts = [
+        acc for acc in accounts
+        if not (isinstance(acc, dict) and str(acc.get("id")) == acc_id)
+    ]
+
+    if len(new_accounts) == initial_count:
+        return cache_data, False
+
+    agent_entry["accounts"] = new_accounts
+
+    # Update agent health status
+    if not new_accounts:
+        agent_entry["status"] = "not_configured"
+    else:
+        has_valid = any(
+            isinstance(a, dict) and a.get("health", {}).get("status") == "valid"
+            for a in new_accounts
+        )
+        if has_valid:
+            agent_entry["status"] = "ok"
+        else:
+            all_missing = all(
+                isinstance(a, dict) and a.get("health", {}).get("status") == "missing_credentials"
+                for a in new_accounts
+            )
+            agent_entry["status"] = "missing_credentials" if all_missing else "warning"
+
+    cache_data["last_updated"] = get_current_iso_timestamp()
+    return cache_data, True
+
+
+def remove_account(
+    provider: str,
+    account_id: str,
+    config_path: str | Path | None = None,
+    cache_path: str | Path | None = None,
+) -> tuple[bool, str]:
+    """Remove an account from config and synchronize with status cache.
+
+    Returns:
+        tuple[bool, str]: (success, status_message)
+    """
+    prov = provider.lower().strip()
+    if prov not in SUPPORTED_PROVIDERS:
+        return False, f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+
+    acc_id = account_id.strip()
+    if not acc_id:
+        return False, "Identificador da conta não pode ser vazio"
+
+    cfg_file = Path(config_path).expanduser().resolve() if config_path else DEFAULT_CONFIG_PATH
+    if not cfg_file.exists():
+        return False, f"Arquivo de configuração não encontrado: {cfg_file}"
+
+    try:
+        config_data = load_config(cfg_file)
+    except Exception as e:
+        return False, f"Falha ao ler arquivo de configuração: {e}"
+
+    updated_cfg, was_removed = remove_account_from_config(config_data, prov, acc_id)
+    if not was_removed:
+        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
+
+    # Persist config atomically with 0600
+    save_config(updated_cfg, cfg_file)
+
+    # Sync cache if exists
+    c_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    if c_file.exists():
+        cache_data = load_status_cache(c_file)
+        if cache_data is not None:
+            updated_cache, cache_removed = remove_account_from_cache(cache_data, prov, acc_id)
+            if cache_removed:
+                save_status_cache(updated_cache, c_file)
+
+    return True, f"Conta '{account_id}' removida com sucesso do provedor '{provider}'."

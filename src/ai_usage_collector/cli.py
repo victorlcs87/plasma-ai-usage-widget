@@ -8,7 +8,7 @@ import sys
 from typing import Sequence
 
 from ai_usage_collector import __version__
-from ai_usage_collector.collector import collect_and_save, load_status_cache
+from ai_usage_collector.collector import collect_and_save, load_status_cache, remove_account
 from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
 
 
@@ -34,6 +34,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exibe o payload canônico de status atual em JSON na saída padrão",
     )
     parser.add_argument(
+        "--remove-account",
+        nargs=2,
+        metavar=("PROVIDER", "ACCOUNT_ID"),
+        help="Remove uma conta cadastrada do provedor e sincroniza o status",
+    )
+    parser.add_argument(
         "--config-path",
         type=str,
         default=str(DEFAULT_CONFIG_PATH),
@@ -57,8 +63,30 @@ def main(argv: Sequence[str] | None = None) -> int:
     cache_path = args.cache_path
 
     try:
+        if args.remove_account:
+            provider, account_id = args.remove_account
+            success, message = remove_account(
+                provider=provider,
+                account_id=account_id,
+                config_path=config_path,
+                cache_path=cache_path,
+            )
+            if success:
+                sys.stdout.write(f"{message}\n")
+                sys.stdout.flush()
+                if args.status:
+                    status_data = load_status_cache(cache_path)
+                    if status_data:
+                        sys.stdout.write(json.dumps(status_data, indent=2, ensure_ascii=False) + "\n")
+                        sys.stdout.flush()
+                return 0
+            else:
+                sys.stderr.write(f"Erro: {message}\n")
+                sys.stderr.flush()
+                return 1
+
         # Default behavior: if neither refresh nor status is explicitly given, default to refresh
-        should_refresh = args.refresh or (not args.refresh and not args.status)
+        should_refresh = args.refresh or (not args.refresh and not args.status and not args.remove_account)
         should_output_status = args.status
 
         status_data = None

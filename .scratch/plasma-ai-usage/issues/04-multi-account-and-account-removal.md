@@ -4,11 +4,11 @@
 
 **Blocked by:** 03: Extratores Nativos Codex e Gemini (Janelas Nativas 3h/Diaria/Semanal, Liberacao e Convites)
 
-**Status:** ready-for-agent
+**Status:** in-review
 
-- [ ] Esquema do `config.json` expandido para listas de contas nomeadas por agente (ex.: `claude`, `codex`, `gemini`).
-- [ ] O coletor itera por todas as contas configuradas e gera o `status.json` contendo a lista completa de contas agrupadas por agente.
-- [ ] Comando CLI `ai-usage-collector --remove-account <provider> <account_id>` remove a conta indicada de forma atomica no arquivo de configuracao.
-- [ ] Remocao imediata da conta do `status.json` apos o comando.
-- [ ] Garantia de que a remocao de uma conta preserva os dados das demais contas e a permissao `0600` do arquivo.
-- [ ] Testes de comportamento cobrindo adicao de contas secundarias, remocao com sucesso e casos de conta inexistente.
+- [x] Esquema do `config.json` expandido para listas de contas nomeadas por agente (ex.: `claude`, `codex`, `gemini`).
+- [x] O coletor itera por todas as contas configuradas e gera o `status.json` contendo a lista completa de contas agrupadas por agente.
+- [x] Comando CLI `ai-usage-collector --remove-account <provider> <account_id>` remove a conta indicada de forma atomica no arquivo de configuracao.
+- [x] Remocao imediata da conta do `status.json` apos o comando.
+- [x] Garantia de que a remocao de uma conta preserva os dados das demais contas e a permissao `0600` do arquivo.
+- [x] Testes de comportamento cobrindo adicao de contas secundarias, remocao com sucesso e casos de conta inexistente.

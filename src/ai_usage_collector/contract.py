@@ -51,6 +51,8 @@ def build_agent_account_status(
     native_window: dict[str, Any] | None = None,
     weekly_window: dict[str, Any] | None = None,
     free_trial_invites: dict[str, Any] | None = None,
+    name: str | None = None,
+    manual_invite_count: int | None = None,
 ) -> dict[str, Any]:
     """Build a standardized account entry for the status contract."""
     window_type = AGENT_NATIVE_WINDOWS.get(provider.lower(), "custom")
@@ -77,14 +79,22 @@ def build_agent_account_status(
         default_weekly_window.update(weekly_window)
 
     default_invites: dict[str, Any] = {
-        "available_count": 0,
+        "available_count": manual_invite_count if manual_invite_count is not None else 0,
         "invite_url": manual_invite_url,
     }
     if free_trial_invites:
         default_invites.update(free_trial_invites)
+        # Ensure manual overrides are preserved if extractor didn't find them
+        if not default_invites.get("invite_url") and manual_invite_url:
+            default_invites["invite_url"] = manual_invite_url
+        if manual_invite_count is not None and default_invites.get("available_count") == 0:
+            default_invites["available_count"] = manual_invite_count
+
+    account_name = name or label
 
     return {
         "id": account_id,
+        "name": account_name,
         "label": label,
         "provider": provider,
         "source": source,

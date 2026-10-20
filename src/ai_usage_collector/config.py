@@ -17,6 +17,8 @@ DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.json"
 DEFAULT_CACHE_DIR = Path("~/.cache/plasma-ai-usage").expanduser()
 DEFAULT_CACHE_PATH = DEFAULT_CACHE_DIR / "status.json"
 
+SUPPORTED_PROVIDERS: tuple[str, ...] = ("claude", "codex", "gemini")
+
 
 def ensure_secure_dir(dir_path: str | Path) -> Path:
     """Ensure directory exists and has strict 0700 permissions."""
@@ -129,14 +131,129 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
 
 def get_accounts_for_agent(config_data: dict[str, Any], agent: str) -> list[dict[str, Any]]:
     """Extract list of accounts for a given agent from config structure."""
-    if "agents" in config_data and agent in config_data["agents"]:
-        agent_cfg = config_data["agents"][agent]
-        if isinstance(agent_cfg, dict) and "accounts" in agent_cfg:
+    if not isinstance(config_data, dict):
+        return []
+    if "agents" in config_data and isinstance(config_data["agents"], dict):
+        agent_cfg = config_data["agents"].get(agent)
+        if isinstance(agent_cfg, dict) and "accounts" in agent_cfg and isinstance(agent_cfg["accounts"], list):
             return agent_cfg["accounts"]
-    elif "accounts" in config_data and isinstance(config_data["accounts"], dict):
-        if agent in config_data["accounts"]:
-            return config_data["accounts"][agent]
-    elif "accounts" in config_data and isinstance(config_data["accounts"], list):
-        return [acc for acc in config_data["accounts"] if acc.get("provider") == agent]
+    elif "accounts" in config_data:
+        if isinstance(config_data["accounts"], dict):
+            acc_list = config_data["accounts"].get(agent)
+            if isinstance(acc_list, list):
+                return acc_list
+        elif isinstance(config_data["accounts"], list):
+            return [acc for acc in config_data["accounts"] if isinstance(acc, dict) and acc.get("provider") == agent]
 
     return []
+
+
+def add_account_to_config(
+    config_data: dict[str, Any],
+    provider: str,
+    account_data: dict[str, Any],
+) -> dict[str, Any]:
+    """Add or update an account entry for a provider in config structure."""
+    prov = provider.lower().strip()
+    if prov not in SUPPORTED_PROVIDERS:
+        raise ValueError(
+            f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+        )
+
+    acc_id = account_data.get("id")
+    if not acc_id:
+        raise ValueError("Dados da conta devem conter um identificador 'id'")
+
+    if "agents" not in config_data or not isinstance(config_data["agents"], dict):
+        config_data["agents"] = {}
+
+    if prov not in config_data["agents"] or not isinstance(config_data["agents"][prov], dict):
+        config_data["agents"][prov] = {"accounts": []}
+
+    agent_entry = config_data["agents"][prov]
+    if "accounts" not in agent_entry or not isinstance(agent_entry["accounts"], list):
+        agent_entry["accounts"] = []
+
+    accounts: list[dict[str, Any]] = agent_entry["accounts"]
+    found = False
+    for i, acc in enumerate(accounts):
+        if isinstance(acc, dict) and acc.get("id") == acc_id:
+            accounts[i] = {**acc, **account_data}
+            found = True
+            break
+
+    if not found:
+        accounts.append(account_data)
+
+    return config_data
+
+
+def add_account(
+    provider: str,
+    account_data: dict[str, Any],
+    config_path: str | Path | None = None,
+) -> dict[str, Any]:
+    """Add or update an account in config and persist atomically with 0600."""
+    cfg = load_config(config_path)
+    updated_cfg = add_account_to_config(cfg, provider, account_data)
+    save_config(updated_cfg, config_path)
+    return updated_cfg
+
+
+def remove_account_from_config(
+    config_data: dict[str, Any],
+    provider: str,
+    account_id: str,
+) -> tuple[dict[str, Any], bool]:
+    """Remove an account by provider and id from config structure.
+
+    Returns:
+        tuple[dict[str, Any], bool]: (updated_config, was_removed)
+    """
+    prov = provider.lower().strip()
+    if prov not in SUPPORTED_PROVIDERS:
+        return config_data, False
+
+    acc_id = account_id.strip()
+    if not acc_id:
+        return config_data, False
+
+    removed = False
+
+    # Standard format: config["agents"][prov]["accounts"]
+    if "agents" in config_data and isinstance(config_data["agents"], dict):
+        agent_entry = config_data["agents"].get(prov)
+        if isinstance(agent_entry, dict) and "accounts" in agent_entry and isinstance(agent_entry["accounts"], list):
+            initial_count = len(agent_entry["accounts"])
+            new_accounts = [
+                acc for acc in agent_entry["accounts"]
+                if not (isinstance(acc, dict) and str(acc.get("id")) == acc_id)
+            ]
+            if len(new_accounts) < initial_count:
+                agent_entry["accounts"] = new_accounts
+                removed = True
+
+    # Alternative format 1: config["accounts"][prov] = [...]
+    if not removed and "accounts" in config_data and isinstance(config_data["accounts"], dict):
+        if prov in config_data["accounts"] and isinstance(config_data["accounts"][prov], list):
+            initial_count = len(config_data["accounts"][prov])
+            new_accounts = [
+                acc for acc in config_data["accounts"][prov]
+                if not (isinstance(acc, dict) and str(acc.get("id")) == acc_id)
+            ]
+            if len(new_accounts) < initial_count:
+                config_data["accounts"][prov] = new_accounts
+                removed = True
+
+    # Alternative format 2: config["accounts"] = [{"provider": "...", "id": "..."}, ...]
+    if not removed and "accounts" in config_data and isinstance(config_data["accounts"], list):
+        initial_count = len(config_data["accounts"])
+        new_accounts = [
+            acc for acc in config_data["accounts"]
+            if not (isinstance(acc, dict) and acc.get("provider") == prov and str(acc.get("id")) == acc_id)
+        ]
+        if len(new_accounts) < initial_count:
+            config_data["accounts"] = new_accounts
+            removed = True
+
+    return config_data, removed
