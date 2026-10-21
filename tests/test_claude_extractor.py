@@ -491,7 +491,7 @@ def test_fetch_claude_usage_api_success():
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.read.return_value = fake_body
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    with patch("urllib.request.OpenerDirector.open", return_value=mock_resp) as mock_urlopen:
         data = fetch_claude_usage_api("test-token")
         assert data is not None
         assert data["five_hour"]["utilization"] == 22.5
@@ -504,13 +504,13 @@ def test_fetch_claude_usage_api_success():
 
 
 def test_fetch_claude_usage_api_http_error():
-    with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)):
+    with patch("urllib.request.OpenerDirector.open", side_effect=urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)):
         data = fetch_claude_usage_api("bad-token")
         assert data is None
 
 
 def test_fetch_claude_usage_api_timeout():
-    with patch("urllib.request.urlopen", side_effect=TimeoutError("Connection timed out")):
+    with patch("urllib.request.OpenerDirector.open", side_effect=TimeoutError("Connection timed out")):
         data = fetch_claude_usage_api("test-token")
         assert data is None
 

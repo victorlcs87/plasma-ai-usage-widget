@@ -22,8 +22,10 @@ from ai_usage_collector.config import (
     SUPPORTED_PROVIDERS,
     config_lock,
     create_account_entry,
+    credential_override,
     get_accounts_for_agent,
     load_config,
+    provider_settings,
     remove_account_from_config,
     rename_account as config_rename_account,
     save_config,
@@ -62,7 +64,7 @@ def load_status_cache(path: str | Path | None = None) -> dict[str, Any] | None:
         return None
 
 
-def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> str | None:
+def detect_active_account_id(provider: str, accounts: list[dict[str, Any]], override: Path | None = None) -> str | None:
     """Detect the Conta Ativa no Sistema by Identidade da Conta (ADR-0008).
 
     The `active` config field is not consulted. If the system credential matches no
@@ -71,10 +73,10 @@ def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> s
     if not accounts:
         return None
     prov = provider.lower().strip()
-    sys_creds = get_active_credentials(prov)
+    sys_creds = get_active_credentials(prov, override)
     if sys_creds is None:
         return None
-    match = find_matching_account(prov, accounts, sys_creds, get_system_credential_file(prov))
+    match = find_matching_account(prov, accounts, sys_creds, get_system_credential_file(prov, override))
     return str(match.get("id")) if match else None
 
 
@@ -95,7 +97,7 @@ def collect_and_save(
         account_statuses: list[dict[str, Any]] = []
 
         agent_has_valid_account = False
-        active_acc_id = detect_active_account_id(agent_id, accounts)
+        active_acc_id = detect_active_account_id(agent_id, accounts, credential_override(agent_id, config))
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
@@ -123,7 +125,7 @@ def collect_and_save(
             usage_details = None
 
             if agent_id == "claude":
-                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt)
+                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=provider_settings(config, "claude"))
                 health = claude_data.get("health", health)
                 native_window = claude_data.get("native_window")
                 weekly_window = claude_data.get("weekly_window")

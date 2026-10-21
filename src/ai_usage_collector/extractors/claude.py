@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector.config import validate_base_url
 from ai_usage_collector.discovery import discover_claude
 
 CLAUDE_5H_SECONDS = 5 * 3600  # 18000s
@@ -356,14 +357,28 @@ def resolve_tier_capacity(account: dict[str, Any], health: dict[str, Any]) -> in
     return DEFAULT_FALLBACK_CAPACITY
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Nunca segue redirects: o Authorization nao pode ser reenviado a outro host."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
 def fetch_claude_usage_api(
     access_token: str,
     timeout: float = 3.0,
+    base_url: str = "https://api.anthropic.com",
 ) -> dict[str, Any] | None:
-    """Fetch official usage metrics from Anthropic API (https://api.anthropic.com/api/oauth/usage)."""
+    """Fetch official usage metrics from Anthropic API (or a custom gateway via `base_url`)."""
     if not access_token:
         return None
-    url = "https://api.anthropic.com/api/oauth/usage"
+    try:
+        url = f"{validate_base_url(base_url)}/api/oauth/usage"
+    except ValueError:
+        return None
     req = urllib.request.Request(
         url,
         headers={
@@ -374,7 +389,7 @@ def fetch_claude_usage_api(
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _NO_REDIRECT.open(req, timeout=timeout) as resp:
             status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
             if status in (200, 201):
                 body = resp.read()
@@ -392,6 +407,7 @@ def extract_claude_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
     now: datetime | None = None,
+    api: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Extract metrics, calculate 5h and weekly windows, and format Claude status."""
     now_dt = now or datetime.now(timezone.utc)
@@ -518,7 +534,12 @@ def extract_claude_status(
 
     # Attempt primary official API usage route
     api_data = None
-    if access_token and health.get("status") in ("valid", "session_expired"):
+    base_url = (api or {}).get("api_base_url")
+    if base_url:
+        # Gateway personalizado: so a chave configurada e enviada, nunca o token OAuth (ticket 38).
+        if api.get("api_key"):
+            api_data = fetch_claude_usage_api(api["api_key"], base_url=base_url)
+    elif access_token and health.get("status") in ("valid", "session_expired"):
         api_data = fetch_claude_usage_api(access_token)
 
     if api_data and (isinstance(api_data.get("five_hour"), dict) or isinstance(api_data.get("seven_day"), dict)):

@@ -18,7 +18,12 @@ from ai_usage_collector.collector import (
     rename_account,
     switch_account,
 )
-from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH, load_config
+from ai_usage_collector.config import (
+    DEFAULT_CACHE_PATH,
+    DEFAULT_CONFIG_PATH,
+    load_config,
+    set_provider_settings,
+)
 from ai_usage_collector.history import export_history
 from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
 
@@ -122,6 +127,18 @@ def build_parser() -> argparse.ArgumentParser:
         help="Confirma explicitamente a exclusão de um Perfil Órfão",
     )
     parser.add_argument(
+        "--set-provider-config",
+        metavar="PROVIDER",
+        help="Define caminho de credenciais (--credential-path) e, no Claude, --api-base-url/--api-key-stdin/--clear-api-key; valor vazio remove. A configuração explícita vence as variáveis de ambiente",
+    )
+    parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
+    parser.add_argument(
+        "--api-key-stdin",
+        action="store_true",
+        help="Le a chave de API da entrada padrao (nunca por argumento); vazia remove",
+    )
+    parser.add_argument("--clear-api-key", action="store_true", help="Remove a chave de API personalizada")
+    parser.add_argument(
         "--provider",
         type=str,
         help="Provedor da conta ('claude', 'codex', 'gemini')",
@@ -184,6 +201,17 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.list_orphans:
             sys.stdout.write(json.dumps(list_orphans(config_path), indent=2, ensure_ascii=False) + "\n")
             return 0
+
+        if args.set_provider_config:
+            key = sys.stdin.read().strip() if args.api_key_stdin else None
+            ok, message = set_provider_settings(
+                args.set_provider_config, args.credential_path, args.api_base_url, key, config_path,
+                clear_api_key=args.clear_api_key,
+            )
+            if ok:
+                collect_and_save(config_path=config_path, cache_path=cache_path)
+            (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
+            return 0 if ok else 1
 
         for pair, action in ((args.reimport_orphan, reimport_orphan), (args.delete_orphan, delete_orphan)):
             if pair:
@@ -369,6 +397,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             not args.refresh
             and not args.status
             and not args.list_orphans
+            and not args.set_provider_config
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account
