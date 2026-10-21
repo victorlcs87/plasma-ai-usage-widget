@@ -72,7 +72,7 @@ def test_metadata_json_schema_and_plasma6_compliance():
     assert plugin.get("Icon"), "KPlugin Icon must be defined"
     assert plugin.get("Category") == "Utilities"
     assert plugin.get("License") == "MIT"
-    assert plugin.get("Version") == "1.0.0"
+    assert plugin.get("Version") == "1.1.0"
 
     authors = plugin.get("Authors")
     assert isinstance(authors, list) and len(authors) > 0
