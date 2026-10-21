@@ -511,3 +511,27 @@ def test_stale_card_hides_percentage_after_release_passed():
     qml = (Path(__file__).parent.parent / "plasmoid/contents/ui/AccountCard.qml").read_text()
     assert "staleExpired(cardRoot.accountData?.native_window?.release_time)" in qml
     assert "staleExpired(cardRoot.accountData?.weekly_window?.cycle_reset_time)" in qml
+
+
+def test_claude_validator_rejects_non_dict_window():
+    # regressao: {"seven_day": "x"} passava no validador e quebrava o extrator com AttributeError
+    from ai_usage_collector.extractors import claude
+    from ai_usage_collector import refresh
+
+    captured = {}
+
+    def fake_fetch(provider, token, req, timeout, opener=None, valid=None):
+        captured["valid"] = valid
+
+    orig = refresh.fetch_json
+    refresh.fetch_json = fake_fetch
+    try:
+        claude.fetch_claude_usage_api("tok")
+    finally:
+        refresh.fetch_json = orig
+    valid = captured["valid"]
+    assert valid({"five_hour": None, "seven_day": None})
+    assert valid({"five_hour": {"utilization": 1}})
+    assert not valid({"five_hour": None, "seven_day": "x"})
+    assert not valid({"seven_day": [1]})
+    assert not valid({})

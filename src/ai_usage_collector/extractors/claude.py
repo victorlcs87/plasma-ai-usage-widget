@@ -391,7 +391,9 @@ def fetch_claude_usage_api(
     )
     return refresh.fetch_json(
         "claude", access_token, req, timeout, opener=_NO_REDIRECT,
-        valid=lambda d: "five_hour" in d or "seven_day" in d,  # valor nulo = conta ociosa, resposta valida
+        # valor nulo = conta ociosa (resposta valida); valor de outro tipo = resposta invalida
+        valid=lambda d: ("five_hour" in d or "seven_day" in d)
+        and all(d.get(k) is None or isinstance(d[k], dict) for k in ("five_hour", "seven_day") if k in d),
     )
 
 
@@ -620,7 +622,8 @@ def extract_claude_status(
 
     # Breakdown since the last weekly reset (API reset - 7d, else rolling 7d)
     since_sec = now_sec - CLAUDE_7D_SECONDS
-    api_reset = parse_timestamp(((api_data or {}).get("seven_day") or {}).get("resets_at"))
+    seven_day_api = (api_data or {}).get("seven_day")
+    api_reset = parse_timestamp((seven_day_api if isinstance(seven_day_api, dict) else {}).get("resets_at"))
     if api_reset is not None:
         since_sec = min(now_sec, api_reset - CLAUDE_7D_SECONDS)
     by_model, by_project = scan_project_token_breakdown(projects_dir, since_sec)
