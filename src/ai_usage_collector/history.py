@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import csv
 import fcntl
+import hashlib
 import io
 import json
 import os
@@ -75,6 +76,7 @@ def _upgrade_v1(history: dict[str, Any], rekey: dict[tuple[str, str], str]) -> N
     """Converte o historico por id de Conta em por identidade (Contas de mesma identidade somam).
 
     O acumulado sem dono ("sistema") vai para a identidade ativa agora, marcado como estimado.
+    Sem identidade ativa para ele, a conversao fica pendente (versao 1) e e refeita na proxima coleta.
     """
     # ponytail: id de Conta ja removida/fundida antes da conversao fica sob o proprio id (so no export).
     for provs in history["daily"].values():
@@ -89,13 +91,18 @@ def _upgrade_v1(history: dict[str, Any], rekey: dict[tuple[str, str], str]) -> N
                     bucket[model] = bucket.get(model, 0) + tokens
             provs[provider] = merged
     history["system_seen"] = list(LOG_GLOBS)  # o v1 ja lia os logs do sistema
-    history["version"] = HISTORY_VERSION
+    pending = any(UNATTRIBUTED_ACCOUNT in accs for provs in history["daily"].values() for accs in provs.values())
+    if not pending:
+        history["version"] = HISTORY_VERSION
 
 
 def _tokens(usage: Any) -> int:
     if not isinstance(usage, dict):
         return 0
-    return int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
+    try:
+        return int(usage.get("input_tokens") or 0) + int(usage.get("output_tokens") or 0)
+    except (ValueError, TypeError, OverflowError):
+        return 0  # linha com contagem invalida nao pode abortar a leitura das demais
 
 
 def _parse_claude(entry: dict[str, Any], cursor: dict[str, Any], seen: set[str]) -> tuple[str, int] | None:
@@ -190,7 +197,11 @@ def load_history(path: Path) -> dict[str, Any]:
     data.setdefault("seen", {})
     data.setdefault("estimated", {})
     data.setdefault("system_seen", [])
-    data.setdefault("version", 1)
+    version = data.setdefault("version", 1)
+    if not isinstance(version, int) or isinstance(version, bool):
+        raise ValueError(f"Historico de Tokens com versao invalida: {path}")
+    if version > HISTORY_VERSION:  # escrito por uma versao mais nova: nunca sobrescrever
+        raise ValueError(f"Historico de Tokens de versao mais nova ({version}) que a suportada: {path}")
     return data
 
 
@@ -284,11 +295,12 @@ def _first_of_month(d: date, back: int) -> date:
     return date(m // 12, m % 12 + 1, 1)
 
 
-def summarize(history: dict[str, Any], provider: str, account_id: str, today: date) -> dict[str, Any]:
-    """`account_id` e a chave de identidade da Conta (account_key)."""
+def summarize(history: dict[str, Any], provider: str, keys: str | list[str], today: date) -> dict[str, Any]:
+    """`keys`: chave(s) de historico da Conta (identidade e/ou id, que somam)."""
+    keys = [keys] if isinstance(keys, str) else keys
     per_day: dict[str, int] = {}
     for day, provs in history["daily"].items():
-        total = sum((provs.get(provider, {}).get(account_id) or {}).values())
+        total = sum(sum((provs.get(provider, {}).get(k) or {}).values()) for k in keys)
         if total:
             per_day[day] = total
 
@@ -299,7 +311,7 @@ def summarize(history: dict[str, Any], provider: str, account_id: str, today: da
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
     return {
-        "estimated": account_id in history.get("estimated", {}).get(provider, []),
+        "estimated": any(k in history.get("estimated", {}).get(provider, []) for k in keys),
         "today": per_day.get(today.isoformat(), 0),
         "week": between(week_start, today),
         "month": between(month_start, today),
@@ -330,22 +342,31 @@ def apply_token_history(
     for provider, agent in status_payload["agents"].items():
         for acc in agent["accounts"]:
             cfg_acc = accounts.get((provider, str(acc["id"])))
-            key = account_key(provider, cfg_acc) if cfg_acc else str(acc["id"])
-            acc["token_history"] = summarize(history, provider, key, today)
+            # Identidade + id: tokens lidos antes de a identidade ser conhecida ficam sob o id.
+            keys = [str(acc["id"])]
+            if cfg_acc and (key := account_key(provider, cfg_acc)) not in keys:
+                keys.append(key)
+            acc["token_history"] = summarize(history, provider, keys, today)
 
 
 def export_history(cache_path: str | Path | None, fmt: str, config: dict[str, Any] | None = None) -> str:
     """Historico diario (ate 400 dias) em CSV ou JSON: date, provider, account, model, tokens.
 
-    `account` e o id da Conta que hoje tem aquela identidade (ou a propria chave, se nenhuma tem).
+    `account` e o id da Conta que hoje tem aquela identidade (ou "(conta removida) <hash>" se nenhuma tem).
     """
     history = load_history(history_path_for(cache_path))
-    names = {}
+    names: dict[tuple[str, str], str] = {}
     for p in LOG_GLOBS:
         for a in get_accounts_for_agent(config or {}, p):
+            names.setdefault((p, str(a.get("id"))), str(a.get("id")))
             names.setdefault((p, account_key(p, a)), str(a.get("id")))
+
+    def label(prov: str, key: str) -> str:
+        # Identidade sem Conta hoje: nao expor email/uuid crus.
+        return names.get((prov, key)) or f"(conta removida) {hashlib.sha256(f'{prov}:{key}'.encode()).hexdigest()[:8]}"
+
     rows = [
-        {"date": day, "provider": prov, "account": names.get((prov, acc), acc), "model": model, "tokens": tokens}
+        {"date": day, "provider": prov, "account": label(prov, acc), "model": model, "tokens": tokens}
         for day, provs in sorted(history["daily"].items())
         for prov, accs in sorted(provs.items())
         for acc, models in sorted(accs.items())

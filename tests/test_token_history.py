@@ -312,3 +312,63 @@ def test_first_system_read_is_estimated(tmp_path, monkeypatch):
     status = _refresh(config_path, cache_path)
     th = _acc_by_id(status, "a")["token_history"]
     assert (th["today"], th["estimated"]) == (9, True)
+
+
+# --- Revisao do ticket 42 ----------------------------------------------------
+
+
+def test_tokens_read_before_identity_known_still_shown_after(tmp_path, monkeypatch):
+    claude_dir, _, config_path, cache_path = _setup(tmp_path)
+    now = datetime.now(timezone.utc)
+    (claude_dir / "projects" / "proj" / "s.jsonl").write_text(_claude_line(now, "m1", 10, 0))
+    assert _acc(_refresh(config_path, cache_path), "claude")["token_history"]["today"] == 10
+    from ai_usage_collector.config import save_secure_json
+    save_secure_json({"oauthAccount": {"accountUuid": "uuid-z", "emailAddress": "z@x.com"}}, claude_dir / ".claude.json")
+    save_secure_json({"claudeAiOauth": {"accessToken": "t", "refreshToken": "r"}}, claude_dir / ".credentials.json")
+    with open(claude_dir / "projects" / "proj" / "s.jsonl", "a") as f:
+        f.write(_claude_line(now, "m2", 5, 0))
+    assert _acc(_refresh(config_path, cache_path), "claude")["token_history"]["today"] == 15
+
+
+def test_v1_system_bucket_without_active_identity_stays_pending(tmp_path):
+    claude_dir, _, config_path, cache_path = _setup(tmp_path)
+    cache_path.parent.mkdir(parents=True)
+    day = _local_day(datetime.now(timezone.utc))
+    hist = cache_path.parent / "history.json"
+    hist.write_text(json.dumps({"version": 1, "cursors": {}, "daily": {day: {"claude": {"sistema": {"m": 4}}}}}))
+    _refresh(config_path, cache_path)
+    data = json.loads(hist.read_text())
+    assert data["version"] == 1 and data["daily"][day]["claude"]["sistema"] == {"m": 4}
+
+
+def test_invalid_token_counts_do_not_abort_history(tmp_path):
+    claude_dir, _, config_path, cache_path = _setup(tmp_path)
+    now = datetime.now(timezone.utc)
+    bad = json.loads(_claude_line(now, "bad", 0, 0))
+    bad["message"]["usage"]["input_tokens"] = "abc"
+    (claude_dir / "projects" / "proj" / "s.jsonl").write_text(json.dumps(bad) + "\n" + _claude_line(now, "ok", 7, 0))
+    assert _acc(_refresh(config_path, cache_path), "claude")["token_history"]["today"] == 7
+
+
+@pytest.mark.parametrize("version", ['"2"', "null", "99"])
+def test_bad_or_newer_history_version_is_never_overwritten(tmp_path, capsys, version):
+    _, _, config_path, cache_path = _setup(tmp_path)
+    cache_path.parent.mkdir(parents=True)
+    hist = cache_path.parent / "history.json"
+    raw = '{"version": %s, "daily": {}}' % version
+    hist.write_text(raw)
+    status = _refresh(config_path, cache_path)
+    assert "token_history" not in _acc(status, "claude")
+    assert hist.read_text() == raw
+    assert "Historico de Tokens" in capsys.readouterr().err
+
+
+def test_export_masks_identities_without_account(tmp_path, capsys):
+    _, _, config_path, cache_path = _setup(tmp_path)
+    cache_path.parent.mkdir(parents=True)
+    day = _local_day(datetime.now(timezone.utc))
+    (cache_path.parent / "history.json").write_text(json.dumps({
+        "version": 2, "cursors": {}, "daily": {day: {"claude": {"email:gone@x.com": {"m": 1}}}}}))
+    assert main(["--export-history", "csv", "--config-path", str(config_path), "--cache-path", str(cache_path)]) == 0
+    out = capsys.readouterr().out
+    assert "gone@x.com" not in out and "(conta removida)" in out
