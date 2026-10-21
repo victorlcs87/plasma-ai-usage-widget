@@ -25,6 +25,15 @@ PlasmoidItem {
     Plasmoid.title: safeI18n("Monitor de Uso de IA")
     toolTipMainText: Plasmoid.title || ""
     toolTipSubText: getSummaryToolTip() || ""
+    toolTipTextFormat: Text.PlainText
+
+    // Abrir por hover (~300 ms) e fixar com clique (ticket 34); sem hover, só o clique
+    readonly property bool hoverOpen: Plasmoid.configuration.hoverOpen !== false
+    property bool pinned: false
+    property bool pillHovered: false
+    property bool popupHovered: false
+    property double now: Date.now()
+    hideOnWindowDeactivate: !pinned
 
     property var statusData: null
     property string lastError: ""
@@ -87,11 +96,64 @@ PlasmoidItem {
         if (!statusData || !statusData.agents) {
             return safeI18n("Nenhum dado coletado ainda.");
         }
-        var lines = compactModel.map(function (m) { return m.name + ": " + m.description; });
+        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n, now)];
         if (totalInvites > 0) {
             lines.push(safeI18n("%1 convites disponíveis", totalInvites));
         }
         return lines.join("\n");
+    }
+
+    function setPillHovered(h) {
+        pillHovered = h;
+        if (h) {
+            now = Date.now();
+            if (hoverOpen && !expanded) hoverOpenTimer.restart();
+        } else {
+            hoverOpenTimer.stop();
+            if (hoverOpen && expanded && !pinned) hoverCloseTimer.restart();
+        }
+    }
+
+    function setPopupHovered(h) {
+        popupHovered = h;
+        if (h) hoverCloseTimer.stop();
+        else if (hoverOpen && expanded && !pinned) hoverCloseTimer.restart();
+    }
+
+    // Clique: fecha/abre como antes; com hover ligado, clicar no popup aberto por hover o fixa, e de novo o solta
+    function pillClicked() {
+        hoverOpenTimer.stop();
+        if (!hoverOpen) { expanded = !expanded; return; }
+        if (!expanded) { pinned = true; expanded = true; }
+        else pinned = !pinned;
+    }
+
+    function closePopup() {
+        pinned = false;
+        expanded = false;
+    }
+
+    // Abre depois de ~300 ms com o mouse sobre a pílula
+    Timer {
+        id: hoverOpenTimer
+        interval: 300
+        onTriggered: if (root.pillHovered && !root.expanded) root.expanded = true
+    }
+
+    // Atraso curto de saída: o mouse transita pílula -> popup sem piscar
+    Timer {
+        id: hoverCloseTimer
+        interval: 250
+        onTriggered: if (!root.pinned && !root.pillHovered && !root.popupHovered) root.expanded = false
+    }
+
+    // Contagem regressiva da dica: só enquanto o mouse está na pílula com o popup fechado
+    Timer {
+        id: tooltipTick
+        interval: 1000
+        repeat: true
+        running: root.pillHovered && !root.expanded
+        onTriggered: root.now = Date.now()
     }
 
     function shellQuote(str) {
@@ -255,6 +317,12 @@ PlasmoidItem {
     }
 
     onExpandedChanged: {
+        if (!root.expanded) {
+            root.pinned = false;
+            root.popupHovered = false;
+            hoverOpenTimer.stop();
+            hoverCloseTimer.stop();
+        }
         if (root.expanded && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }

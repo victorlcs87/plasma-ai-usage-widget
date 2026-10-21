@@ -35,8 +35,13 @@ Item {
 
     function runLength(size) { return count * size + (count - 1) * gap + badgeLength + 2 * pad; }
 
+    // Clique do mouse: abre/fixa/solta (main.qml); teclado: abre/fecha como antes
     function toggle() {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.expanded = !compactRoot.plasmoidItem.expanded;
+    }
+
+    function closePopup() {
+        if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.closePopup();
     }
 
     Layout.minimumWidth: vertical ? ringMin + 2 * pad : runLength(ringMin)
@@ -48,6 +53,7 @@ Item {
     Keys.onReturnPressed: toggle()
     Keys.onEnterPressed: toggle()
     Keys.onSpacePressed: toggle()
+    Keys.onEscapePressed: closePopup()
 
     Accessible.role: Accessible.Button
     Accessible.name: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : ""
@@ -150,6 +156,7 @@ Item {
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: compactRoot.toggle()
+        onContainsMouseChanged: if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.setPillHovered(containsMouse)
+        onClicked: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.pillClicked() : compactRoot.toggle()
     }
 }

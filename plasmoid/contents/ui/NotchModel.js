@@ -94,3 +94,38 @@ function worstHealth(model) {
     });
     return worst;
 }
+
+// Tempo restante legível ("2h 15min"); vencido (<= 0) = "já liberado"
+function formatRemaining(ms, tr) {
+    if (ms <= 0) return tr("já liberado");
+    var min = Math.floor(ms / 60000);
+    if (min < 1) return tr("menos de 1 min");
+    if (min < 60) return min + "min";
+    var h = Math.floor(min / 60);
+    if (h < 24) return h + "h " + (min % 60) + "min";
+    return Math.floor(h / 24) + "d " + (h % 24) + "h";
+}
+
+// Uma linha por janela: "Janela nativa: 40% — libera em 2h 15min"; sem dado = "—", nunca 0%
+function windowLine(acc, win, resetKey, label, now, tr) {
+    var pct = windowPct(acc, win, resetKey);
+    if (pct < 0) return label + ": —";
+    var line = label + ": " + Math.round(pct) + "%";
+    var reset = win[resetKey] ? Date.parse(win[resetKey]) : NaN;
+    if (!isNaN(reset)) line += " — " + (reset <= now ? formatRemaining(0, tr) : tr("libera em %1", formatRemaining(reset - now, tr)));
+    return line;
+}
+
+// Texto da dica (texto puro): todos os limites dos provedores visíveis, Conta Ativa no Sistema
+function tooltipText(statusData, cfg, tr, now) {
+    var agents = (statusData && statusData.agents) || {};
+    var blocks = visibleProviders(cfg).map(function (key) {
+        var ag = agents[key];
+        var name = (ag && ag.name) || Presets.providerInfo(key).name;
+        var acc = activeAccount(ag);
+        if (!acc) return name + ": " + tr("sem conta ativa no sistema");
+        return name + "\n  " + windowLine(acc, acc.native_window, "release_time", tr("Janela nativa"), now, tr)
+            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Semanal"), now, tr);
+    });
+    return blocks.join("\n");
+}
