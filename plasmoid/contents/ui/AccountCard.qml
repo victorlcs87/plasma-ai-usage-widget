@@ -218,6 +218,14 @@ Kirigami.AbstractCard {
         updateCountdown();
     }
 
+    // Fraction of the window already elapsed (live), or -1 when the contract has no duration/release
+    function elapsedFraction(win, liveRemaining) {
+        if (!win || !(win.window_seconds > 0) || win.elapsed_fraction === null || win.elapsed_fraction === undefined) {
+            return -1;
+        }
+        return Math.min(1, Math.max(0, 1 - liveRemaining / win.window_seconds));
+    }
+
     function formatCountdown(sec) {
         if (sec <= 0) {
             return safeI18n("Liberada");
@@ -442,7 +450,6 @@ Kirigami.AbstractCard {
                     text: {
                         var winType = cardRoot.accountData?.native_window?.type || "";
                         if (winType === "5h") return cardRoot.safeI18n("Janela Ativa (5h)");
-                        if (winType === "3h") return cardRoot.safeI18n("Janela Ativa (3h)");
                         if (winType === "daily") return cardRoot.safeI18n("Janela Diária");
                         if (winType) return cardRoot.safeI18n("Janela Ativa (%1)", winType);
                         return cardRoot.safeI18n("Janela Ativa");
@@ -496,6 +503,18 @@ Kirigami.AbstractCard {
                         height: parent.height
                         radius: 3
                         color: cardRoot.getUsageColor(cardRoot.accountData?.native_window?.usage_percentage || 0.0)
+                    }
+                    // Marca de tempo decorrido da Janela Nativa
+                    Rectangle {
+                        id: nativeElapsedMarker
+                        property double frac: cardRoot.elapsedFraction(cardRoot.accountData?.native_window, cardRoot.liveSecondsRemaining)
+                        visible: frac >= 0
+                        x: Math.round(Math.max(0, frac) * (parent.width - width))
+                        y: -2
+                        width: 2
+                        height: parent.height + 4
+                        color: Kirigami.Theme.textColor
+                        opacity: 0.7
                     }
                 }
             }
@@ -606,6 +625,18 @@ Kirigami.AbstractCard {
                         height: parent.height
                         radius: 3
                         color: cardRoot.getUsageColor(cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0)
+                    }
+                    // Marca de tempo decorrido da Janela Semanal
+                    Rectangle {
+                        id: weeklyElapsedMarker
+                        property double frac: cardRoot.elapsedFraction(cardRoot.accountData?.weekly_window, cardRoot.liveWeeklySecondsRemaining)
+                        visible: frac >= 0
+                        x: Math.round(Math.max(0, frac) * (parent.width - width))
+                        y: -2
+                        width: 2
+                        height: parent.height + 4
+                        color: Kirigami.Theme.textColor
+                        opacity: 0.7
                     }
                 }
             }

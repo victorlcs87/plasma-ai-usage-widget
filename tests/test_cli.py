@@ -42,7 +42,7 @@ def test_cli_refresh_creates_config_and_cache(tmp_path):
     with open(cache_path, "r", encoding="utf-8") as f:
         status_data = json.load(f)
 
-    assert status_data["version"] == 2
+    assert status_data["version"] == 3
     assert "last_updated" in status_data
     assert "agents" in status_data
     assert "claude" in status_data["agents"]
@@ -91,7 +91,7 @@ def test_cli_refresh_and_status_combined(tmp_path):
     )
     assert res.returncode == 0
     output_json = json.loads(res.stdout)
-    assert output_json["version"] == 2
+    assert output_json["version"] == 3
     assert "last_updated" in output_json
     assert "agents" in output_json
     assert cache_path.exists()
@@ -117,4 +117,4 @@ def test_cli_installed_entrypoint(tmp_path):
     res = subprocess.run(cmd, capture_output=True, text=True)
     assert res.returncode == 0
     data = json.loads(res.stdout)
-    assert data["version"] == 2
+    assert data["version"] == 3

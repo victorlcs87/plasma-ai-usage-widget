@@ -3,6 +3,8 @@ from ai_usage_collector.contract import (
     build_agent_account_status,
     validate_status_contract,
     AGENT_NATIVE_WINDOWS,
+    parse_window_seconds,
+    window_type_from_seconds,
 )
 
 
@@ -14,7 +16,7 @@ def test_agent_native_windows_definition():
 
 def test_build_empty_status_contract():
     contract = build_empty_status_contract()
-    assert contract["version"] == 2
+    assert contract["version"] == 3
     assert "last_updated" in contract
     assert contract["status"] == "ok"
     assert "agents" in contract
@@ -165,4 +167,87 @@ def test_validate_status_contract_is_active():
     # If isActive is not a bool, validation should fail
     acc["isActive"] = "not_a_bool"
     assert validate_status_contract(contract) is False
+
+
+def test_window_duration_and_elapsed_fraction_fields():
+    acc = build_agent_account_status(
+        provider="codex",
+        account_id="c1",
+        label="C1",
+        source="auto",
+        health={"status": "valid"},
+        native_window={"window_seconds": 18000, "seconds_remaining": 4500},
+        weekly_window={"window_seconds": 604800, "seconds_remaining": 151200},
+    )
+    assert acc["native_window"]["window_seconds"] == 18000
+    assert acc["native_window"]["elapsed_fraction"] == 0.75
+    assert acc["weekly_window"]["window_seconds"] == 604800
+    assert acc["weekly_window"]["elapsed_fraction"] == 0.75
+
+
+def test_elapsed_fraction_unknown_or_clamped():
+    acc = build_agent_account_status(
+        provider="claude",
+        account_id="c1",
+        label="C1",
+        source="auto",
+        health={"status": "valid"},
+        native_window={"window_seconds": 18000, "seconds_remaining": None},
+        weekly_window={"window_seconds": 604800, "seconds_remaining": 999999},
+    )
+    assert acc["native_window"]["elapsed_fraction"] is None
+    assert acc["weekly_window"]["elapsed_fraction"] == 0.0
+    empty = build_agent_account_status(
+        provider="gemini", account_id="g", label="G", source="auto", health={"status": "valid"}
+    )
+    assert empty["native_window"]["window_seconds"] is None
+    assert empty["native_window"]["elapsed_fraction"] is None
+    assert empty["weekly_window"]["elapsed_fraction"] is None
+
+
+def test_older_contract_versions_remain_valid():
+    status = build_empty_status_contract()
+    for version in (1, 2, 3):
+        status["version"] = version
+        assert validate_status_contract(status) is True
+    status["version"] = 99
+    assert validate_status_contract(status) is False
+
+
+def test_parse_window_seconds_and_type():
+    assert parse_window_seconds(18000) == 18000
+    assert parse_window_seconds("18000s") == 18000
+    assert parse_window_seconds("5h") == 18000
+    assert parse_window_seconds("7d") == 604800
+    assert parse_window_seconds("weekly") == 604800
+    assert parse_window_seconds("daily") == 86400
+    assert parse_window_seconds(0) is None
+    assert parse_window_seconds(True) is None
+    assert parse_window_seconds("bogus") is None
+    assert parse_window_seconds(None) is None
+    assert window_type_from_seconds(18000) == "5h"
+    assert window_type_from_seconds(10800) == "3h"
+    assert window_type_from_seconds(86400) == "daily"
+    assert window_type_from_seconds(5400) == "90m"
+
+
+def test_parse_window_seconds_rejects_hostile_values():
+    # M1: valores infinitos/enormes da API nao podem derrubar a coleta
+    assert parse_window_seconds(float("inf")) is None
+    assert parse_window_seconds(float("nan")) is None
+    assert parse_window_seconds(10**400) is None
+    assert parse_window_seconds("9" * 400 + "h") is None
+    assert parse_window_seconds("9" * 400) is None
+    assert parse_window_seconds(400 * 86400) is None  # acima do teto de 1 ano
+    # B2
+    assert parse_window_seconds(0.5) is None
+    assert parse_window_seconds("18000") == 18000
+    assert parse_window_seconds("٥h") is None  # digito arabe-indico
+
+
+def test_window_type_from_seconds_weekly_and_short():
+    # B1
+    assert window_type_from_seconds(604800) == "7d"
+    assert window_type_from_seconds(30) == "30s"
+    assert window_type_from_seconds(90) == "90s"
 

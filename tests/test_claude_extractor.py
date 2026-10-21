@@ -555,6 +555,8 @@ def test_extract_claude_status_with_official_api(tmp_path):
     assert nw["total_capacity"] == 45
     assert nw["available_capacity"] == 36
     assert nw["seconds_remaining"] == 3 * 3600  # 15:00 to 18:00 = 3h
+    assert nw["window_seconds"] == 5 * 3600  # janela five_hour da API
+    assert res["weekly_window"]["window_seconds"] == 7 * 86400  # janela seven_day
 
     ww = res["weekly_window"]
     assert ww["usage_percentage"] == 85.0
@@ -606,4 +608,6 @@ def test_extract_claude_status_fallback_when_api_fails(tmp_path):
     assert ww["used_capacity"] == 2
     assert ww["available_capacity"] == (45 * 7) - 2
     assert ww["usage_percentage"] == round((2 / (45 * 7)) * 100, 1)
+    assert nw["window_seconds"] == 5 * 3600
+    assert ww["window_seconds"] == 7 * 86400
 

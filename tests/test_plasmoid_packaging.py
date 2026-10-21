@@ -212,8 +212,13 @@ def test_account_card_qml_symmetric_meters_and_clean_capacity():
 
     # 2. Symmetric Active Window Meter
     assert "Janela Ativa (5h)" in content
-    assert "Janela Ativa (3h)" in content
+    assert "Janela Ativa (3h)" not in content  # duracao vem do provedor via %1
+    assert "Janela Ativa (%1)" in content
     assert "Janela Diária" in content
+    # Marca de tempo decorrido nas duas barras
+    assert "elapsed_fraction" in content
+    assert "nativeElapsedMarker" in content
+    assert "weeklyElapsedMarker" in content
     assert "nativeProgressBar" in content
     assert "liveSecondsRemaining" in content
 

@@ -220,7 +220,7 @@ def test_status_without_history_field_still_valid():
     from ai_usage_collector.contract import build_empty_status_contract
 
     payload = build_empty_status_contract()
-    assert payload["version"] == 2
+    assert payload["version"] == 3
     assert validate_status_contract(payload) is True
     payload["version"] = 1  # contratos antigos continuam aceitos
     assert validate_status_contract(payload) is True
