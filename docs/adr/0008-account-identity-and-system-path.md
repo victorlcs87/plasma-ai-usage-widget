@@ -19,7 +19,7 @@ Decidimos:
 - **Claude Code em execucao:** nao ha como travar o `~/.claude.json`. A gravacao e relida logo depois e uma alteracao concorrente aciona o rollback, mas uma escrita entre a releitura e o rollback e sobrescrita.
 - **Credencial do sistema como symlink:** as gravacoes seguem o link e escrevem no alvo real. Se o link apontar para um Perfil Isolado, esse perfil e sobrescrito na troca (a credencial anterior fica no `.bak`).
 - **Concorrencia:** migracao, troca e captura sao serializadas por `flock` em `config.lock` (0600) no diretorio da configuracao. Renomear, adicionar, remover e o fim do login interativo tambem fazem read-modify-write sob esse lock (recarregando a configuracao dentro dele).
-- **Codex e Gemini:** ate os tickets 19 e 20 registrarem seus adaptadores de identidade, mantem o comportamento anterior (a entrada `default` no caminho do sistema continua sendo detectada como ativa).
+- **Codex:** ate o ticket 19 registrar seu adaptador de identidade (o Gemini ja usa o email Google, do arquivo ou do chaveiro, ticket 20), mantem o comportamento anterior (a entrada `default` no caminho do sistema continua sendo detectada como ativa).
 - **Fusao automatica conservadora:** Contas de mesma identidade so sao fundidas se tambem tiverem o mesmo refresh token; com tokens divergentes ambas permanecem (o usuario remove a duplicata) e nenhuma credencial e sobrescrita.
 - **Sem regressao de tokens:** na pre-troca, se o Perfil Isolado tem `expiresAt` mais novo que a credencial do sistema, o perfil e mantido e a credencial do sistema vai para um `.bak-<timestamp>`.
 - **Credencial do sistema ilegivel:** a migracao da entrada `default` e adiada ate o arquivo voltar a ser legivel; a entrada nao e apagada.
