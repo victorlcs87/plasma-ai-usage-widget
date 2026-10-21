@@ -279,6 +279,7 @@ Item {
                 NotchButton {
                     visible: modelData.url !== ""
                     text: I18n.tr("View release")
+                    accessibleName: I18n.tr("View release: %1", modelData.text)  // distingue as linhas de atualização para leitor de tela
                     hint: I18n.tr("Open the release page in the browser")
                     accent: fullRoot.accent
                     onClicked: Qt.openUrlExternally(modelData.url)
