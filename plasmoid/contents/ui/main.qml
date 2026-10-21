@@ -32,6 +32,14 @@ PlasmoidItem {
     // Abrir por hover (~300 ms) e fixar com clique (ticket 34); sem hover, só o clique
     readonly property bool hoverOpen: Plasmoid.configuration.hoverOpen !== false
     property bool pinned: false
+    // Notch flutuante (ticket 41): com ele ativo o popup é o da janela flutuante (floatOpen) e o popup nativo do
+    // Plasma nunca abre; sem ele, `open` é exatamente `expanded` (modo Plasmoid inalterado).
+    property bool floatOpen: false
+    readonly property bool floatingActive: floatingLoader.status === Loader.Ready && floatingLoader.item !== null && floatingLoader.item.available === true
+    readonly property bool open: floatingActive ? floatOpen : expanded
+    function setOpen(v) { if (floatingActive) floatOpen = v; else expanded = v; }
+    // Atalho global / ativação do Plasma com o flutuante ligado: alterna o popup flutuante, não o nativo
+    onExpandedChanged: if (floatingActive && expanded) { expanded = false; setOpen(!floatOpen); }
     property bool pillHovered: false
     property bool popupHovered: false
     property double now: Date.now()
@@ -63,7 +71,7 @@ PlasmoidItem {
     // (botão direito abre "Configurar"), e na bandeja o status Passivo mantém o widget nos itens ocultos.
     // Histerese: some só depois de `idleDelayMs` ininterruptos (sem tremor); reaparece na hora.
     readonly property bool idleWanted: NotchModel.widgetIdle(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs)
-        && !root.expanded && !Plasmoid.userConfiguring && !root.pillHovered && !root.pinned && !root.popupHovered
+        && !root.open && !Plasmoid.userConfiguring && !root.pillHovered && !root.pinned && !root.popupHovered
     property bool idleHidden: false
     onIdleWantedChanged: {
         if (idleWanted) idleDelay.restart();
@@ -142,7 +150,7 @@ PlasmoidItem {
         pillHovered = h;
         if (h) {
             now = Date.now();
-            if (hoverOpen && !expanded) hoverOpenTimer.restart();
+            if (hoverOpen && !open) hoverOpenTimer.restart();
         } else {
             hoverOpenTimer.stop();
             scheduleHoverClose();
@@ -150,7 +158,7 @@ PlasmoidItem {
     }
 
     function scheduleHoverClose() {
-        if (hoverOpen && expanded && openedByHover && !pinned && !pillHovered && !popupHovered) hoverCloseTimer.restart();
+        if (hoverOpen && open && openedByHover && !pinned && !pillHovered && !popupHovered) hoverCloseTimer.restart();
     }
 
     function setPopupHovered(h) {
@@ -162,8 +170,8 @@ PlasmoidItem {
     // Clique: fecha/abre como antes; com hover ligado, clicar no popup aberto por hover o fixa, e de novo o solta
     function pillClicked() {
         hoverOpenTimer.stop();
-        if (!hoverOpen) { expanded = !expanded; return; }
-        if (!expanded) { pinned = true; expanded = true; }
+        if (!hoverOpen) { setOpen(!open); return; }
+        if (!open) { pinned = true; setOpen(true); }
         else {
             pinned = !pinned;
             if (!pinned) { openedByHover = true; scheduleHoverClose(); }  // solto: volta a fechar ao sair
@@ -172,21 +180,21 @@ PlasmoidItem {
 
     function closePopup() {
         pinned = false;
-        expanded = false;
+        setOpen(false);
     }
 
     // Abre depois de ~300 ms com o mouse sobre a pílula
     Timer {
         id: hoverOpenTimer
         interval: 300
-        onTriggered: if (root.hoverOpen && root.pillHovered && !root.expanded) { root.openedByHover = true; root.expanded = true; }
+        onTriggered: if (root.hoverOpen && root.pillHovered && !root.open) { root.openedByHover = true; root.setOpen(true); }
     }
 
     // Atraso curto de saída: o mouse transita pílula -> popup sem piscar
     Timer {
         id: hoverCloseTimer
         interval: 250
-        onTriggered: if (root.hoverOpen && root.openedByHover && !root.pinned && !root.pillHovered && !root.popupHovered) root.expanded = false
+        onTriggered: if (root.hoverOpen && root.openedByHover && !root.pinned && !root.pillHovered && !root.popupHovered) root.setOpen(false)
     }
 
     // Contagem regressiva da dica: só enquanto o mouse está na pílula com o popup fechado
@@ -194,7 +202,7 @@ PlasmoidItem {
         id: tooltipTick
         interval: 1000
         repeat: true
-        running: root.pillHovered && !root.expanded
+        running: root.pillHovered && !root.open
         onTriggered: root.now = Date.now()
     }
 
@@ -425,9 +433,9 @@ PlasmoidItem {
     // aberto (nem fixado) e não altera pinned. Limitação: abrir o popup pode roubar o foco do teclado do
     // terminal onde o usuário digita; por isso a abertura automática é desligável (sessionAutoOpen).
     function sessionAttention() {
-        if (Plasmoid.configuration.sessionAutoOpen === true && !root.expanded && !root.pinned && !root.idleHidden) {
+        if (Plasmoid.configuration.sessionAutoOpen === true && !root.open && !root.pinned && !root.idleHidden) {
             root.autoOpened = true;
-            root.expanded = true;
+            root.setOpen(true);
             sessionCloseTimer.restart();
         }
         if (Plasmoid.configuration.sessionSound === true) {
@@ -440,11 +448,11 @@ PlasmoidItem {
         id: sessionCloseTimer
         interval: 5000
         onTriggered: {
-            var mine = root.autoOpened && root.expanded;
+            var mine = root.autoOpened && root.open;
             root.autoOpened = false;
             if (!mine || root.pinned) return;
             if (root.pillHovered || root.popupHovered) { root.openedByHover = true; return; }
-            root.expanded = false;
+            root.setOpen(false);
         }
     }
 
@@ -490,16 +498,16 @@ PlasmoidItem {
         statusDataSource.connectSource(cmd);
     }
 
-    onExpandedChanged: {
-        if (!root.expanded) root.autoOpened = false;
-        if (!root.expanded) {
+    onOpenChanged: {
+        if (!root.open) root.autoOpened = false;
+        if (!root.open) {
             root.pinned = false;
             root.openedByHover = false;
             root.popupHovered = false;
             hoverOpenTimer.stop();
             hoverCloseTimer.stop();
         }
-        if (root.expanded && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
+        if (root.open && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }
     }
@@ -508,6 +516,14 @@ PlasmoidItem {
         if (root.idleWanted) idleDelay.restart();
         if (root.rawIdle !== "") providerIdleDelay.restart();
         root.loadStatus();
+    }
+
+    // Janela flutuante: só é carregada (e FloatingNotch.qml só é resolvido) com a opção ligada
+    Loader {
+        id: floatingLoader
+        active: Plasmoid.configuration.floatingNotch === true
+        source: "FloatingNotch.qml"
+        onLoaded: item.plasmoidItem = root
     }
 
     compactRepresentation: CompactRepresentation {

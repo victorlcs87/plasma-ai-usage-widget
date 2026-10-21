@@ -358,7 +358,7 @@ def test_session_state_config_and_ui_wiring():
 def test_session_attention_respects_pinned_hover_and_open_popup():
     main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
     fn = main[main.index("function sessionAttention"):main.index("id: soundDataSource")]
-    assert "!root.expanded && !root.pinned" in fn  # nao abre sobre popup ja aberto
+    assert "!root.open && !root.pinned" in fn  # nao abre sobre popup ja aberto
     assert "root.pillHovered || root.popupHovered" in fn and "root.pinned" in fn  # nao fecha sob o mouse nem fixado
     assert "root.pinned = " not in fn  # nunca altera o estado fixado
     assert "ring.shown" in (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")  # animacao para com o widget oculto

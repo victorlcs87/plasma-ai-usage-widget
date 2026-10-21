@@ -21,7 +21,8 @@ TABS = ["tabGeral", "tabPainel", "tabPopup", "tabContas", "tabNotif"]
 # Inventário: cada cfg_* pertence a exatamente uma aba
 CFG_TAB = {
     "tabGeral": {"refreshIntervalClaude", "refreshIntervalCodex", "refreshIntervalGemini"},
-    "tabPainel": {"providerOrder", "hiddenProviders", "accentPreset", "panelStyle", "panelMode", "ringCenter", "metricSize", "panelMargin"},
+    "tabPainel": {"providerOrder", "hiddenProviders", "accentPreset", "panelStyle", "panelMode", "ringCenter", "metricSize", "panelMargin",
+                 "floatingNotch", "floatEdge", "floatSize", "floatSnap", "floatScreen", "floatOffsetTop", "floatOffsetBottom", "floatOffsetLeft", "floatOffsetRight"},
     "tabPopup": {"hoverOpen", "usageDisplay", "resetDisplay", "popupOpacity", "popupProviderOrder", "popupHiddenProviders"},
     "tabContas": set(),
     "tabNotif": {"sessionState", "sessionAutoOpen", "sessionSound"},
@@ -141,7 +142,7 @@ def config(tmp_path, drive="", size=(560, 640), pngs=None):
         (imp / f).write_text(body)
     run = tmp_path / "run"
     run.mkdir()
-    for f in ("Presets.js", "I18n.js", "PanelStyle.js", "ViewPrefs.js"):
+    for f in ("Presets.js", "I18n.js", "PanelStyle.js", "ViewPrefs.js", "FloatingGeometry.js"):
         shutil.copy(UI_DIR / f, run / f)
     shutil.copy(UI_DIR / "configGeneral.qml", run / "ConfigGeneral.qml")
     (run / "h.qml").write_text(HARNESS % {"w": size[0], "h": size[1], "data": json.dumps(fixture()), "drive": drive, "pngs": json.dumps(pngs or [])})

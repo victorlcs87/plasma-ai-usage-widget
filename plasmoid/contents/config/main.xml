@@ -98,6 +98,52 @@
       <label>Providers hidden in the popup (comma separated)</label>
       <default></default>
     </entry>
+    <entry name="floatingNotch" type="Bool">
+      <label>Show the Notch as its own window pinned to a screen edge (off: it stays in the panel)</label>
+      <default>false</default>
+    </entry>
+    <entry name="floatEdge" type="String">
+      <label>Floating Notch edge (top, bottom, left or right)</label>
+      <default>top</default>
+    </entry>
+    <entry name="floatSize" type="Int">
+      <label>Floating Notch size in percent</label>
+      <default>100</default>
+      <min>80</min>
+      <max>160</max>
+    </entry>
+    <entry name="floatSnap" type="Bool">
+      <label>Snap the floating Notch to the center of the edge when dragging</label>
+      <default>true</default>
+    </entry>
+    <entry name="floatScreen" type="String">
+      <label>Screen of the floating Notch (empty = the widget's screen)</label>
+      <default></default>
+    </entry>
+    <entry name="floatOffsetTop" type="Int">
+      <label>Floating Notch position on the top edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
+    <entry name="floatOffsetBottom" type="Int">
+      <label>Floating Notch position on the bottom edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
+    <entry name="floatOffsetLeft" type="Int">
+      <label>Floating Notch position on the left edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
+    <entry name="floatOffsetRight" type="Int">
+      <label>Floating Notch position on the right edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
   </group>
 
 </kcfg>

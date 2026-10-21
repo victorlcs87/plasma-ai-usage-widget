@@ -11,6 +11,7 @@ import org.kde.plasma.extras as PlasmaExtras
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
 import "ViewPrefs.js" as ViewPrefs
+import "FloatingGeometry.js" as FloatingGeometry
 import "I18n.js" as I18n
 
 Item {
@@ -41,6 +42,25 @@ Item {
     property int cfg_panelMargin: -1  // -1 = automática (Kirigami.Units.smallSpacing)
     readonly property var panelNow: PanelStyle.config({ panelStyle: cfg_panelStyle, panelMode: cfg_panelMode, ringCenter: cfg_ringCenter,
                                                         metricSize: cfg_metricSize, panelMargin: cfg_panelMargin })
+    // Notch flutuante (ticket 41): opcional, desligado por padrão; uma posição por borda (px a partir do centro)
+    property bool cfg_floatingNotch: false
+    property string cfg_floatEdge: "top"
+    property int cfg_floatSize: 100
+    property bool cfg_floatSnap: true
+    property string cfg_floatScreen: ""
+    property int cfg_floatOffsetTop: 0
+    property int cfg_floatOffsetBottom: 0
+    property int cfg_floatOffsetLeft: 0
+    property int cfg_floatOffsetRight: 0
+    readonly property var floatNow: FloatingGeometry.config({ floatingNotch: cfg_floatingNotch, floatEdge: cfg_floatEdge, floatSize: cfg_floatSize,
+        floatSnap: cfg_floatSnap, floatScreen: cfg_floatScreen, floatOffsetTop: cfg_floatOffsetTop, floatOffsetBottom: cfg_floatOffsetBottom,
+        floatOffsetLeft: cfg_floatOffsetLeft, floatOffsetRight: cfg_floatOffsetRight })
+    function setFloatOffset(edge, v) {
+        if (edge === "top") cfg_floatOffsetTop = v;
+        else if (edge === "bottom") cfg_floatOffsetBottom = v;
+        else if (edge === "left") cfg_floatOffsetLeft = v;
+        else cfg_floatOffsetRight = v;
+    }
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
     // Popup (ticket 33): exibição em todo o widget, opacidade do fundo, ordem e visibilidade dos cards
     property string cfg_usageDisplay: "used"
@@ -1071,6 +1091,114 @@ Item {
                                         Accessible.name: I18n.tr("Move %1 later", Presets.providerInfo(modelData).name)
                                     }
                                 }
+                            }
+                        }
+
+                        // Notch flutuante (opcional): janela própria presa a uma borda da tela, independente do painel
+                        ColumnLayout {
+                            objectName: "floatingSection"
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.CheckBox {
+                                objectName: "floatingToggle"
+                                text: I18n.tr("Floating Notch (own window on a screen edge)")
+                                checked: configRoot.floatNow.enabled
+                                onToggled: configRoot.cfg_floatingNotch = checked
+                                Accessible.name: I18n.tr("Show the Notch as a floating window pinned to a screen edge")
+                                Accessible.description: I18n.tr("Off by default. When on, the widget in the panel becomes a small marker (right-click it to configure) and the Notch lives in its own window")
+                            }
+
+                            Flow {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+                                enabled: configRoot.floatNow.enabled
+
+                                QQC2.Label {
+                                    text: I18n.tr("Edge:")
+                                    textFormat: Text.PlainText
+                                }
+                                QQC2.ComboBox {
+                                    objectName: "floatEdgeCombo"
+                                    textRole: "name"
+                                    valueRole: "key"
+                                    model: [
+                                        { key: "top", name: I18n.tr("Top") },
+                                        { key: "bottom", name: I18n.tr("Bottom") },
+                                        { key: "left", name: I18n.tr("Left") },
+                                        { key: "right", name: I18n.tr("Right") }
+                                    ]
+                                    currentIndex: Math.max(0, indexOfValue(configRoot.floatNow.edge))
+                                    onActivated: configRoot.cfg_floatEdge = currentValue
+                                    Accessible.name: I18n.tr("Screen edge of the floating Notch")
+                                }
+
+                                QQC2.Label {
+                                    text: I18n.tr("Size (%):")
+                                    textFormat: Text.PlainText
+                                }
+                                QQC2.SpinBox {
+                                    objectName: "floatSizeSpin"
+                                    from: 80
+                                    to: 160
+                                    stepSize: 10
+                                    editable: true
+                                    value: Math.round(configRoot.floatNow.scale * 100)
+                                    onValueModified: configRoot.cfg_floatSize = value
+                                    Accessible.name: I18n.tr("Floating Notch size in percent (80 to 160)")
+                                }
+
+                                QQC2.Label {
+                                    text: I18n.tr("Screen:")
+                                    textFormat: Text.PlainText
+                                }
+                                QQC2.ComboBox {
+                                    objectName: "floatScreenCombo"
+                                    textRole: "name"
+                                    valueRole: "key"
+                                    model: [{ key: "", name: I18n.tr("Screen of the widget") }].concat(Qt.application.screens.map(function (s) { return { key: s.name, name: s.name }; }))
+                                    currentIndex: Math.max(0, indexOfValue(configRoot.floatNow.screen))
+                                    onActivated: configRoot.cfg_floatScreen = currentValue
+                                    Accessible.name: I18n.tr("Screen of the floating Notch")
+                                }
+
+                                QQC2.Label {
+                                    text: I18n.tr("Position (px from the center):")
+                                    textFormat: Text.PlainText
+                                }
+                                QQC2.SpinBox {
+                                    objectName: "floatOffsetSpin"
+                                    from: -20000
+                                    to: 20000
+                                    stepSize: 10
+                                    editable: true
+                                    value: ({ top: configRoot.cfg_floatOffsetTop, bottom: configRoot.cfg_floatOffsetBottom,
+                                              left: configRoot.cfg_floatOffsetLeft, right: configRoot.cfg_floatOffsetRight })[configRoot.floatNow.edge]
+                                    onValueModified: configRoot.setFloatOffset(configRoot.floatNow.edge, value)
+                                    Accessible.name: I18n.tr("Floating Notch position along the edge, in pixels from the center (remembered for each edge)")
+                                }
+                                QQC2.Button {
+                                    objectName: "floatRecenter"
+                                    text: I18n.tr("Center")
+                                    icon.name: "zoom-fit-best"
+                                    onClicked: configRoot.setFloatOffset(configRoot.floatNow.edge, 0)
+                                    Accessible.name: I18n.tr("Center the floating Notch on this edge")
+                                }
+
+                                QQC2.CheckBox {
+                                    objectName: "floatSnapCheck"
+                                    text: I18n.tr("Snap to the center when dragging")
+                                    checked: configRoot.floatNow.snap
+                                    onToggled: configRoot.cfg_floatSnap = checked
+                                    Accessible.name: I18n.tr("Snap the floating Notch to the center of the edge when dragging")
+                                }
+                            }
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                wrapMode: Text.WordWrap
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Drag the floating Notch along the edge (or use the arrow keys; Home centers it); the position is remembered for each edge. Wayland (KDE Plasma): uses the layer-shell protocol, so panels appearing or disappearing never move it. X11: a plain always-on-top window without reserved area. If the layer-shell QML module is missing the option has no effect and the Notch stays in the panel; other compositors without layer-shell may show a regular window.")
                             }
                         }
 

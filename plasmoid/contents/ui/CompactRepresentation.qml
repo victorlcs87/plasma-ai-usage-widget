@@ -15,7 +15,14 @@ Item {
 
     property var plasmoidItem: null
 
-    readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
+    // Notch flutuante (ticket 41): a janela flutuante hospeda este mesmo componente (hosted) e força a orientação
+    // e o tamanho; com o flutuante ativo, o widget no painel vira só um marcador (miniatura) que mantém o menu
+    // do botão direito (Configurar) e abre/fecha o mesmo popup. Sem isso, nada muda.
+    property bool hosted: false
+    property int forceVertical: -1      // -1 = segue o painel; 0 horizontal; 1 vertical
+    property var panelOverride: null    // {style, mode, center, scale, margin} do flutuante
+    readonly property bool marker: !hosted && !!compactRoot.plasmoidItem && compactRoot.plasmoidItem.floatingActive === true
+    readonly property bool vertical: forceVertical >= 0 ? forceVertical === 1 : Plasmoid.formFactor === PlasmaCore.Types.Vertical
     readonly property var rings: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.compactModel : []
     readonly property int count: Math.max(1, rings.length)
     readonly property color accent: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.accentColor : Kirigami.Theme.highlightColor
@@ -25,7 +32,7 @@ Item {
     readonly property string health: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.worstHealthStatus : ""
 
     // Estilo, modo, centro, tamanho e margem (ticket 32): valores inválidos caem no padrão (PanelStyle.config)
-    readonly property var panel: PanelStyle.config(Plasmoid.configuration)
+    readonly property var panel: panelOverride ? panelOverride : PanelStyle.config(Plasmoid.configuration)
     readonly property bool remaining: ViewPrefs.config(Plasmoid.configuration).remaining  // usado/restante (ticket 33)
     readonly property bool widgetUpdate: !!(compactRoot.plasmoidItem && compactRoot.plasmoidItem.updateInfo && compactRoot.plasmoidItem.updateInfo.widget)
     readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
@@ -74,10 +81,11 @@ Item {
     }
 
     readonly property int sliver: Kirigami.Units.gridUnit
-    Layout.minimumWidth: vertical ? crossMin : (idle ? sliver : runLength(geoMin))
-    Layout.minimumHeight: vertical ? (idle ? sliver : runLength(geoMin)) : crossMin
-    Layout.preferredWidth: vertical ? crossPref : (idle ? sliver : runLength(geo))
-    Layout.preferredHeight: vertical ? (idle ? sliver : runLength(geo)) : crossPref
+    readonly property int markerSize: Kirigami.Units.iconSizes.smallMedium
+    Layout.minimumWidth: marker ? markerSize : vertical ? crossMin : (idle ? sliver : runLength(geoMin))
+    Layout.minimumHeight: marker ? markerSize : vertical ? (idle ? sliver : runLength(geoMin)) : crossMin
+    Layout.preferredWidth: marker ? markerSize : vertical ? crossPref : (idle ? sliver : runLength(geo))
+    Layout.preferredHeight: marker ? markerSize : vertical ? (idle ? sliver : runLength(geo)) : crossPref
 
     activeFocusOnTab: true
     // Destruído com o mouse em cima (formFactor, reconfiguração): não deixa o hover preso
@@ -88,7 +96,8 @@ Item {
     Keys.onEscapePressed: closePopup()
 
     Accessible.role: Accessible.Button
-    Accessible.name: compactRoot.idle ? I18n.tr("AI monitor hidden: no CLI running. Activate to open")
+    Accessible.name: compactRoot.marker ? I18n.tr("AI monitor: floating Notch active. Activate to open")
+        : compactRoot.idle ? I18n.tr("AI monitor hidden: no CLI running. Activate to open")
         : (compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : "")
     Accessible.description: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipSubText : ""
     Accessible.onPressAction: toggle()
@@ -96,7 +105,7 @@ Item {
     // Pílula sempre escura, independente do tema
     Rectangle {
         id: pill
-        visible: !compactRoot.idle
+        visible: !compactRoot.idle && !compactRoot.marker
         anchors.centerIn: parent
         width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo))
         height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo) : compactRoot.geo.h + 2 * pad)
@@ -251,8 +260,22 @@ Item {
         }
     }
 
+    // Marcador no painel com o Notch flutuante ativo: miniatura escura com a cor de realce
     Rectangle {
-        visible: compactRoot.idle
+        objectName: "panelMarker"
+        visible: compactRoot.marker
+        anchors.centerIn: parent
+        width: Math.min(parent.width, parent.height) * 0.8
+        height: width * 0.5
+        radius: height / 2
+        color: "#15171b"
+        border.width: 1
+        border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent : "#2a2d33"
+        Rectangle { anchors.centerIn: parent; width: parent.height * 0.4; height: width; radius: width / 2; color: compactRoot.accent }
+    }
+
+    Rectangle {
+        visible: compactRoot.idle && !compactRoot.marker
         anchors.centerIn: parent
         width: vertical ? parent.width * 0.7 : Math.max(4, compactRoot.sliver / 3)
         height: vertical ? Math.max(4, compactRoot.sliver / 3) : parent.height * 0.7
