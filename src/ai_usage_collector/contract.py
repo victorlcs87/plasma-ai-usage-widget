@@ -22,6 +22,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 # v5: optional "pace", "forecast" {exhausts_at, seconds_until, before_release, basis_seconds} and
 #     "alert_level" ("normal"|"warning"|"critical") on native_window/weekly_window, and top-level
 #     "alerts" {mode, warning, critical} (ticket 24)
+#     Top-level "notifications" {warning, critical, early, reset, muted} (ticket 25) is a new optional
+#     key read by the settings screen: no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
@@ -207,6 +209,15 @@ def validate_status_contract(data: Any) -> bool:
         isinstance(alerts, dict)
         and alerts.get("mode") in ("pace", "threshold")
         and all(isinstance(alerts.get(k), (int, float)) and not isinstance(alerts.get(k), bool) for k in ("warning", "critical"))
+    ):
+        return False
+
+    notify = data.get("notifications")
+    if notify is not None and not (
+        isinstance(notify, dict)
+        and all(isinstance(notify.get(k), (int, float)) and not isinstance(notify.get(k), bool) for k in ("warning", "critical"))
+        and all(isinstance(notify.get(k), bool) for k in ("early", "reset"))
+        and isinstance(notify.get("muted"), list) and all(isinstance(m, str) for m in notify["muted"])
     ):
         return False
 

@@ -25,9 +25,11 @@ from ai_usage_collector.config import (
     SUPPORTED_PROVIDERS,
     load_config,
     set_alert_settings,
+    set_notify_settings,
     set_provider_settings,
 )
 from ai_usage_collector.pace import alert_settings
+from ai_usage_collector.waybar import waybar_line
 from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
 from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
@@ -53,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         action="store_true",
         help="Exibe o payload canônico de status atual em JSON na saída padrão",
+    )
+    parser.add_argument(
+        "--waybar",
+        action="store_true",
+        help="Imprime o status em JSON de uma linha para o modulo custom do Waybar (le o cache; nao coleta)",
     )
     parser.add_argument(
         "--switch-account",
@@ -144,6 +151,16 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--alert-mode", choices=["pace", "threshold"], default=None, help="Alerta por ritmo (padrão) ou limiar fixo")
     parser.add_argument("--alert-warning", type=float, default=None, help="Limiar de aviso em %% (padrão 70)")
     parser.add_argument("--alert-critical", type=float, default=None, help="Limiar crítico em %% (padrão 90)")
+    parser.add_argument(
+        "--set-notify-config",
+        action="store_true",
+        help="Define as notificações de limite: --notify-warning/--notify-critical (0 < aviso < crítico <= 100), --notify-early e --notify-reset (on|off), --notify-mute (provedores separados por vírgula; vazio limpa)",
+    )
+    parser.add_argument("--notify-warning", type=float, default=None, help="Limiar de aviso em %% (padrão 80)")
+    parser.add_argument("--notify-critical", type=float, default=None, help="Limiar crítico em %% (padrão 95)")
+    parser.add_argument("--notify-early", choices=["on", "off"], default=None, help="Aviso antecipado de esgotamento (padrão on)")
+    parser.add_argument("--notify-reset", choices=["on", "off"], default=None, help="Aviso de reset de limite já sinalizado (padrão off)")
+    parser.add_argument("--notify-mute", default=None, metavar="PROVIDERS", help="Provedores silenciados, separados por vírgula")
     parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
     parser.add_argument(
         "--api-key-stdin",
@@ -211,6 +228,13 @@ def main(argv: Sequence[str] | None = None) -> int:
     config_path = args.config_path
     cache_path = args.cache_path
 
+    if args.waybar:  # fora do try: sempre uma linha JSON valida e exit 0; ignora as demais opcoes
+        try:
+            sys.stdout.write(waybar_line(cache_path))
+        except Exception:
+            sys.stdout.write('{"text": "\\u2014", "tooltip": "", "class": "unknown", "alt": "unknown"}\n')
+        return 0
+
     try:
         if args.export_history:
             sys.stdout.write(export_history(cache_path, args.export_history, load_config(config_path)))
@@ -237,6 +261,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             ok, message = set_alert_settings(args.alert_mode, args.alert_warning, args.alert_critical, config_path)
             if ok and alert_settings(load_config(config_path)) != before:
                 reapply_alert_levels(config_path, cache_path)  # so recalcula niveis; sem consulta aos provedores
+            (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
+            return 0 if ok else 1
+
+        if args.set_notify_config:
+            on = lambda v: None if v is None else v == "on"  # noqa: E731
+            mute = None if args.notify_mute is None else [p.strip().lower() for p in args.notify_mute.split(",") if p.strip()]
+            ok, message = set_notify_settings(
+                args.notify_warning, args.notify_critical, on(args.notify_early), on(args.notify_reset), mute, config_path
+            )
+            if ok:
+                reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem consulta aos provedores
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
             return 0 if ok else 1
 
@@ -426,6 +461,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not args.list_orphans
             and not args.set_provider_config
             and not args.set_alert_config
+            and not args.set_notify_config
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account

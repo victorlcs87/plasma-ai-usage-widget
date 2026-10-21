@@ -47,11 +47,15 @@ def validate_alerts(mode: Any, warning: Any, critical: Any) -> str | None:
 
 
 def alert_settings(config: Any) -> dict[str, Any]:
-    """Configuracao de alerta; qualquer valor invalido volta ao padrao (ritmo, 70/90)."""
+    """Configuracao de alerta; modo e limiares invalidos voltam ao padrao, cada grupo sem afetar o outro."""
     raw = config.get("alerts") if isinstance(config, dict) else None
     raw = raw if isinstance(raw, dict) else {}
-    merged = {**DEFAULT_ALERTS, **{k: raw[k] for k in DEFAULT_ALERTS if k in raw}}
-    return merged if validate_alerts(**merged) is None else dict(DEFAULT_ALERTS)
+    out = dict(DEFAULT_ALERTS)
+    if raw.get("mode") in ("pace", "threshold"):
+        out["mode"] = raw["mode"]
+    if validate_alerts("pace", raw.get("warning"), raw.get("critical")) is None:
+        out["warning"], out["critical"] = raw["warning"], raw["critical"]
+    return out
 
 
 def _num(value: Any) -> float | None:
@@ -131,13 +135,19 @@ def _level(pct: float, pace: float | None, settings: dict[str, Any]) -> str | No
     return "normal"
 
 
+def reliable_pct(acc: dict[str, Any], win: dict[str, Any], release_key: str) -> float | None:
+    """Uso da janela, so se vem de leitura da API fresca com liberacao conhecida (senao None)."""
+    pct = _num(win.get("usage_percentage"))
+    if acc.get("stale") or acc.get("no_data") or win.get("source") != "api" or _ts(win.get(release_key)) is None:
+        return None
+    return pct
+
+
 def set_level(acc: dict[str, Any], win: dict[str, Any], release_key: str, settings: dict[str, Any]) -> None:
     """Define `alert_level` da janela; so leitura da API fresca, com liberacao conhecida, recebe nivel."""
     win.pop("alert_level", None)
-    pct = _num(win.get("usage_percentage"))
-    if acc.get("stale") or acc.get("no_data") or pct is None or win.get("source") != "api" or _ts(win.get(release_key)) is None:
-        return
-    win["alert_level"] = _level(pct, _num(win.get("pace")), settings)
+    if (pct := reliable_pct(acc, win, release_key)) is not None:
+        win["alert_level"] = _level(pct, _num(win.get("pace")), settings)
 
 
 def reapply_levels(status: dict[str, Any], settings: dict[str, Any]) -> None:

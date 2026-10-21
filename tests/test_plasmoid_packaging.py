@@ -337,3 +337,12 @@ def test_notch_config_entries_declared_and_exposed():
     for name in ("providerOrder", "hiddenProviders", "accentPreset"):
         assert f'name="{name}"' in xml and f"cfg_{name}" in cfg
     assert "highlightColor" in (UI_DIR / "main.qml").read_text(encoding="utf-8")
+
+def test_config_general_exposes_notification_settings():
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for needle in ("--set-notify-config", "--notify-warning", "--notify-critical", "--notify-early", "--notify-reset",
+                   "--notify-mute", "notifyDirty", "setProviderMuted", "Accessible.name"):
+        assert needle in cfg
+    section = cfg[cfg.index("function saveNotifySettings"):cfg.index("// Executor de remoção de conta")]
+    assert "shellQuote(configRoot.notifyMuted.join" in section  # nada vai ao shell sem aspas
+    assert "notifyThresholdsEdited" in section and "hovered || activeFocus" in cfg and "Accessible.description" in cfg

@@ -48,6 +48,16 @@ Item {
     property bool isSavingAlerts: false
     property bool alertsDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
 
+    // Notificações de limite (config.json do coletor, lidas do status.json)
+    property int notifyWarning: 80
+    property int notifyCritical: 95
+    property bool notifyEarly: true
+    property bool notifyReset: false
+    property var notifyMuted: []
+    property bool notifyThresholdsEdited: false  // limiares só são enviados se editados: valores fracionários existentes não são arredondados
+    property bool isSavingNotify: false
+    property bool notifyDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
+
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
@@ -243,6 +253,14 @@ Item {
                         configRoot.alertWarning = Math.round(Number(al.warning)) || 70;
                         configRoot.alertCritical = Math.round(Number(al.critical)) || 90;
                     }
+                    var nt = configRoot.statusData.notifications;
+                    if (nt && !configRoot.isSavingNotify && !configRoot.notifyDirty) {
+                        configRoot.notifyWarning = Math.round(Number(nt.warning)) || 80;
+                        configRoot.notifyCritical = Math.round(Number(nt.critical)) || 95;
+                        configRoot.notifyEarly = nt.early !== false;
+                        configRoot.notifyReset = nt.reset === true;
+                        configRoot.notifyMuted = Array.isArray(nt.muted) ? nt.muted : [];
+                    }
                 } catch (e) {
                     configRoot.errorMessage = configRoot.safeI18n("Erro ao ler dados de status: %1", e.message);
                 }
@@ -273,6 +291,50 @@ Item {
             var stderr = (data["stderr"] || "").trim();
             if (data["exit code"] === 0) {
                 configRoot.alertsDirty = false;
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Notificações: o coletor valida (0 < aviso < crítico <= 100) e as envia pelo D-Bus
+    function saveNotifySettings() {
+        configRoot.isSavingNotify = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        var args = shellQuote("--set-notify-config");
+        if (configRoot.notifyThresholdsEdited) {
+            args += " " + shellQuote("--notify-warning") + " " + shellQuote(configRoot.notifyWarning)
+                + " " + shellQuote("--notify-critical") + " " + shellQuote(configRoot.notifyCritical);
+        }
+        args += " " + shellQuote("--notify-early") + " " + shellQuote(configRoot.notifyEarly ? "on" : "off")
+            + " " + shellQuote("--notify-reset") + " " + shellQuote(configRoot.notifyReset ? "on" : "off")
+            + " " + shellQuote("--notify-mute") + " " + shellQuote(configRoot.notifyMuted.join(","));
+        notifyDataSource.connectSource(configRoot.buildCollectorCommand(args));
+    }
+
+    function setProviderMuted(provider, muted) {
+        var list = configRoot.notifyMuted.filter(function (p) { return p !== provider; });
+        if (muted) list.push(provider);
+        configRoot.notifyMuted = list;
+        configRoot.notifyDirty = true;
+    }
+
+    Plasma5Support.DataSource {
+        id: notifyDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingNotify = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.notifyDirty = false;
+                configRoot.notifyThresholdsEdited = false;
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
@@ -754,6 +816,85 @@ Item {
                 icon.name: "dialog-ok-apply"
                 enabled: !configRoot.isBusy && !configRoot.isSavingAlerts
                 onClicked: configRoot.saveAlertSettings()
+            }
+        }
+
+        // Notificações do sistema: limiares, aviso antecipado, aviso de reset e silenciar por provedor
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Notificar em (%):")
+                textFormat: Text.PlainText
+            }
+
+            QQC2.SpinBox {
+                from: 1
+                to: 99
+                editable: true
+                value: configRoot.notifyWarning
+                onValueModified: { configRoot.notifyWarning = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
+                Accessible.name: configRoot.safeI18n("Notificar ao atingir esta porcentagem de uso")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("e em (%):")
+                textFormat: Text.PlainText
+            }
+
+            QQC2.SpinBox {
+                from: 2
+                to: 100
+                editable: true
+                value: configRoot.notifyCritical
+                onValueModified: { configRoot.notifyCritical = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
+                Accessible.name: configRoot.safeI18n("Notificar com urgência ao atingir esta porcentagem de uso")
+            }
+
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Avisar antes de esgotar")
+                checked: configRoot.notifyEarly
+                onToggled: { configRoot.notifyEarly = checked; configRoot.notifyDirty = true; }
+                Accessible.description: configRoot.safeI18n("Janela nativa: previsão de esgotamento em 30 min; semanal: em 24 h (uma vez por janela)")
+                QQC2.ToolTip.text: Accessible.description
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Avisar quando o limite for liberado")
+                checked: configRoot.notifyReset
+                onToggled: { configRoot.notifyReset = checked; configRoot.notifyDirty = true; }
+                Accessible.description: configRoot.safeI18n("Só para limites que já geraram aviso")
+                QQC2.ToolTip.text: Accessible.description
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Silenciar:")
+                textFormat: Text.PlainText
+            }
+
+            Repeater {
+                model: [
+                    { key: "claude", name: "Claude" },
+                    { key: "codex", name: "Codex" },
+                    { key: "gemini", name: "Gemini" }
+                ]
+                delegate: QQC2.CheckBox {
+                    required property var modelData
+                    text: modelData.name
+                    checked: configRoot.notifyMuted.indexOf(modelData.key) >= 0
+                    onToggled: configRoot.setProviderMuted(modelData.key, checked)
+                    Accessible.name: configRoot.safeI18n("Silenciar notificações do %1", modelData.name)
+                }
+            }
+
+            PlasmaComponents3.Button {
+                text: configRoot.safeI18n("Aplicar")
+                icon.name: "dialog-ok-apply"
+                enabled: !configRoot.isBusy && !configRoot.isSavingNotify
+                onClicked: configRoot.saveNotifySettings()
             }
         }
 
