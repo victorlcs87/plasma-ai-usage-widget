@@ -139,8 +139,9 @@ def _codex_read(cred_file: Path) -> Identity | None:
     claims = _jwt_claims(tokens.get("id_token"))
     auth = claims.get("https://api.openai.com/auth")
     account_id = tokens.get("account_id") or (auth.get("chatgpt_account_id") if isinstance(auth, dict) else None)
-    email = str(claims.get("email") or "").strip() or None
-    account_id = str(account_id or "").strip()
+    email = claims.get("email")
+    email = email.strip() or None if isinstance(email, str) else None
+    account_id = account_id.strip() if isinstance(account_id, str) else ""
     if account_id:
         return Identity(account_id.lower(), email)
     if email:

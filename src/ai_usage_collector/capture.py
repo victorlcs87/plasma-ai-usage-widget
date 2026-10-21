@@ -1044,6 +1044,9 @@ def _system_identity(prov: str, creds: dict[str, Any] | None, cred_file: Path | 
 
 
 def _expires_at(creds: dict[str, Any] | None) -> float:
+    if creds and "last_refresh" in creds:  # Codex: ISO do ultimo refresh
+        sec = parse_timestamp(creds["last_refresh"])
+        return sec * 1000 if sec else 0.0
     if creds and "claudeAiOauth" not in creds:  # Gemini: expiry_date (ms) ou expiry do chaveiro
         sec = parse_timestamp(creds.get("expiry_date") or creds.get("expiry"))
         return sec * 1000 if sec else 0.0
