@@ -30,7 +30,7 @@ Window {
     Loader {
         active: win.host !== null && win.host.useLayer
         source: "FloatingLayer.qml"
-        onLoaded: item.win = win
+        onLoaded: (item as FloatingLayer).win = win
         onStatusChanged: if (status === Loader.Error && win.host) win.host.layerFailed()
     }
 }

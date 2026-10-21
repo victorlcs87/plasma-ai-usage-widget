@@ -188,7 +188,8 @@ Window { id: win; visible: true; width: 20; height: 20
     property var sessionOverlay: ({})
     property var calls: []
     function setPillHovered(h) { calls.push("hover:" + h) }
-    function pillClicked() { calls.push("click"); open = !open }
+    property bool clickOpens: true
+    function pillClicked() { calls.push("click"); if (clickOpens) open = !open }
     function setPopupHovered(h) { calls.push("popupHover:" + h) }
     function closePopup() { calls.push("close"); open = false }
     function refreshCollector() {}
@@ -206,6 +207,7 @@ Window { id: win; visible: true; width: 20; height: 20
     for (var i = 0; i < scenarios.length; i++) {
       var s = scenarios[i]
       Plasmoid.configuration = s.cfg
+      if (s.wsn !== undefined) fn.widgetScreenName = s.wsn
       fn.screenInfo = {name: "T", width: s.screen[0], height: s.screen[1], virtualX: 0, virtualY: 0}
       logic.open = !!s.open
       tc.wait(350)
@@ -326,15 +328,97 @@ def test_drag_commits_once_snaps_and_recenters(tmp_path):
 
 
 @needs_qml
-def test_keyboard_and_pointer_reach_the_shared_pill(tmp_path):
+def test_click_gives_focus_so_arrows_and_home_work_without_tab_and_right_click_configures(tmp_path):
     drive = """
     if (s.name === "keys") {
       var item = fn.pillWindow.contentItem
-      tc.mouseClick(item, 20, 12); tc.wait(50)
+      // sem abrir o popup (que toma o foco para o Escape); o compositor ativa a janela clicada, no offscreen é pedido à mão
+      logic.clickOpens = false
+      fn.pillWindow.requestActivate(); tc.wait(80)
+      tc.mouseClick(item, 20, 12); tc.wait(80)
+      var f = item.Window.activeFocusItem; r.focusDbg = String(f) + " active=" + fn.pillWindow.active + " vis=" + fn.pillWindow.visible + " afi=" + fn.pillWindow.activeFocusItem + " calls=" + JSON.stringify(logic.calls); r.focusIsPill = !!f && f.activeFocusOnTab === true
+      tc.keyClick(Qt.Key_Right); tc.wait(30)
+      r.afterRight = Plasmoid.configuration.floatOffsetBottom
+      tc.keyClick(Qt.Key_Left, Qt.ShiftModifier); tc.wait(30)
+      r.afterShiftLeft = Plasmoid.configuration.floatOffsetBottom
+      tc.keyClick(Qt.Key_Home); tc.wait(30)
+      r.afterHome = Plasmoid.configuration.floatOffsetBottom
+      tc.mouseClick(item, 20, 12, Qt.RightButton); tc.wait(50)
+      r.configure = Plasmoid.triggered
     }
     """
     out = run_floating(tmp_path, [{"name": "keys", "cfg": {"floatingNotch": True, "floatEdge": "bottom"}, "screen": [1280, 720], "open": False}], drive=drive)
+    k = out["keys"]
     assert "click" in out["calls"]  # o clique chega ao mesmo pillClicked do painel (abre/fixa/solta do ticket 34)
+    assert k["focusIsPill"] is True and k["afterRight"] == 8, (k["focusDbg"], k.get("afterRight"))
+    assert k["afterShiftLeft"] == -32  # Shift = 32 px (o stub não notifica a chave gravada: a base volta a 0)
+    assert k["afterHome"] == 0
+    assert k["configure"] == ["configure"]  # botão direito: Configurar, o caminho de volta também na pílula flutuante
+
+
+@needs_qml
+def test_only_the_instance_on_the_chosen_screen_floats(tmp_path):
+    scenarios = [{"name": n, "cfg": {"floatingNotch": True, "floatScreen": scr}, "screen": [1280, 720], "open": False, "wsn": "DP-1"}
+                 for n, scr in (("mine", ""), ("other", "DP-9"), ("same", "DP-1"))]
+    out = run_floating(tmp_path, scenarios)
+    assert out["mine"]["available"] is True and out["same"]["available"] is True
+    assert out["other"]["available"] is False and out["other"]["marker"] is False and out["other"]["pw"]["visible"] is False  # pílula segue no painel
+
+
+HOVER_HARNESS = """
+import QtQuick
+import QtQuick.Window
+import org.kde.plasma.plasmoid
+Window { visible: true; width: 100; height: 40
+  Main { id: m }
+  property var out: ({})
+  property int step: 0
+  Timer { interval: 200; running: true; repeat: true; onTriggered: {
+    var on = {providerOrder: 'claude,codex,gemini', hiddenProviders: '', accentPreset: 'plasma', hoverOpen: true, floatingNotch: true}
+    if (step === 0) { out.active = m.floatingActive; m.setOpen(true); out.open = m.open; m.pinned = true }
+    else if (step === 1) { Plasmoid.configuration = {providerOrder: 'claude,codex,gemini', hiddenProviders: '', hoverOpen: true, floatingNotch: false} }
+    else if (step === 2) { out.offActive = m.floatingActive; out.offPinned = m.pinned; Plasmoid.configuration = on }
+    else if (step === 3) { out.backActive = m.floatingActive; out.floatOpen = m.floatOpen; out.reopened = m.open; out.pinned = m.pinned
+      Plasmoid.formFactor = 0 }
+    else if (step === 4) { out.desktopActive = m.floatingActive; console.log("RESULT " + JSON.stringify(out)); Qt.quit() }
+    step++ } }
+}
+"""
+
+
+@needs_qml
+def test_turning_the_option_off_and_on_never_reopens_the_popup_and_desktop_form_factor_is_skipped(tmp_path):
+    from test_plasmoid_hover import COMPACT_FILES, EXTRA, PLASMOID, STUBS
+    imp = tmp_path / "imp"
+    stub = ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\nPlasmoidItem 1.0 PlasmoidItem.qml\n", {
+        "Plasmoid.qml": PLASMOID[1]["Plasmoid.qml"].replace("hoverOpen: true})", "hoverOpen: true, floatingNotch: true})"),
+        "PlasmoidItem.qml": PLASMOID[1]["PlasmoidItem.qml"]})
+    for rel, (qmldir, files) in {**STUBS, "org/kde/plasma/plasmoid": stub, **EXTRA}.items():
+        d = imp / rel
+        d.mkdir(parents=True)
+        (d / "qmldir").write_text(qmldir)
+        for f, body in files.items():
+            (d / f).write_text(body)
+    r = tmp_path / "run"
+    r.mkdir()
+    for f in COMPACT_FILES:
+        shutil.copy(UI_DIR / f, r / f)
+    (r / "FullRepresentation.qml").write_text("import QtQuick\nItem { property var plasmoidItem }")
+    (r / "FloatingNotch.qml").write_text("import QtQuick\nItem { property var plasmoidItem; property bool available: true }")
+    main = (UI_DIR / "main.qml").read_text()
+    main = re.sub(r"\n\s*Plasmoid\.backgroundHints:.*?\n\n", "\n\n", main, flags=re.S)
+    main = re.sub(r"\n\s*Plasmoid\.(icon|title|status):[^\n]*", "", main)
+    (r / "Main.qml").write_text(main)
+    (r / "h.qml").write_text(HOVER_HARNESS)
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
+    res = subprocess.run(["qml6", "-I", str(imp), str(r / "h.qml")], env=env, capture_output=True, text=True, timeout=60)
+    line = next((l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l), None)
+    assert line, res.stdout + res.stderr
+    out = json.loads(line.split("RESULT ", 1)[1])
+    assert out["active"] is True and out["open"] is True
+    assert out["offActive"] is False and out["offPinned"] is False
+    assert out["backActive"] is True and out["floatOpen"] is False and out["reopened"] is False and out["pinned"] is False
+    assert out["desktopActive"] is False  # formFactor desktop (Planar): o Loader não carrega
 
 
 @needs_qml

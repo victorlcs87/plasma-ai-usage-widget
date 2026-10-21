@@ -8,7 +8,7 @@ import org.kde.layershell as LS
 // (o protocolo pede "não me mova": ignora zonas exclusivas de painéis, 0 significaria desviar deles).
 Item {
     id: layer
-    property Window win: null
+    property FloatingFrame win: null   // tipado: overlay/place/layerReady são propriedades declaradas
 
     function apply() {
         if (!win) return;

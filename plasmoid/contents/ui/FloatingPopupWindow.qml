@@ -14,7 +14,7 @@ FloatingFrame {
         if (active) hadFocus = true;
         else if (hadFocus) {
             hadFocus = false;
-            var p = host ? host.plasmoidItem : null;
+            let p = host ? host.plasmoidItem : null;
             if (p && p.open && !p.pinned && !p.pillHovered) p.closePopup();
         }
     }

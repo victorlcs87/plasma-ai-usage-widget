@@ -38,6 +38,12 @@ PlasmoidItem {
     readonly property bool floatingActive: floatingLoader.status === Loader.Ready && floatingLoader.item !== null && floatingLoader.item.available === true
     readonly property bool open: floatingActive ? floatOpen : expanded
     function setOpen(v) { if (floatingActive) floatOpen = v; else expanded = v; }
+    // Opção desligada (ou layer-shell que falhou) com o popup flutuante aberto: nada fica para trás e religar
+    // nunca abre o popup sozinho
+    onFloatingActiveChanged: if (!floatingActive) {
+        floatOpen = false; pinned = false; openedByHover = false; popupHovered = false;
+        hoverOpenTimer.stop(); hoverCloseTimer.stop();
+    }
     // Atalho global / ativação do Plasma com o flutuante ligado: alterna o popup flutuante, não o nativo
     onExpandedChanged: if (floatingActive && expanded) { expanded = false; setOpen(!floatOpen); }
     property bool pillHovered: false
@@ -521,7 +527,8 @@ PlasmoidItem {
     // Janela flutuante: só é carregada (e FloatingNotch.qml só é resolvido) com a opção ligada
     Loader {
         id: floatingLoader
-        active: Plasmoid.configuration.floatingNotch === true
+        // só no painel (no desktop o widget já é uma janela própria) e uma instância por tela (FloatingNotch.ownsScreen)
+        active: Plasmoid.configuration.floatingNotch === true && root.inPanel
         source: "FloatingNotch.qml"
         onLoaded: item.plasmoidItem = root
     }

@@ -19,7 +19,7 @@ Item {
     readonly property var cfg: FG.config(Plasmoid.configuration)
     readonly property bool useLayer: forceLayer || Qt.platform.pluginName.indexOf("wayland") === 0
     readonly property var screens: Qt.application.screens
-    readonly property string widgetScreenName: fn.Window.window && fn.Window.window.screen ? fn.Window.window.screen.name : ""
+    property string widgetScreenName: fn.Window.window && fn.Window.window.screen ? fn.Window.window.screen.name : ""
     readonly property int screenIdx: FG.pickScreen(screens, cfg.screen, FG.pickScreen(screens, widgetScreenName, 0))
     readonly property var screenObj: screens.length > 0 ? screens[screenIdx] : null
     property var screenInfo: screenObj   // geometria usada nas contas (os testes simulam telas pequenas por aqui)
@@ -28,7 +28,10 @@ Item {
     readonly property var popupWindow: popupWin
 
     // Indisponível = sem tela ou layer-shell que não carregou: o widget segue como pílula no painel
-    readonly property bool available: plasmoidItem !== null && screenInfo !== null && !(useLayer && layerBroken)
+    // Com floatScreen definido só a instância que mora naquela tela mostra o Notch (dois widgets não se sobrepõem
+    // por monitor); a de outra tela mantém a pílula no painel. Dois widgets na MESMA tela ainda se sobrepõem.
+    readonly property bool ownsScreen: cfg.screen === "" || widgetScreenName === "" || widgetScreenName === cfg.screen
+    readonly property bool available: plasmoidItem !== null && screenInfo !== null && ownsScreen && !(useLayer && layerBroken)
 
     // Tamanho escolhido (floatSize) no lugar do tamanho do painel; estilo/modo/centro/margem do painel valem
     readonly property var panelCfg: { var p = PanelStyle.config(Plasmoid.configuration); p.scale = cfg.scale; return p; }

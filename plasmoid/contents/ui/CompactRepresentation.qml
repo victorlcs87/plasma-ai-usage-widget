@@ -291,6 +291,8 @@ Item {
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
         onContainsMouseChanged: if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.setPillHovered(containsMouse)
+        // Na janela flutuante o clique dá o foco à pílula: setas e Home funcionam sem Tab
+        onPressed: if (compactRoot.hosted) compactRoot.forceActiveFocus()
         onClicked: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.pillClicked() : compactRoot.toggle()
     }
 }

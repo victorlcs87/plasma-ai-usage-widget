@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import org.kde.plasma.plasmoid
 
 // Pílula flutuante: o MESMO CompactRepresentation do painel (anéis, selos, hover, clique, ocultar), com a
 // orientação e o tamanho do Notch flutuante. Arrastar ao longo da borda, setas (8 px, Shift 32 px) e Home
@@ -12,6 +13,7 @@ FloatingFrame {
 
     Item {
         anchors.fill: parent
+        focus: true
         Keys.onPressed: (event) => {
             var step = (event.modifiers & Qt.ShiftModifier) ? 32 : 8;
             var d = 0;
@@ -30,6 +32,12 @@ FloatingFrame {
             plasmoidItem: win.host ? win.host.plasmoidItem : null
             forceVertical: win.vertical ? 1 : 0
             panelOverride: win.host ? win.host.panelCfg : null
+        }
+
+        // Botão direito: Configurar (o mesmo caminho de volta do menu do widget no painel)
+        TapHandler {
+            acceptedButtons: Qt.RightButton
+            onTapped: Plasmoid.internalAction("configure").trigger()
         }
 
         DragHandler {
