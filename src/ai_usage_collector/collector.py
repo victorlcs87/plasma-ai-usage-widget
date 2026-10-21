@@ -36,6 +36,7 @@ from ai_usage_collector.contract import (
 )
 from ai_usage_collector.discovery import discover_account
 from ai_usage_collector.history import apply_token_history
+from ai_usage_collector.limit_changes import apply_limit_changes
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -195,6 +196,11 @@ def collect_and_save(
         apply_token_history(status_payload, config, cache_path, now_dt)
     except Exception as e:  # Historico de Tokens e opcional; nunca impede o status
         sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
+
+    try:
+        apply_limit_changes(status_payload, load_status_cache(cache_path), now_dt)
+    except Exception as e:  # nota de mudanca de limites e opcional; nunca impede o status
+        sys.stderr.write(f"Aviso: Nota de mudanca de limites nao atualizada: {e}\n")
 
     # Save to disk
     save_status_cache(status_payload, cache_path)

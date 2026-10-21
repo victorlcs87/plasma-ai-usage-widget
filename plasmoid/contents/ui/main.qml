@@ -107,7 +107,7 @@ PlasmoidItem {
                 var firstAcc = accs[0];
                 var pct = firstAcc.native_window?.usage_percentage;
                 var pctStr = (pct !== undefined && pct !== null) ? pct.toFixed(0) + "%" : "-";
-                lines.push(ag.name + ": " + pctStr);
+                lines.push(ag.name + ": " + pctStr + (accs.some(function (a) { return a.limit_changes && a.limit_changes.length > 0; }) ? " (" + safeI18n("limites mudaram") + ")" : ""));
             }
         }
         if (totalInvites > 0) {
