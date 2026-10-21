@@ -60,3 +60,19 @@ X11 e fallback: `Window` sem moldura com `Qt.WindowStaysOnTopHint | Qt.Tool | Qt
   fechar o popup ao clicar fora so funciona se ele chegou a receber foco.
 - Troca de tela/resolucao com a janela mostrada reposiciona pelo clamp, mas o comportamento do layer-shell ao
   mudar `screen` em uma janela ja mostrada nao foi testado.
+
+## Revisao (ticket 41)
+
+- **Instancias.** O flutuante so carrega para widget em PAINEL (`inPanel`); no desktop o widget ja e uma janela
+  propria e nada muda. Com `floatScreen` definido, so a instancia que mora naquela tela mostra o Notch
+  (`ownsScreen`); as outras mantem a pilula no painel. Dois widgets na MESMA tela ainda se sobrepoem (sem estado
+  compartilhado entre instancias): a ajuda da configuracao avisa para ativar em um so.
+- **Caminho de volta.** No painel o marcador mantem o menu do botao direito (Configurar); na pilula flutuante o
+  botao direito dispara a acao "configure" do Plasmoid. No desktop o flutuante nao existe, entao nao ha como
+  ficar sem o widget.
+- **Desligar/falha** com o popup flutuante aberto zera `floatOpen`, fixado, hover e timers: religar nunca abre o
+  popup sozinho.
+- **Foco.** O clique na pilula flutuante da foco a ela (setas/Home sem Tab). Clicar tambem abre o popup, que toma o
+  foco para o Escape; o foco volta a pilula no clique seguinte.
+- **SpinBox** da configuracao: `value` vem da configuracao validada e `onValueModified` grava o `cfg_*`; o de
+  posicao mostra a borda escolhida (uma por borda) e aceita -20000..20000 px, a janela reclampa.

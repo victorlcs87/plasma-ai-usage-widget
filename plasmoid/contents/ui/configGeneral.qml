@@ -1166,6 +1166,8 @@ Item {
                                     text: I18n.tr("Position (px from the center):")
                                     textFormat: Text.PlainText
                                 }
+                                // Padrão dos SpinBox desta aba: `value` lido da config validada, onValueModified grava o cfg_*; este
+                                // mostra a posição da borda escolhida (uma por borda) e aceita -20000..20000 px (a janela reclampa)
                                 QQC2.SpinBox {
                                     objectName: "floatOffsetSpin"
                                     from: -20000
@@ -1198,7 +1200,7 @@ Item {
                                 Layout.fillWidth: true
                                 wrapMode: Text.WordWrap
                                 textFormat: Text.PlainText
-                                text: I18n.tr("Drag the floating Notch along the edge (or use the arrow keys; Home centers it); the position is remembered for each edge. Wayland (KDE Plasma): uses the layer-shell protocol, so panels appearing or disappearing never move it. X11: a plain always-on-top window without reserved area. If the layer-shell QML module is missing the option has no effect and the Notch stays in the panel; other compositors without layer-shell may show a regular window.")
+                                text: I18n.tr("Drag the floating Notch along the edge (or use the arrow keys; Home centers it); the position is remembered for each edge. Wayland (KDE Plasma): uses the layer-shell protocol, so panels appearing or disappearing never move it. X11: a plain always-on-top window without reserved area. If the layer-shell QML module is missing the option has no effect and the Notch stays in the panel; other compositors without layer-shell may show a regular window. Only for a widget in a panel (not on the desktop). With a specific screen, only the widget in a panel of that screen floats; two widgets on the same screen overlap, so enable it in one. Right-click the floating Notch for Configure.")
                             }
                         }
 
