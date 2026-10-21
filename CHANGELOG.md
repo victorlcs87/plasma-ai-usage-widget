@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.1.1
+
+### Correções
+- Gemini: a conta da CLI Antigravity (`~/.gemini/antigravity-cli/antigravity-oauth-token`, token aninhado) agora é capturada. Ordem das fontes: chaveiro, `oauth_creds.json`, esse arquivo; respeita `GEMINI_CONFIG_DIR`. O arquivo original e o chaveiro nunca são modificados pela captura.
+
 ## 1.1.0
 
 Spec 05 (Visual Notch, Inteligência de Limites e Identidade de Conta). Tudo o que envolve hooks, notificações, Notch flutuante e checagem de versão é opt-in.

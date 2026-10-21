@@ -41,6 +41,10 @@ coletor** (Configuração > Geral; `collectorPath` em `main.xml`, vazio por padr
 - **Perfis Órfãos** (Perfis Isolados sem Conta): `--list-orphans` lista em JSON, `--reimport-orphan PROVEDOR PERFIL` reimporta como Conta (funde se a identidade já existir) e `--delete-orphan PROVEDOR PERFIL --confirm` exclui do disco. Nada é apagado sem `--confirm`.
 - **Opções `--set-*`** (as mesmas que a tela de configuração aplica): `--set-provider-config PROVEDOR` (`--credential-path`, e no Claude `--api-base-url`, `--api-key-stdin`, `--clear-api-key`), `--set-alert-config` (`--alert-mode pace|threshold`, `--alert-warning`, `--alert-critical`), `--set-notify-config` (`--notify-warning`, `--notify-critical`, `--notify-early`, `--notify-reset`, `--notify-mute`), `--set-update-config` (`--update-check on|off`) e `--set-visibility-config` (`--hide-when-not-running off|widget|provider`).
 
+## Credencial do Gemini
+
+A captura (`--capture-current gemini`) procura a sessão ativa nesta ordem: chaveiro (`secret-tool`, serviço `gemini`, usuário `antigravity`), `~/.gemini/oauth_creds.json` e `~/.gemini/antigravity-cli/antigravity-oauth-token` (CLI Antigravity, formato aninhado em `token`). `GEMINI_CONFIG_DIR` troca `~/.gemini`. Esses arquivos e o chaveiro são só lidos na captura; a cópia fica isolada em `profiles/` com permissão 0600.
+
 ## Notificações de limite (opt-in)
 
 O coletor avisa quando uma janela passa dos limiares, esgotará antes da liberação ou, se ativado, foi liberada. Configure em Configuração > Notificações ou com `--set-notify-config`. O envio usa o binário **`notify-send`** (libnotify) numa sessão gráfica com serviço de notificações; **não** fala D-Bus diretamente. Sem o `notify-send` (ou sem barramento de sessão) o aviso falha em silêncio: o coletor segue normalmente, registra uma única mensagem em stderr, tenta de novo no próximo ciclo sem repetir a mensagem e a marca some quando um envio funciona (`notify_failed` ao lado do `status.json`).
