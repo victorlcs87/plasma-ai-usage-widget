@@ -55,9 +55,9 @@
       <max>160</max>
     </entry>
     <entry name="panelMargin" type="Int">
-      <label>Margem interna do painel em pixels</label>
-      <default>4</default>
-      <min>0</min>
+      <label>Margem interna do painel em pixels (-1 = automática)</label>
+      <default>-1</default>
+      <min>-1</min>
       <max>16</max>
     </entry>
     <entry name="sessionState" type="Bool">

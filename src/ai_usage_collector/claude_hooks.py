@@ -158,23 +158,21 @@ def _parse(raw: bytes, real: Path) -> tuple[dict[str, Any], str, bool]:
     return data, (m.group(1) if m else "  "), (text.endswith("\n") if text.strip() else True)
 
 
-def _edit(settings: Path, mutate: Callable[[dict[str, Any]], bool], creates: bool) -> bool:
-    """Le, altera e regrava o settings.json de forma atomica; True se o arquivo mudou."""
-    real = Path(os.path.realpath(settings))  # symlink (dotfiles): o alvo e substituido, o link fica
+def edit_bytes(path: Path, transform: Callable[[bytes, Path], bytes | None], creates: bool) -> bool:
+    """Le, transforma e regrava o arquivo de forma atomica (lock, backup 0600, symlink, deteccao de
+    escrita concorrente); `transform(raw, real)` devolve os novos bytes ou None se nada muda.
+    """
+    real = Path(os.path.realpath(path))  # symlink (dotfiles): o alvo e substituido, o link fica
     if not real.exists() and not creates:
         return False
     real.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     dirfd = _lock(real.parent)
     try:
         raw = real.read_bytes() if real.exists() else b""
-        data, indent, newline = _parse(raw, real)
-        if not mutate(data):
+        out = transform(raw, real)
+        if out is None:
             return False
         mode = (real.stat().st_mode & 0o7777) if real.exists() else 0o600
-        try:  # antes do backup: texto nao codificavel (ex.: surrogate solitario) nao pode alterar nada
-            out = (json.dumps(data, indent=indent, ensure_ascii=False) + ("\n" if newline else "")).encode("utf-8")
-        except UnicodeEncodeError as e:
-            raise HooksError(f"{real} contém texto que não pode ser regravado em UTF-8 ({e}); nada foi alterado.")
         if raw:
             _backup(real, raw)
         fd, tmp = tempfile.mkstemp(dir=real.parent, prefix=f".{real.name}.", suffix=".tmp")
@@ -184,7 +182,7 @@ def _edit(settings: Path, mutate: Callable[[dict[str, Any]], bool], creates: boo
                 f.flush()
                 os.fsync(f.fileno())
             os.chmod(tmp, mode)
-            # O Claude Code nao usa o nosso lock: se ele regravou o arquivo, aborta em vez de sobrescrever.
+            # O agente nao usa o nosso lock: se ele regravou o arquivo, aborta em vez de sobrescrever.
             if (real.read_bytes() if real.exists() else b"") != raw:
                 raise HooksError(f"{real} foi alterado por outro processo; nada foi gravado. Tente de novo.")
             os.replace(tmp, real)
@@ -194,6 +192,21 @@ def _edit(settings: Path, mutate: Callable[[dict[str, Any]], bool], creates: boo
         return True
     finally:
         os.close(dirfd)  # solta o flock
+
+
+def _edit(settings: Path, mutate: Callable[[dict[str, Any]], bool], creates: bool) -> bool:
+    """Altera o settings.json (JSON); True se o arquivo mudou."""
+
+    def transform(raw: bytes, real: Path) -> bytes | None:
+        data, indent, newline = _parse(raw, real)
+        if not mutate(data):
+            return None
+        try:  # antes do backup: texto nao codificavel (ex.: surrogate solitario) nao pode alterar nada
+            return (json.dumps(data, indent=indent, ensure_ascii=False) + ("\n" if newline else "")).encode("utf-8")
+        except UnicodeEncodeError as e:
+            raise HooksError(f"{real} contém texto que não pode ser regravado em UTF-8 ({e}); nada foi alterado.")
+
+    return edit_bytes(settings, transform, creates)
 
 
 def settings_path() -> Path:

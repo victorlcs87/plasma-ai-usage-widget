@@ -1,4 +1,5 @@
 import QtQuick
+import "PanelStyle.js" as PanelStyle
 
 // Barras verticais do estilo Bar: esquerda = semanal, direita = Janela Nativa. pct < 0 = desconhecido
 // (só trilho). elapsed < 0 = sem marcador de tempo decorrido (traço horizontal na barra).
@@ -15,8 +16,8 @@ Item {
     property string outerLevel: ""
     property string innerLevel: ""
 
-    readonly property real barW: Math.max(3, Math.round(height * 0.2))
-    implicitWidth: 2 * barW + 4
+    readonly property real barW: PanelStyle.barWidth(height)
+    implicitWidth: PanelStyle.barsWidth(height)
     implicitHeight: 22
 
     onOuterPctChanged: canvas.requestPaint()

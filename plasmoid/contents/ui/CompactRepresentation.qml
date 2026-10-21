@@ -24,28 +24,40 @@ Item {
 
     // Estilo, modo, centro, tamanho e margem (ticket 32): valores inválidos caem no padrão (PanelStyle.config)
     readonly property var panel: PanelStyle.config(Plasmoid.configuration)
+    readonly property bool widgetUpdate: !!(compactRoot.plasmoidItem && compactRoot.plasmoidItem.updateInfo && compactRoot.plasmoidItem.updateInfo.widget)
+    readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
+    readonly property bool cliUpdate: rings.some(function (r) { return !!r.update; })
+
     readonly property int ringBase: Kirigami.Units.iconSizes.smallMedium
     readonly property int ringMin: Math.round(Kirigami.Units.gridUnit * 1.1)
-    readonly property int pad: panel.margin
+    // Margem: automática (smallSpacing, como antes) até o usuário escolher um valor
+    readonly property int pad: panel.margin < 0 ? Kirigami.Units.smallSpacing : panel.margin
     readonly property int gap: Kirigami.Units.smallSpacing
     // Com tamanho < 100%, o piso do anel acompanha o tamanho escolhido
     readonly property int minUnit: Math.min(ringMin, Math.round(ringBase * panel.scale))
-    readonly property var geoOpts: ({ style: panel.style, mode: panel.mode, vertical: vertical, pad: pad, gap: gap,
+    readonly property var reqOpts: ({ style: panel.style, mode: panel.mode, center: panel.center, vertical: vertical, pad: pad, gap: gap,
                                       base: ringBase, scale: panel.scale, minUnit: minUnit })
-    // Espessura mínima e preferida do painel (o estilo Ring soma o fundo próprio de cada item)
-    readonly property int ringExtra: panel.style === "ring" ? 4 : 0
-    readonly property int crossMinBase: minUnit + 2 * pad + ringExtra
-    // Nunca menor que o item no menor tamanho de fonte (ex.: Bar vertical precisa de mais largura)
-    readonly property var geoFloor: PanelStyle.layout(geoOpts, crossMinBase)
-    readonly property int crossMin: Math.max(crossMinBase, (vertical ? geoFloor.w : geoFloor.h) + 2 * pad)
-    readonly property int crossPref: Math.round(ringBase * panel.scale) + 2 * pad + ringExtra
+    // Estilo e centro em uso: se a espessura do painel não comporta o pedido, degrada (Bar -> Text -> Pílula;
+    // centro com % -> logo) em vez de cortar
+    readonly property var eff: PanelStyle.effective(reqOpts, vertical ? width : height)
+    readonly property string style: eff.style
+    readonly property var geoOpts: ({ style: eff.style, mode: panel.mode, center: eff.center, vertical: vertical, pad: pad, gap: gap,
+                                      base: ringBase, scale: panel.scale, minUnit: minUnit })
+    // Espessura mínima e preferida do painel (a preferida nunca fica abaixo da mínima)
+    readonly property int crossMin: PanelStyle.minCross(geoOpts)
+    readonly property int crossPref: Math.max(crossMin, Math.round(ringBase * panel.scale) + 2 * pad + (style === "ring" ? 4 : 0))
     // Tamanho de cada item: atual (encolhe até caber, sem corte) e no mínimo; o comprimento preferido
     // acompanha o tamanho atual
     readonly property var geo: PanelStyle.layout(geoOpts, vertical ? width : height)
     readonly property var geoMin: PanelStyle.layout(geoOpts, crossMin)
-    // Selos entram no fluxo da pílula, depois dos itens: nunca cobrem um anel
-    readonly property int badgeLength: (health !== "" ? healthDot.implicitWidth + gap : 0)
-        + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0)
+    // Selos entram no fluxo da pílula, depois dos itens (num grupo: no Ring, com fundo escuro próprio)
+    readonly property int badgeCount: (health !== "" ? 1 : 0) + (cliUpdate ? 1 : 0) + (widgetUpdate ? 1 : 0) + (totalInvites > 0 ? 1 : 0)
+    readonly property int badgePad: style === "ring" ? 3 : 0
+    readonly property int badgeLength: badgeCount === 0 ? 0 : gap + 2 * badgePad
+        + (health !== "" ? healthDot.implicitWidth + gap : 0)
+        + (cliUpdate ? updateDot.implicitWidth + gap : 0)
+        + (widgetUpdate ? (vertical ? widgetBadge.implicitHeight : widgetBadge.implicitWidth) + gap : 0)
+        + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0) - gap
 
     function tr(text, arg) {
         return compactRoot.plasmoidItem ? compactRoot.plasmoidItem.safeI18n(text, arg) : text;
@@ -89,12 +101,12 @@ Item {
         anchors.centerIn: parent
         width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo))
         height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo) : compactRoot.geo.h + 2 * pad)
-        radius: compactRoot.panel.style === "text" || compactRoot.panel.style === "bar"
+        radius: compactRoot.style === "text" || compactRoot.style === "bar"
             ? Math.min(Kirigami.Units.gridUnit * 0.5, Math.min(width, height) / 2) : Math.min(width, height) / 2
         // Ring: sem cápsula comum (cada item tem fundo escuro próprio); a borda segue aparecendo no foco/hover
-        color: compactRoot.panel.style === "ring" ? "transparent" : "#15171b"
+        color: compactRoot.style === "ring" ? "transparent" : "#15171b"
         border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent
-            : (compactRoot.panel.style === "ring" ? "transparent" : "#2a2d33")
+            : (compactRoot.style === "ring" ? "transparent" : "#2a2d33")
         border.width: 1
 
         GridLayout {
@@ -110,9 +122,9 @@ Item {
                     Layout.preferredWidth: compactRoot.geo.w
                     Layout.preferredHeight: compactRoot.geo.h
                     m: modelData
-                    panelStyle: compactRoot.panel.style
+                    panelStyle: compactRoot.style
                     mode: compactRoot.panel.mode
-                    center: compactRoot.panel.center
+                    center: compactRoot.eff.center
                     vertical: compactRoot.vertical
                     geo: compactRoot.geo
                     gap: compactRoot.gap
@@ -140,39 +152,100 @@ Item {
                 }
             }
 
-            // Selo de saúde (só com Conta Ativa com sessão expirada, sem configurar ou com erro)
+            // Selos (saúde, atualização, convites): grupo próprio; no Ring leva fundo escuro, já que não há cápsula
             Rectangle {
-                id: healthDot
-                visible: compactRoot.health !== ""
+                id: badgeGroup
+                visible: compactRoot.badgeCount > 0
                 Layout.alignment: Qt.AlignCenter
-                implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
-                implicitHeight: implicitWidth
-                radius: implicitWidth / 2
-                color: compactRoot.health === "session_expired" ? "#f5a524"
-                     : compactRoot.health === "not_configured" ? "#8a9099" : "#ff4d4f"
-                Accessible.name: compactRoot.health === "session_expired" ? compactRoot.tr("Sessão expirada")
-                               : compactRoot.health === "not_configured" ? compactRoot.tr("Conta não configurada") : compactRoot.tr("Erro na conta")
-            }
+                implicitWidth: badgeGrid.implicitWidth + 2 * compactRoot.badgePad
+                implicitHeight: badgeGrid.implicitHeight + 2 * compactRoot.badgePad
+                radius: Math.min(width, height) / 2
+                color: compactRoot.style === "ring" ? "#15171b" : "transparent"
 
-            // Selo numérico de convites
-            Rectangle {
-                id: inviteBadge
-                visible: compactRoot.totalInvites > 0
-                Layout.alignment: Qt.AlignCenter
-                implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
-                implicitWidth: Math.max(inviteLabel.implicitWidth + 6, implicitHeight)
-                radius: implicitHeight / 2
-                color: "#d35400"
-                Accessible.name: compactRoot.tr("%1 convites disponíveis", compactRoot.totalInvites)
-
-                QQC2.Label {
-                    id: inviteLabel
+                GridLayout {
+                    id: badgeGrid
                     anchors.centerIn: parent
-                    text: String(compactRoot.totalInvites)
-                    font.bold: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.75
-                    color: "white"
-                    textFormat: Text.PlainText
+                    columns: compactRoot.vertical ? 1 : 4
+                    rowSpacing: compactRoot.gap
+                    columnSpacing: compactRoot.gap
+
+                // Selo de saúde (só com Conta Ativa com sessão expirada, sem configurar ou com erro)
+                Rectangle {
+                    objectName: "badge"
+                    id: healthDot
+                    visible: compactRoot.health !== ""
+                    Layout.alignment: Qt.AlignCenter
+                    implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
+                    implicitHeight: implicitWidth
+                    radius: implicitWidth / 2
+                    color: compactRoot.health === "session_expired" ? "#f5a524"
+                         : compactRoot.health === "not_configured" ? "#8a9099" : "#ff4d4f"
+                    Accessible.name: compactRoot.health === "session_expired" ? compactRoot.tr("Sessão expirada")
+                                   : compactRoot.health === "not_configured" ? compactRoot.tr("Conta não configurada") : compactRoot.tr("Erro na conta")
+                }
+
+                // Ponto azul: nova versão de Claude Code, Codex ou Gemini CLI
+                Rectangle {
+                    objectName: "badge"
+                    id: updateDot
+                    visible: compactRoot.cliUpdate
+                    Layout.alignment: Qt.AlignCenter
+                    implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
+                    implicitHeight: implicitWidth
+                    radius: implicitWidth / 2
+                    color: compactRoot.updateColor  // >= 4,5:1 sobre a pílula, qualquer realce (Presets.onPill)
+                    Accessible.role: Accessible.Indicator
+                    Accessible.name: compactRoot.tr("Nova versão de CLI disponível")
+                    HoverHandler { id: updateDotHover }
+                    QQC2.ToolTip.visible: updateDotHover.hovered
+                    QQC2.ToolTip.text: compactRoot.tr("Nova versão de CLI disponível")
+                }
+
+                // Selo: nova versão do widget
+                Rectangle {
+                    objectName: "badge"
+                    id: widgetBadge
+                    visible: compactRoot.widgetUpdate
+                    Layout.alignment: Qt.AlignCenter
+                    implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
+                    implicitWidth: implicitHeight
+                    radius: implicitHeight / 2
+                    color: compactRoot.updateColor
+                    Accessible.role: Accessible.Indicator
+                    Accessible.name: compactRoot.tr("Nova versão do widget disponível")
+
+                    QQC2.Label {
+                        anchors.centerIn: parent
+                        text: "\u2191"
+                        font.bold: true
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.1
+                        color: "#15171b"  // cor da pílula sobre o realce clareado: >= 4,5:1
+                        textFormat: Text.PlainText
+                    }
+                }
+
+                // Selo numérico de convites
+                Rectangle {
+                    objectName: "badge"
+                    id: inviteBadge
+                    visible: compactRoot.totalInvites > 0
+                    Layout.alignment: Qt.AlignCenter
+                    implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
+                    implicitWidth: Math.max(inviteLabel.implicitWidth + 6, implicitHeight)
+                    radius: implicitHeight / 2
+                    color: "#c24d00"
+                    Accessible.name: compactRoot.tr("%1 convites disponíveis", compactRoot.totalInvites)
+
+                    QQC2.Label {
+                        id: inviteLabel
+                        anchors.centerIn: parent
+                        text: String(compactRoot.totalInvites)
+                        font.bold: true
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.75
+                        color: "white"
+                        textFormat: Text.PlainText
+                    }
+                }
                 }
             }
         }

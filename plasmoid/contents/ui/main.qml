@@ -48,6 +48,7 @@ PlasmoidItem {
     // Estado da Sessão ao vivo (--session-state), por id de Conta Claude; vence o campo do contrato
     property var sessionOverlay: ({})
     property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n, root.nowMs)
+    property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
     // Timer de 15 s e a cada status lido, para uma leitura velha deixar de esconder mesmo sem status novo.
@@ -398,17 +399,34 @@ PlasmoidItem {
     property bool autoOpened: false
     property bool sessionFailed: false  // consulta do estado falhou: aviso discreto na configuração e no tooltip
 
-    function applySessionStates(map) {
+    property var sessionConfirmed: ({})  // "codex/<id>" -> ociosa confirmada pelo notify (fim real do turno)
+
+    function applySessionStates(byProvider) {
         var prev = root.sessionOverlay || {};
-        var next = map || {};
+        var prevConf = root.sessionConfirmed || {};
+        var next = {};
+        var confirmed = {};
+        var list = (byProvider && byProvider.codex_idle_confirmed) || [];
+        for (var i = 0; i < list.length; i++) confirmed["codex/" + list[i]] = true;
+        for (var p in (byProvider || {})) {
+            if (p === "codex_idle_confirmed") continue;
+            for (var aid in byProvider[p]) next[p + "/" + aid] = byProvider[p][aid];
+        }
         var fired = false;
         for (var id in next) {
-            // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa
+            // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa.
+            // Codex: ociosa por silêncio do log (turno longo sem escrita) oscila e não conta; só a ociosa
+            // confirmada pelo notify, no momento em que passa a confirmada (ADR-0009)
             var was = prev[id];
-            if (was !== undefined && was !== next[id]
-                    && (next[id] === "waiting" || (next[id] === "idle" && was === "busy"))) fired = true;
+            if (was === undefined || was === next[id] && !(id.indexOf("codex/") === 0 && confirmed[id] && !prevConf[id])) continue;
+            if (next[id] === "waiting") fired = true;
+            else if (next[id] === "idle") {
+                if (id.indexOf("codex/") !== 0) fired = fired || was === "busy";
+                else fired = fired || (confirmed[id] === true && !prevConf[id]);
+            }
         }
         root.sessionOverlay = next;
+        root.sessionConfirmed = confirmed;
         if (fired) root.sessionAttention();
     }
 
@@ -454,7 +472,7 @@ PlasmoidItem {
             root.sessionPolling = false;
             try {
                 root.sessionFailed = data["exit code"] !== 0;
-                if (!root.sessionFailed) root.applySessionStates(JSON.parse(data["stdout"]).claude);
+                if (!root.sessionFailed) root.applySessionStates(JSON.parse(data["stdout"]));
             } catch (e) { root.sessionFailed = true; /* leitura inválida: mantém o último estado */ }
             disconnectSource(sourceName);
         }

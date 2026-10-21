@@ -94,3 +94,7 @@ _Avoid_: barra, popup generico
 **Anel Duplo**:
 Indicador circular de um provedor no Notch: o anel externo representa o Medidor da Janela Semanal e o interno a Janela Nativa, ambos com a marca do tempo decorrido.
 _Avoid_: grafico de rosca, gauge
+
+**Janela de Destaque**:
+A janela de um provedor cujo percentual os estilos Text e Bar e os modos com % mostram no painel (e o centro do anel): a mais urgente entre as conhecidas, isto é, a de maior nível de alerta do contrato (crítico, atenção, normal) e, em empate, a de maior percentual. Sem nenhuma janela conhecida, mostra "—", nunca 0%.
+_Avoid_: pior janela, janela principal

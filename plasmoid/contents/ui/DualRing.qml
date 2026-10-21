@@ -88,12 +88,14 @@ Item {
     // para o % legível, cai na inicial; "pct" sem dado mostra "—", nunca 0.
     property string centerMode: "logo"  // "logo" | "pct" | "logopct"
     property string centerPct: ""
+    property bool centerDim: false  // dado obsoleto: % do centro esmaecido
     readonly property bool roomPct: width >= 28
     readonly property bool showPct: centerMode !== "logo" && roomPct && centerPct.length > 0
     readonly property bool showLetter: letter.length > 0 && width >= 20 && (centerMode !== "pct" || !showPct)
     Column {
         anchors.centerIn: parent
         Text {
+            Accessible.ignored: true
             visible: ring.showLetter
             anchors.horizontalCenter: parent.horizontalCenter
             text: ring.letter
@@ -103,6 +105,8 @@ Item {
             textFormat: Text.PlainText
         }
         Text {
+            Accessible.ignored: true
+            opacity: ring.centerDim ? 0.6 : 1
             visible: ring.showPct
             anchors.horizontalCenter: parent.horizontalCenter
             text: ring.centerPct

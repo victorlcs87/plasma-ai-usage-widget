@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binar
 STUBS = {
     "org/kde/kirigami": ("module org.kde.kirigami\nsingleton Units 1.0 Units.qml\nsingleton Theme 1.0 Theme.qml\n", {
         "Units.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var iconSizes: ({small:16, smallMedium:22, medium:32}); property int smallSpacing: 4; property int gridUnit: 18 }",
-        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property var smallFont: ({pointSize: 9}) }"}),
+        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property color highlightedTextColor: '#ffffff'; property var smallFont: ({pointSize: 9}) }"}),
     "org/kde/plasma/plasmoid": ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\n", {
         "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int formFactor: 2; property var configuration: ({}) }"}),
     "org/kde/plasma/core": ("module org.kde.plasma.core\nsingleton Types 1.0 Types.qml\n", {
@@ -32,10 +32,11 @@ import QtTest
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import "NotchModel.js" as NotchModel
-Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
+Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
   Item { id: logic
     property var compactModel: NotchModel.buildModel(%(data)s, %(cfg)s, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    property var updateInfo: NotchModel.updateSummary(%(data)s, safeI18n)
     property int totalInvites: %(invites)d
     property color accentColor: "#3daee9"
     property string toolTipMainText: "AI"
@@ -57,6 +58,15 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
       if (k.objectName === name) return k.visible ? k.text : null
       var r = find(k, name); if (r !== undefined) return r }
     return undefined }
+  function backdrop(k) {
+    for (var p = k.parent; p; p = p.parent) if (p.color !== undefined && p.color.a > 0) return String(p.color)
+    return null }
+  function badges(it, out) {
+    for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
+      if (k.objectName === "badge" && k.visible) { var p = k.mapToItem(c, 0, 0)
+        out.push({x: p.x, y: p.y, w: k.width, h: k.height, bg: backdrop(k), color: String(k.color), name: k.Accessible.name}) }
+      badges(k, out) }
+    return out }
   function walk(it, out) {
     for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
       if (k.objectName === "panelItem") { var p = k.mapToItem(c, 0, 0)
@@ -76,15 +86,15 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
       var items = walk(c, []);
-      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, calls: logic.calls, expanded: logic.expanded,
-        panel: c.panel, geo: c.geo, items: items, grid: grid(c), size: [c.width, c.height],
+      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo, calls: logic.calls, expanded: logic.expanded,
+        panel: c.panel, eff: c.eff, style: c.style, geo: c.geo, items: items, badges: badges(c, []), grid: grid(c), size: [c.width, c.height],
         min: [c.Layout.minimumWidth, c.Layout.minimumHeight], pref: [c.Layout.preferredWidth, c.Layout.preferredHeight]}));
       Qt.quit() }) } }
 }
 """
 
 
-def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", extra_cfg=None, panel=None, size=None):
+def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", extra_cfg=None, updates=None, panel=None, size=None, bg="#303236"):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -100,13 +110,15 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="
     cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": hidden, **(extra_cfg or {})}
     (run / "h.qml").write_text(HARNESS % {
         "w": size[0] if size else 40 if vertical else 300, "h": size[1] if size else 160 if vertical else 40,
-        "pcfg": json.dumps(panel or {}), "data": json.dumps({"agents": agents}),
+        "pcfg": json.dumps(panel or {}), "data": json.dumps({"agents": agents, "updates": updates}),
         "cfg": json.dumps(cfg), "invites": invites, "ff": 3 if vertical else 2,
-        "png": f"{png_dir}/{name}.png" if png_dir else "", "drive": drive})
+        "bg": bg, "png": f"{png_dir}/{name}.png" if png_dir else "", "drive": drive})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
     res = subprocess.run(["qml6", "-I", str(imp), str(run / "h.qml")], env=env, capture_output=True, text=True, timeout=60)
     line = next((l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l), None)
     assert line, res.stdout + res.stderr
+    bad = [l for l in res.stderr.splitlines() if "TypeError" in l or "ReferenceError" in l or "Unable to assign" in l]
+    assert not bad, bad[:3]  # nenhum binding quebrado (ex.: escopo de id dentro de Loader)
     return json.loads(line.split("RESULT ", 1)[1])
 
 
@@ -134,16 +146,40 @@ def test_no_active_account_shows_neutral_provider_without_health_badge(tmp_path)
     assert out["health"] == ""
 
 
+def test_update_badge_model_ignores_untrusted_values(tmp_path):
+    ok = "https://github.com/victorlcs87/plasma-ai-usage-widget/releases/tag/v9.0.0"
+    items = {"widget": {"latest": "9.0.0", "available": True, "url": "https://evil.example/x"},
+             "claude": {"latest": "2.1.0", "available": True}, "codex": {"latest": "1.0.0", "available": False},
+             "gemini": {"latest": 5, "available": True}}
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    out = render(tmp_path, "u1", agents, updates={"enabled": True, "items": items})
+    info = out["update"]
+    assert info["widget"]["url"] == "" and info["clis"] == ["claude"]
+    assert [l["text"] for l in info["lines"]] == ["Nova versão do widget: 9.0.0", "Nova versão do Claude Code: 2.1.0"]
+    assert out["model"][0]["update"]["latest"] == "2.1.0" and "nova versão 2.1.0" in out["model"][0]["description"]
+    items["widget"]["url"] = ok
+    assert render(tmp_path / "b", "u2", agents, updates={"enabled": True, "items": items})["update"]["widget"]["url"] == ok
+    for n, bad in enumerate((ok + "/../../x", ok + "/%2E%2e/x", ok + "..%2fx", ok + "%5Cx", ok + "%zz",
+                             "https://github.com/victorlcs87/plasma-ai-usage-widget/tree/main")):
+        items["widget"]["url"] = bad
+        got = render(tmp_path / f"c{n}", f"u3{n}", agents, updates={"enabled": True, "items": items})
+        assert got["update"]["widget"]["url"] == "", bad
+
+
 def test_session_state_in_model_and_rings_render(tmp_path):
     for n in ("busy", "waiting", "off", "bad"):
         (tmp_path / n).mkdir()
     agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
     for state, word in (("busy", "ocupada"), ("waiting", "aguardando")):
-        out = render(tmp_path / state, f"s_{state}", agents, extra_cfg={"showSession": True, "sessionOverlay": {"a": state}})
+        out = render(tmp_path / state, f"s_{state}", agents, extra_cfg={"showSession": True, "sessionOverlay": {"claude/a": state}})
         assert out["model"][0]["sessionState"] == state and word in out["model"][0]["description"]
-    off = render(tmp_path / "off", "s_off", agents, extra_cfg={"sessionOverlay": {"a": "busy"}})  # desligado: sem indicador
+    off = render(tmp_path / "off", "s_off", agents, extra_cfg={"sessionOverlay": {"claude/a": "busy"}})  # desligado: sem indicador
     assert off["model"][0]["sessionState"] == ""
-    bogus = render(tmp_path / "bad", "s_bad", agents, extra_cfg={"showSession": True, "sessionOverlay": {"a": "<b>x</b>"}})
+    (tmp_path / "cx").mkdir()
+    both = {"claude": agents["claude"], "codex": {"name": "Codex", "accounts": [acct(True)]}}  # mesmo id "a": a chave inclui o provedor
+    out = render(tmp_path / "cx", "s_cx", both, extra_cfg={"showSession": True, "sessionOverlay": {"codex/a": "busy"}})
+    assert [m["sessionState"] for m in out["model"]][:2] == ["", "busy"]
+    bogus = render(tmp_path / "bad", "s_bad", agents, extra_cfg={"showSession": True, "sessionOverlay": {"claude/a": "<b>x</b>"}})
     assert bogus["model"][0]["sessionState"] == ""
 
 
@@ -183,3 +219,30 @@ Window { visible: true; width: 40; height: 40
     res = subprocess.run(["qml6", str(tmp_path / "h.qml")], env=env, capture_output=True, text=True, timeout=60)
     line = next(l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l)
     assert json.loads(line.split("RESULT ", 1)[1]) == [True, False]
+
+
+def test_update_marks_meet_contrast_for_any_highlight(tmp_path):
+    """Selo e ponto de atualização: >= 4,5:1 sobre a pílula (#15171b) mesmo com realce escuro ou claro demais."""
+    (tmp_path / "p").mkdir()
+    shutil.copy(UI_DIR / "Presets.js", tmp_path / "p" / "Presets.js")
+    colors = ["#3daee9", "#2980b9", "#1d3557", "#000000", "#ffffff", "#8e44ad", "#16a085"]
+    (tmp_path / "p" / "t.qml").write_text("""
+import QtQuick
+import "Presets.js" as P
+Item { Component.onCompleted: {
+  var out = %s.map(function (h) { var c = Qt.color(h); return P.onPill(c.r, c.g, c.b) });
+  console.log("RESULT " + JSON.stringify(out)); Qt.quit() } }
+""" % json.dumps(colors))
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
+    res = subprocess.run(["qml6", str(tmp_path / "p" / "t.qml")], env=env, capture_output=True, text=True, timeout=60)
+    line = next(l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l)
+    out = json.loads(line.split("RESULT ", 1)[1])
+
+    def lum(h):
+        c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+    for given, got in zip(colors, out):
+        assert (lum(got) + 0.05) / (lum("#15171b") + 0.05) >= 4.5, (given, got)  # glifo (#15171b) e forma
+    assert out[0] == "#3daee9"  # Breeze ja passa: cor preservada

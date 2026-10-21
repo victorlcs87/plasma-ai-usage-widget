@@ -36,7 +36,7 @@ Item {
     property string cfg_panelMode: "ring"
     property string cfg_ringCenter: "logo"
     property int cfg_metricSize: 100
-    property int cfg_panelMargin: 4
+    property int cfg_panelMargin: -1  // -1 = automática (Kirigami.Units.smallSpacing)
     readonly property var panelNow: PanelStyle.config({ panelStyle: cfg_panelStyle, panelMode: cfg_panelMode, ringCenter: cfg_ringCenter,
                                                         metricSize: cfg_metricSize, panelMargin: cfg_panelMargin })
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
@@ -72,6 +72,10 @@ Item {
     property bool isSavingNotify: false
     property bool notifyDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
 
+    // Verificação diária de atualização (config.json do coletor, lida do status.json)
+    property bool updateCheck: true
+    property bool isSavingUpdates: false
+    property bool updateCheckBefore: true  // valor anterior, restaurado se o coletor falhar
     // Ocultar sem o processo da CLI (config.json do coletor, lido do status.json): off (padrão) | widget | provider
     property string hideMode: "off"
     property bool isSavingHide: false
@@ -272,6 +276,8 @@ Item {
                         configRoot.alertWarning = Math.round(Number(al.warning)) || 70;
                         configRoot.alertCritical = Math.round(Number(al.critical)) || 90;
                     }
+                    var up = configRoot.statusData.updates;
+                    if (up && typeof up.enabled === "boolean" && !configRoot.isSavingUpdates) configRoot.updateCheck = up.enabled;
                     var vis = configRoot.statusData.visibility;
                     if (vis && !configRoot.isSavingHide && !configRoot.hideDirty) {
                         configRoot.hideMode = (vis.hide_when_not_running === "widget" || vis.hide_when_not_running === "provider") ? vis.hide_when_not_running : "off";
@@ -366,6 +372,36 @@ Item {
             + " " + shellQuote("--notify-reset") + " " + shellQuote(configRoot.notifyReset ? "on" : "off")
             + " " + shellQuote("--notify-mute") + " " + shellQuote(configRoot.notifyMuted.join(","));
         notifyDataSource.connectSource(configRoot.buildCollectorCommand(args));
+    }
+
+    function saveUpdateSetting(enabled) {
+        configRoot.updateCheckBefore = !enabled;
+        configRoot.isSavingUpdates = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        updateDataSource.connectSource(configRoot.buildCollectorCommand(
+            shellQuote("--set-update-config") + " " + shellQuote("--update-check") + " " + shellQuote(enabled ? "on" : "off")));
+    }
+
+    Plasma5Support.DataSource {
+        id: updateDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingUpdates = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.updateCheck = configRoot.updateCheckBefore;
+                updateCheckBox.checked = configRoot.updateCheckBefore;
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+            }
+            disconnectSource(sourceName);
+        }
     }
 
     function setProviderMuted(provider, muted) {
@@ -830,7 +866,7 @@ Item {
                 currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.center))
                 onActivated: configRoot.cfg_ringCenter = currentValue
                 Accessible.name: configRoot.safeI18n("Centro do anel")
-                Accessible.description: configRoot.safeI18n("Com % no centro, anéis pequenos mostram o logo; aumente o tamanho das métricas para ver o %")
+                Accessible.description: configRoot.safeI18n("Com % no centro o anel cresce para 28 px; em painéis finos volta ao logo")
             }
 
             QQC2.Label {
@@ -849,31 +885,41 @@ Item {
                 QQC2.ToolTip.visible: hovered || activeFocus
             }
 
-            QQC2.Label {
-                text: configRoot.safeI18n("Margem (px):")
-                textFormat: Text.PlainText
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Margem automática")
+                checked: configRoot.panelNow.margin < 0
+                onToggled: configRoot.cfg_panelMargin = checked ? -1 : Kirigami.Units.smallSpacing
+                Accessible.name: configRoot.safeI18n("Margem interna automática do painel")
             }
             QQC2.SpinBox {
                 from: 0
                 to: 16
                 editable: true
-                value: configRoot.panelNow.margin
+                enabled: configRoot.panelNow.margin >= 0
+                value: Math.max(0, configRoot.panelNow.margin)
                 onValueModified: configRoot.cfg_panelMargin = value
                 Accessible.name: configRoot.safeI18n("Margem interna do painel em pixels (0 a 16)")
             }
+
+            QQC2.Label {
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+                text: configRoot.safeI18n("Bar em painel vertical precisa de cerca de 40 px de largura: mais estreito, o painel usa Text ou Pílula em vez de cortar. No estilo Text, \"Só o gráfico\" vale como \"Gráfico e %\". Com % no centro, o anel cresce para 28 px (em painéis finos, volta ao logo).")
+            }
         }
 
-        // Estado da Sessão do Claude Code (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
+        // Estado da Sessão do Claude Code e do Codex (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
         Flow {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
             QQC2.CheckBox {
-                text: configRoot.safeI18n("Mostrar o estado da sessão do Claude")
+                text: configRoot.safeI18n("Mostrar o estado da sessão (Claude e Codex)")
                 checked: configRoot.cfg_sessionState
                 onToggled: configRoot.cfg_sessionState = checked
-                Accessible.description: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil; se o estado não atualizar, reinstale o pacote: pip install -e .)")
-                QQC2.ToolTip.text: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil; se o estado não atualizar, reinstale o pacote: pip install -e .)")
+                Accessible.description: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
+                QQC2.ToolTip.text: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
                 QQC2.ToolTip.visible: hovered || activeFocus
             }
             QQC2.CheckBox {
@@ -1112,6 +1158,18 @@ Item {
                 textFormat: Text.PlainText
                 text: configRoot.safeI18n("Para reencontrar o widget oculto: aponte para a fatia fina no painel (ela reabre o monitor e o botão direito leva a Configurar), use o modo de edição do painel, ou, na bandeja do sistema, abra os itens ocultos. O widget nunca some com o popup ou esta janela abertos.")
             }
+        }
+
+        // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
+        QQC2.CheckBox {
+            id: updateCheckBox
+            text: configRoot.safeI18n("Verificar novas versões uma vez por dia")
+            checked: configRoot.updateCheck
+            enabled: !configRoot.isBusy && !configRoot.isSavingUpdates
+            onToggled: { configRoot.updateCheck = checked; configRoot.saveUpdateSetting(checked); }
+            Accessible.description: configRoot.safeI18n("Consulta o GitHub Releases do widget e o npm do Claude Code, Codex e Gemini CLI; nada é baixado nem instalado")
+            QQC2.ToolTip.text: Accessible.description
+            QQC2.ToolTip.visible: hovered || activeFocus
         }
 
         // Seção expansível: Adicionar Nova Conta
