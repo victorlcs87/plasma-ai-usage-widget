@@ -9,6 +9,30 @@ function visibleProviders(cfg) {
     return Presets.normalizeOrder(cfg.providerOrder).filter(function (k) { return hidden.indexOf(k) === -1; });
 }
 
+// Ocultar sem o processo da CLI (ticket 37): "off" (padrão) | "widget" | "provider", vindo do contrato
+var RUNNING_MAX_AGE_MS = 180000;
+
+function hideMode(statusData) {
+    var v = statusData && statusData.visibility;
+    var m = v && v.hide_when_not_running;
+    return (m === "widget" || m === "provider") ? m : "off";
+}
+
+// Só `running === false` explícito e leitura recente (null, ausente, antigo ou data inválida = não esconde)
+function notRunning(statusData, key) {
+    var checked = Date.parse(statusData && statusData.running_checked_at);
+    if (isNaN(checked) || Math.abs(Date.now() - checked) > RUNNING_MAX_AGE_MS) return false;
+    var ag = statusData.agents && statusData.agents[key];
+    return !!ag && ag.running === false;
+}
+
+// Modo "widget": todos os provedores visíveis sem processo (com ao menos um visível)
+function widgetIdle(statusData, cfg) {
+    if (hideMode(statusData) !== "widget") return false;
+    var keys = visibleProviders(cfg);
+    return keys.length > 0 && keys.every(function (k) { return notRunning(statusData, k); });
+}
+
 // Conta Ativa no Sistema (CONTEXT.md); sem nenhuma marcada, null: nunca outra conta no lugar
 function activeAccount(agent) {
     var accs = (agent && agent.accounts) || [];
@@ -54,7 +78,10 @@ function pctWord(pct) { return pct < 0 ? "-" : Math.round(pct) + "%"; }
 
 function buildModel(statusData, cfg, tr) {
     var agents = (statusData && statusData.agents) || {};
-    return visibleProviders(cfg).map(function (key) {
+    var perProvider = hideMode(statusData) === "provider";
+    return visibleProviders(cfg).filter(function (k) {
+        return !(perProvider && notRunning(statusData, k));
+    }).map(function (key) {
         var info = Presets.providerInfo(key);
         var ag = agents[key];
         var acc = activeAccount(ag);

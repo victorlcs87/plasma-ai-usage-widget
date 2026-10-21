@@ -35,6 +35,12 @@ PlasmoidItem {
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
     property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    // Opção "ocultar sem o processo da CLI" (modo widget; desligada por padrão). Recuperação: nunca oculta
+    // com o popup aberto nem com a configuração aberta; no painel resta uma fatia clicável (botão direito
+    // abre "Configurar"), e na bandeja o status Passivo mantém o widget na área de itens ocultos.
+    readonly property bool idleHidden: NotchModel.widgetIdle(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders })
+        && !root.expanded && !Plasmoid.userConfiguring
+    Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
     function safeI18n(text, arg1, arg2) {
@@ -196,6 +202,29 @@ PlasmoidItem {
                 if (last === undefined || now - last >= root.providerInterval(p) * 1000) due.push(p);
             }
             if (due.length > 0) root.runCollectorRefresh(due);
+        }
+    }
+
+    // Execução da CLI de cada provedor: leitura barata de /proc pelo coletor, só com a opção ligada
+    Plasma5Support.DataSource {
+        id: runningDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            if (data["exit code"] === 0) root.loadStatus();
+            disconnectSource(sourceName);
+        }
+    }
+
+    Timer {
+        interval: 15000
+        repeat: true
+        running: NotchModel.hideMode(root.statusData) !== "off"
+        triggeredOnStart: true
+        onTriggered: {
+            if (runningDataSource.connectedSources.length === 0)
+                runningDataSource.connectSource(root.buildCollectorCommand(root.shellQuote("--detect-running")));
         }
     }
 

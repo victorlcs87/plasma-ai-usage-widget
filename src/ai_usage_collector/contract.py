@@ -24,6 +24,9 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     "alerts" {mode, warning, critical} (ticket 24)
 #     Top-level "notifications" {warning, critical, early, reset, muted} (ticket 25) is a new optional
 #     key read by the settings screen: no version bump
+#     Ticket 37: optional per-agent "running" (bool|null: the CLI process runs for the current user; null =
+#     undeterminable), top-level "running_checked_at" (ISO) and "visibility" {hide_when_not_running}: new
+#     optional keys that old readers ignore: no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
@@ -221,6 +224,12 @@ def validate_status_contract(data: Any) -> bool:
     ):
         return False
 
+    vis = data.get("visibility")
+    if vis is not None and not (isinstance(vis, dict) and vis.get("hide_when_not_running") in ("off", "widget", "provider")):
+        return False
+    if data.get("running_checked_at") is not None and not isinstance(data["running_checked_at"], str):
+        return False
+
     orphans = data.get("orphan_profiles")
     if orphans is not None and not (isinstance(orphans, list) and all(isinstance(o, dict) for o in orphans)):
         return False
@@ -234,6 +243,8 @@ def validate_status_contract(data: Any) -> bool:
         if "name" not in agent_data or "status" not in agent_data or "accounts" not in agent_data:
             return False
         if not isinstance(agent_data["accounts"], list):
+            return False
+        if agent_data.get("running") is not None and not isinstance(agent_data["running"], bool):
             return False
 
         for acc in agent_data["accounts"]:

@@ -27,8 +27,11 @@ from ai_usage_collector.config import (
     set_alert_settings,
     set_notify_settings,
     set_provider_settings,
+    set_visibility_settings,
 )
 from ai_usage_collector.pace import alert_settings
+from ai_usage_collector.running import HIDE_MODES, refresh_running
+from pathlib import Path
 from ai_usage_collector.waybar import waybar_line
 from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
@@ -161,6 +164,17 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--notify-early", choices=["on", "off"], default=None, help="Aviso antecipado de esgotamento (padrão on)")
     parser.add_argument("--notify-reset", choices=["on", "off"], default=None, help="Aviso de reset de limite já sinalizado (padrão off)")
     parser.add_argument("--notify-mute", default=None, metavar="PROVIDERS", help="Provedores silenciados, separados por vírgula")
+    parser.add_argument(
+        "--set-visibility-config",
+        action="store_true",
+        help="Define quando ocultar o Plasmoid sem o processo da CLI: --hide-when-not-running off (padrão) | widget (esconde tudo) | provider (esconde só o provedor parado)",
+    )
+    parser.add_argument("--hide-when-not-running", choices=HIDE_MODES, default=None, help="off (padrão), widget ou provider")
+    parser.add_argument(
+        "--detect-running",
+        action="store_true",
+        help="Atualiza no status.json se o processo de cada CLI está em execução (lê /proc; cache de 5 s; não consulta provedores)",
+    )
     parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
     parser.add_argument(
         "--api-key-stdin",
@@ -261,6 +275,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             ok, message = set_alert_settings(args.alert_mode, args.alert_warning, args.alert_critical, config_path)
             if ok and alert_settings(load_config(config_path)) != before:
                 reapply_alert_levels(config_path, cache_path)  # so recalcula niveis; sem consulta aos provedores
+            (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
+            return 0 if ok else 1
+
+        if args.detect_running:
+            refresh_running(load_config(config_path), Path(cache_path).expanduser().resolve())
+            return 0
+
+        if args.set_visibility_config:
+            if args.hide_when_not_running is None:
+                sys.stderr.write("Erro: informe --hide-when-not-running off|widget|provider.\n")
+                return 1
+            ok, message = set_visibility_settings(args.hide_when_not_running, config_path)
+            if ok:
+                reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem consulta aos provedores
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
             return 0 if ok else 1
 
@@ -462,6 +490,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not args.set_provider_config
             and not args.set_alert_config
             and not args.set_notify_config
+            and not args.set_visibility_config
+            and not args.detect_running
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account

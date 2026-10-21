@@ -58,6 +58,11 @@ Item {
     property bool isSavingNotify: false
     property bool notifyDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
 
+    // Ocultar sem o processo da CLI (config.json do coletor, lido do status.json): off (padrão) | widget | provider
+    property string hideMode: "off"
+    property bool isSavingHide: false
+    property bool hideDirty: false
+
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
@@ -253,6 +258,10 @@ Item {
                         configRoot.alertWarning = Math.round(Number(al.warning)) || 70;
                         configRoot.alertCritical = Math.round(Number(al.critical)) || 90;
                     }
+                    var vis = configRoot.statusData.visibility;
+                    if (vis && !configRoot.isSavingHide && !configRoot.hideDirty) {
+                        configRoot.hideMode = (vis.hide_when_not_running === "widget" || vis.hide_when_not_running === "provider") ? vis.hide_when_not_running : "off";
+                    }
                     var nt = configRoot.statusData.notifications;
                     if (nt && !configRoot.isSavingNotify && !configRoot.notifyDirty) {
                         configRoot.notifyWarning = Math.round(Number(nt.warning)) || 80;
@@ -291,6 +300,35 @@ Item {
             var stderr = (data["stderr"] || "").trim();
             if (data["exit code"] === 0) {
                 configRoot.alertsDirty = false;
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Ocultar sem o processo da CLI: o coletor valida o modo e o expõe no status
+    function saveHideSettings() {
+        configRoot.isSavingHide = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        hideDataSource.connectSource(configRoot.buildCollectorCommand(
+            shellQuote("--set-visibility-config") + " " + shellQuote("--hide-when-not-running") + " " + shellQuote(configRoot.hideMode)));
+    }
+
+    Plasma5Support.DataSource {
+        id: hideDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingHide = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.hideDirty = false;
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
@@ -895,6 +933,40 @@ Item {
                 icon.name: "dialog-ok-apply"
                 enabled: !configRoot.isBusy && !configRoot.isSavingNotify
                 onClicked: configRoot.saveNotifySettings()
+            }
+        }
+
+        // Ocultar quando a CLI não está rodando (desligado por padrão)
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Ocultar sem a CLI em execução:")
+                textFormat: Text.PlainText
+            }
+
+            QQC2.ComboBox {
+                textRole: "text"
+                valueRole: "value"
+                model: [
+                    { value: "off", text: configRoot.safeI18n("Nunca") },
+                    { value: "provider", text: configRoot.safeI18n("Só o provedor parado") },
+                    { value: "widget", text: configRoot.safeI18n("O widget inteiro") }
+                ]
+                currentIndex: configRoot.hideMode === "widget" ? 2 : (configRoot.hideMode === "provider" ? 1 : 0)
+                onActivated: { configRoot.hideMode = currentValue; configRoot.hideDirty = true; }
+                Accessible.name: configRoot.safeI18n("Ocultar quando o processo da CLI não está em execução")
+                Accessible.description: configRoot.safeI18n("O widget inteiro reaparece ao abrir o popup ou a configuração; no painel resta uma fatia fina com o menu de botão direito")
+                QQC2.ToolTip.text: Accessible.description
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+
+            PlasmaComponents3.Button {
+                text: configRoot.safeI18n("Aplicar")
+                icon.name: "dialog-ok-apply"
+                enabled: !configRoot.isBusy && !configRoot.isSavingHide
+                onClicked: configRoot.saveHideSettings()
             }
         }
 

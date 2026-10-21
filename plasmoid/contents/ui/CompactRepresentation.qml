@@ -17,6 +17,8 @@ Item {
     readonly property int count: Math.max(1, rings.length)
     readonly property color accent: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.accentColor : Kirigami.Theme.highlightColor
     readonly property int totalInvites: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.totalInvites : 0
+    // Modo "ocultar sem o processo da CLI": pílula some e resta uma fatia fina (alvo do botão direito e do clique)
+    readonly property bool idle: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.idleHidden === true : false
     readonly property string health: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.worstHealthStatus : ""
 
     // Tamanho-base do anel e folga da pílula; o anel encolhe até o mínimo (cabe a inicial em 8 px)
@@ -39,10 +41,11 @@ Item {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.expanded = !compactRoot.plasmoidItem.expanded;
     }
 
-    Layout.minimumWidth: vertical ? ringMin + 2 * pad : runLength(ringMin)
-    Layout.minimumHeight: vertical ? runLength(ringMin) : ringMin + 2 * pad
-    Layout.preferredWidth: vertical ? ringBase + 2 * pad : runLength(ringBase)
-    Layout.preferredHeight: vertical ? runLength(ringBase) : ringBase + 2 * pad
+    readonly property int sliver: Kirigami.Units.smallSpacing * 2
+    Layout.minimumWidth: vertical ? ringMin + 2 * pad : (idle ? sliver : runLength(ringMin))
+    Layout.minimumHeight: vertical ? (idle ? sliver : runLength(ringMin)) : ringMin + 2 * pad
+    Layout.preferredWidth: vertical ? ringBase + 2 * pad : (idle ? sliver : runLength(ringBase))
+    Layout.preferredHeight: vertical ? (idle ? sliver : runLength(ringBase)) : ringBase + 2 * pad
 
     activeFocusOnTab: true
     Keys.onReturnPressed: toggle()
@@ -57,6 +60,7 @@ Item {
     // Pílula sempre escura, independente do tema
     Rectangle {
         id: pill
+        visible: !compactRoot.idle
         anchors.centerIn: parent
         width: Math.min(parent.width, vertical ? compactRoot.ringSize + 2 * pad : compactRoot.runLength(compactRoot.ringSize))
         height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.ringSize) : compactRoot.ringSize + 2 * pad)
@@ -143,6 +147,16 @@ Item {
                 }
             }
         }
+    }
+
+    Rectangle {
+        visible: compactRoot.idle
+        anchors.centerIn: parent
+        width: vertical ? parent.width * 0.6 : compactRoot.sliver / 2
+        height: vertical ? compactRoot.sliver / 2 : parent.height * 0.6
+        radius: Math.min(width, height) / 2
+        color: "#8a9099"
+        opacity: 0.4
     }
 
     MouseArea {
