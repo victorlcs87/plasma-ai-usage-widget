@@ -49,11 +49,7 @@ ColumnLayout {
         return "  ·  " + I18n.tr("resets %1", Qt.formatDateTime(d, "dd/MM HH:mm"));
     }
 
-    function fmtTokens(n) {
-        if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
-        if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
-        return String(n);
-    }
+    function fmtTokens(n) { return I18n.compactNumber(n); }
 
     QQC2.AbstractButton {
         id: toggle

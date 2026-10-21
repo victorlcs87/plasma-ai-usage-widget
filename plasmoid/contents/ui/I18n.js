@@ -44,3 +44,12 @@ function trp(one, many, n, a, b) {
     }
     return fmt(Number(n) === 1 ? one : many, [n, a, b]);
 }
+
+// 12400 -> "12,4k" (pt_BR) / "12.4k" (en): casa decimal pelo locale, para o ponto nunca parecer separador de milhar
+function compactNumber(n) {
+    n = Number(n) || 0;
+    var units = [[1e9, "B"], [1e6, "M"], [1e3, "k"]];
+    for (var i = 0; i < units.length; i++)
+        if (n >= units[i][0]) return (n / units[i][0]).toLocaleString(Qt.locale(), "f", 1) + units[i][1];
+    return String(n);
+}
