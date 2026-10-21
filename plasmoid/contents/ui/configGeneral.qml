@@ -58,6 +58,10 @@ Item {
     property bool isSavingNotify: false
     property bool notifyDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
 
+    // Verificação diária de atualização (config.json do coletor, lida do status.json)
+    property bool updateCheck: true
+    property bool isSavingUpdates: false
+
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
@@ -253,6 +257,8 @@ Item {
                         configRoot.alertWarning = Math.round(Number(al.warning)) || 70;
                         configRoot.alertCritical = Math.round(Number(al.critical)) || 90;
                     }
+                    var up = configRoot.statusData.updates;
+                    if (up && typeof up.enabled === "boolean" && !configRoot.isSavingUpdates) configRoot.updateCheck = up.enabled;
                     var nt = configRoot.statusData.notifications;
                     if (nt && !configRoot.isSavingNotify && !configRoot.notifyDirty) {
                         configRoot.notifyWarning = Math.round(Number(nt.warning)) || 80;
@@ -314,6 +320,33 @@ Item {
             + " " + shellQuote("--notify-reset") + " " + shellQuote(configRoot.notifyReset ? "on" : "off")
             + " " + shellQuote("--notify-mute") + " " + shellQuote(configRoot.notifyMuted.join(","));
         notifyDataSource.connectSource(configRoot.buildCollectorCommand(args));
+    }
+
+    function saveUpdateSetting(enabled) {
+        configRoot.isSavingUpdates = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        updateDataSource.connectSource(configRoot.buildCollectorCommand(
+            shellQuote("--set-update-config") + " " + shellQuote("--update-check") + " " + shellQuote(enabled ? "on" : "off")));
+    }
+
+    Plasma5Support.DataSource {
+        id: updateDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingUpdates = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+            }
+            disconnectSource(sourceName);
+        }
     }
 
     function setProviderMuted(provider, muted) {
@@ -896,6 +929,17 @@ Item {
                 enabled: !configRoot.isBusy && !configRoot.isSavingNotify
                 onClicked: configRoot.saveNotifySettings()
             }
+        }
+
+        // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
+        QQC2.CheckBox {
+            text: configRoot.safeI18n("Verificar novas versões uma vez por dia")
+            checked: configRoot.updateCheck
+            enabled: !configRoot.isBusy && !configRoot.isSavingUpdates
+            onToggled: { configRoot.updateCheck = checked; configRoot.saveUpdateSetting(checked); }
+            Accessible.description: configRoot.safeI18n("Consulta o GitHub Releases do widget e o npm do Claude Code, Codex e Gemini CLI; nada é baixado nem instalado")
+            QQC2.ToolTip.text: Accessible.description
+            QQC2.ToolTip.visible: hovered || activeFocus
         }
 
         // Seção expansível: Adicionar Nova Conta

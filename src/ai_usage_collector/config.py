@@ -588,3 +588,12 @@ def set_notify_settings(
     yn = lambda b: "sim" if b else "não"  # noqa: E731
     return True, (f"Notificações atualizadas: aviso {new['warning']:g}%, crítico {new['critical']:g}%, "
                   f"antecipado {yn(new['early'])}, reset {yn(new['reset'])}, silenciados: {', '.join(new['muted']) or 'nenhum'}.")
+
+
+def set_update_settings(check: bool, config_path: str | Path | None = None) -> tuple[bool, str]:
+    """Liga/desliga a verificacao diaria de atualizacao (ticket 39)."""
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        cfg["updates"] = {"check": check}
+        save_config(cfg, config_path)
+    return True, f"Verificação de atualização {'ligada' if check else 'desligada'}."

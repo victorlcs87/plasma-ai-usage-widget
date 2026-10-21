@@ -199,6 +199,27 @@ PlasmaExtras.Representation {
             }
         }
 
+        // Novas versões (widget e CLIs); texto simples, o link só abre a página da release validada
+        Repeater {
+            model: fullRoot.plasmoidItem && fullRoot.plasmoidItem.updateInfo ? fullRoot.plasmoidItem.updateInfo.lines : []
+            delegate: RowLayout {
+                required property var modelData
+                Layout.fillWidth: true
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    text: modelData.text
+                    textFormat: Text.PlainText
+                    elide: Text.ElideRight
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                }
+                PlasmaComponents3.Button {
+                    visible: modelData.url !== ""
+                    text: fullRoot.safeI18n("Ver release")
+                    onClicked: Qt.openUrlExternally(modelData.url)
+                }
+            }
+        }
+
         // Mensagem de erro caso o status.json não tenha sido lido
         Rectangle {
             visible: Boolean(fullRoot.plasmoidItem && fullRoot.plasmoidItem.lastError)

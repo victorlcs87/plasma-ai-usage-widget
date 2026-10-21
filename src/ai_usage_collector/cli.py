@@ -26,6 +26,7 @@ from ai_usage_collector.config import (
     load_config,
     set_alert_settings,
     set_notify_settings,
+    set_update_settings,
     set_provider_settings,
 )
 from ai_usage_collector.pace import alert_settings
@@ -161,6 +162,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--notify-early", choices=["on", "off"], default=None, help="Aviso antecipado de esgotamento (padrão on)")
     parser.add_argument("--notify-reset", choices=["on", "off"], default=None, help="Aviso de reset de limite já sinalizado (padrão off)")
     parser.add_argument("--notify-mute", default=None, metavar="PROVIDERS", help="Provedores silenciados, separados por vírgula")
+    parser.add_argument(
+        "--set-update-config",
+        action="store_true",
+        help="Liga/desliga a verificação diária de atualização (GitHub Releases e npm): --update-check on|off (padrão on)",
+    )
+    parser.add_argument("--update-check", choices=["on", "off"], default=None, help="Verificação diária de atualização")
     parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
     parser.add_argument(
         "--api-key-stdin",
@@ -274,6 +281,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem consulta aos provedores
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
             return 0 if ok else 1
+
+        if args.set_update_config:
+            if args.update_check is None:
+                sys.stderr.write("Erro: --set-update-config exige --update-check on|off.\n")
+                return 1
+            ok, message = set_update_settings(args.update_check == "on", config_path)
+            reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem consulta de rede
+            sys.stdout.write(message + "\n")
+            return 0
 
         for pair, action in ((args.reimport_orphan, reimport_orphan), (args.delete_orphan, delete_orphan)):
             if pair:
@@ -462,6 +478,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not args.set_provider_config
             and not args.set_alert_config
             and not args.set_notify_config
+            and not args.set_update_config
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account

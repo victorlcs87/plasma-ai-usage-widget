@@ -9,7 +9,7 @@ from typing import Any
 
 from datetime import datetime, timezone
 
-from ai_usage_collector import refresh
+from ai_usage_collector import refresh, updates
 from ai_usage_collector.orphans import list_orphans
 from ai_usage_collector.capture import (
     find_matching_account,
@@ -262,6 +262,11 @@ def _collect(
     except Exception as e:  # notificacoes sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Notificacoes de limite nao processadas: {e}\n")
 
+    try:
+        updates.apply_updates(status_payload, config, cache_file, now_dt)
+    except Exception as e:  # verificacao de atualizacao e opcional; nunca impede o status (falha de rede e silenciosa)
+        sys.stderr.write(f"Aviso: Verificacao de atualizacao nao processada: {e}\n")
+
     return status_payload
 
 
@@ -274,6 +279,7 @@ def reapply_alert_levels(config_path: str | Path | None = None, cache_path: str 
             config = load_config(config_path)
             reapply_levels(status, alert_settings(config))
             status["notifications"] = notify_settings(config)  # a tela de configuracao le daqui
+            updates.apply_updates(status, config, cache_file, refresh.utcnow(), online=False)  # idem; sem rede
             save_status_cache(status, cache_file)
 
 

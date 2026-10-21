@@ -31,6 +31,7 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
   Item { id: logic
     property var compactModel: NotchModel.buildModel(%(data)s, %(cfg)s, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    property var updateInfo: NotchModel.updateSummary(%(data)s, safeI18n)
     property int totalInvites: %(invites)d
     property color accentColor: "#3daee9"
     property string toolTipMainText: "AI"
@@ -43,13 +44,13 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
   Timer { interval: 600; running: true; onTriggered: {
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
-      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus}));
+      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo}));
       Qt.quit() }) } }
 }
 """
 
 
-def render(tmp_path, name, agents, vertical=False, invites=0, hidden=""):
+def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", updates=None):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -64,7 +65,7 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden=""):
     png_dir = os.environ.get("AIU_PNG_DIR", "")
     cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": hidden}
     (run / "h.qml").write_text(HARNESS % {
-        "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents}),
+        "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents, "updates": updates}),
         "cfg": json.dumps(cfg), "invites": invites, "ff": 3 if vertical else 2,
         "png": f"{png_dir}/{name}.png" if png_dir else ""})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -96,3 +97,18 @@ def test_no_active_account_shows_neutral_provider_without_health_badge(tmp_path)
     assert claude["innerPct"] == -1 and claude["outerPct"] == -1
     assert "sem conta ativa" in claude["description"]
     assert out["health"] == ""
+
+
+def test_update_badge_model_ignores_untrusted_values(tmp_path):
+    ok = "https://github.com/victorlcs87/plasma-ai-usage-widget/releases/tag/v9.0.0"
+    items = {"widget": {"latest": "9.0.0", "available": True, "url": "https://evil.example/x"},
+             "claude": {"latest": "2.1.0", "available": True}, "codex": {"latest": "1.0.0", "available": False},
+             "gemini": {"latest": 5, "available": True}}
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    out = render(tmp_path, "u1", agents, updates={"enabled": True, "items": items})
+    info = out["update"]
+    assert info["widget"]["url"] == "" and info["clis"] == ["claude"]
+    assert [l["text"] for l in info["lines"]] == ["Nova versão do widget: 9.0.0", "Nova versão do Claude Code: 2.1.0"]
+    assert out["model"][0]["update"]["latest"] == "2.1.0" and "nova versão 2.1.0" in out["model"][0]["description"]
+    items["widget"]["url"] = ok
+    assert render(tmp_path / "b", "u2", agents, updates={"enabled": True, "items": items})["update"]["widget"]["url"] == ok

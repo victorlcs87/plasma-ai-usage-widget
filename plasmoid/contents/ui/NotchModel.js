@@ -52,6 +52,35 @@ function levelWord(level, tr) {
 
 function pctWord(pct) { return pct < 0 ? "-" : Math.round(pct) + "%"; }
 
+// Atualizações (ticket 39): texto do status.json é não confiável, então só versão curta e URL da release do widget
+var RELEASE_URL = /^https:\/\/github\.com\/victorlcs87\/plasma-ai-usage-widget\/[A-Za-z0-9._~\/%+-]{0,200}$/;
+var CLI_NAMES = { claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
+
+// Item com nova versão disponível, ou null
+function updateItem(statusData, key) {
+    var u = statusData && statusData.updates;
+    var it = u && u.items && u.items[key];
+    if (!it || it.available !== true || typeof it.latest !== "string" || it.latest.length > 64) return null;
+    return {
+        latest: it.latest,
+        url: (typeof it.url === "string" && RELEASE_URL.test(it.url)) ? it.url : ""
+    };
+}
+
+// {widget, clis, lines}: lines = textos do popup (url só no widget)
+function updateSummary(statusData, tr) {
+    var widget = updateItem(statusData, "widget");
+    var clis = [], lines = [];
+    if (widget) lines.push({ text: tr("Nova versão do widget: %1", widget.latest), url: widget.url });
+    ["claude", "codex", "gemini"].forEach(function (k) {
+        var it = updateItem(statusData, k);
+        if (!it) return;
+        clis.push(k);
+        lines.push({ text: tr("Nova versão do %1: %2", CLI_NAMES[k], it.latest), url: "" });
+    });
+    return { widget: widget, clis: clis, lines: lines };
+}
+
 function buildModel(statusData, cfg, tr) {
     var agents = (statusData && statusData.agents) || {};
     return visibleProviders(cfg).map(function (key) {
@@ -61,7 +90,7 @@ function buildModel(statusData, cfg, tr) {
         var m = {
             provider: key, name: (ag && ag.name) || info.name, letter: info.letter,
             innerPct: -1, outerPct: -1, innerLevel: "", outerLevel: "", innerElapsed: -1, outerElapsed: -1,
-            health: ""
+            health: "", update: updateItem(statusData, key)
         };
         if (!acc) {
             var hasAccounts = ag && ag.accounts && ag.accounts.length > 0;
@@ -79,6 +108,7 @@ function buildModel(statusData, cfg, tr) {
         m.health = (st && st !== "valid") ? st : "";
         var tail = acc.stale === true ? tr("dados desatualizados") : "";
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
+        if (m.update) tail += (tail ? ", " : "") + tr("nova versão %1", m.update.latest);
         m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct), levelWord(m.innerLevel, tr))
             + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct), levelWord(m.outerLevel, tr))
             + (tail ? ", " + tail : "");

@@ -24,6 +24,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     "alerts" {mode, warning, critical} (ticket 24)
 #     Top-level "notifications" {warning, critical, early, reset, muted} (ticket 25) is a new optional
 #     key read by the settings screen: no version bump
+#     Top-level "updates" {enabled, items: {widget|claude|codex|gemini: {latest, current, available, url?}}}
+#     (ticket 39) is a new optional key: no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
@@ -218,6 +220,20 @@ def validate_status_contract(data: Any) -> bool:
         and all(isinstance(notify.get(k), (int, float)) and not isinstance(notify.get(k), bool) for k in ("warning", "critical"))
         and all(isinstance(notify.get(k), bool) for k in ("early", "reset"))
         and isinstance(notify.get("muted"), list) and all(isinstance(m, str) for m in notify["muted"])
+    ):
+        return False
+
+    upd = data.get("updates")
+    if upd is not None and not (
+        isinstance(upd, dict)
+        and isinstance(upd.get("enabled"), bool)
+        and isinstance(upd.get("items"), dict)
+        and all(
+            isinstance(i, dict) and isinstance(i.get("latest"), str) and isinstance(i.get("available"), bool)
+            and (i.get("current") is None or isinstance(i["current"], str))
+            and (i.get("url") is None or isinstance(i["url"], str))
+            for i in upd["items"].values()
+        )
     ):
         return False
 

@@ -34,6 +34,7 @@ PlasmoidItem {
     property int totalInvites: calculateTotalInvites()
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
     property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n)
+    property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
