@@ -1776,7 +1776,7 @@ Item {
 
                                 // Badge colorido do provedor
                                 Rectangle {
-                                    implicitWidth: providerTag.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                    implicitWidth: Math.max(providerTag.implicitWidth + Kirigami.Units.smallSpacing * 2, Kirigami.Units.gridUnit * 4.5)  // largura única: o nome começa no mesmo x em toda linha
                                     implicitHeight: providerTag.implicitHeight + Kirigami.Units.smallSpacing
                                     radius: 4
                                     color: Qt.alpha(configRoot.getProviderColor(modelData.provider), 0.18)  // fundo suave + borda: o texto usa a cor do tema (>= 4,5:1)
@@ -1797,6 +1797,7 @@ Item {
                                 // Informações da conta: Nome, ID e Saúde
                                 ColumnLayout {
                                     Layout.fillWidth: true
+                                    Layout.maximumWidth: 100000  // sem isso o máximo é a linha mais larga: o RowLayout reparte a folga e o nome/botões oscilam por linha
                                     spacing: 2
 
                                     RowLayout {
