@@ -358,7 +358,7 @@ def test_session_state_config_and_ui_wiring():
     main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
     assert "ai-usage-session-state" in (UI_DIR / "Collector.js").read_text(encoding="utf-8") and "interval: 5000" in main and "pillHovered" in main and "sessionSound === true" in main
     ring = (UI_DIR / "SessionMark.qml").read_text(encoding="utf-8")  # compartilhado por todos os estilos
-    assert "reducedMotion" in ring and "!mark.reducedMotion" in ring and "#f5a524" in ring
+    assert "reducedMotion" in ring and "!mark.reducedMotion" in ring and "Presets.warning" in ring
 
 
 def test_session_attention_respects_pinned_hover_and_open_popup():

@@ -205,7 +205,7 @@ def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):
 def test_session_animations_stop_when_hidden_by_idle(tmp_path):
     """Widget oculto por ociosidade (active: false) ou janela oculta: nenhuma animacao roda."""
     (tmp_path / "imp").mkdir()
-    for f in ("DualRing.qml", "SessionMark.qml"):
+    for f in ("DualRing.qml", "SessionMark.qml", "Presets.js"):
         shutil.copy(UI_DIR / f, tmp_path / f)
     (tmp_path / "h.qml").write_text("""
 import QtQuick

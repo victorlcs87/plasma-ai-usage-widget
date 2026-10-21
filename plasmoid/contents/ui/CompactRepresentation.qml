@@ -120,9 +120,9 @@ Item {
         radius: compactRoot.style === "text" || compactRoot.style === "bar"
             ? Math.min(Kirigami.Units.gridUnit * 0.5, Math.min(width, height) / 2) : Math.min(width, height) / 2
         // Ring: sem cápsula comum (cada item tem fundo escuro próprio); a borda segue aparecendo no foco/hover
-        color: compactRoot.style === "ring" ? "transparent" : "#15171b"
+        color: compactRoot.style === "ring" ? "transparent" : Presets.ui.panel
         border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent
-            : (compactRoot.style === "ring" ? "transparent" : "#2a2d33")
+            : (compactRoot.style === "ring" ? "transparent" : Presets.ui.edge)
         border.width: 1
 
         GridLayout {
@@ -167,7 +167,7 @@ Item {
                     width: implicitWidth
                     height: width
                     radius: width / 2
-                    color: "#8a9099"
+                    color: Presets.neutral
                 }
             }
 
@@ -179,7 +179,7 @@ Item {
                 implicitWidth: badgeGrid.implicitWidth + 2 * compactRoot.badgePad
                 implicitHeight: badgeGrid.implicitHeight + 2 * compactRoot.badgePad
                 radius: Math.min(width, height) / 2
-                color: compactRoot.style === "ring" ? "#15171b" : "transparent"
+                color: compactRoot.style === "ring" ? Presets.ui.panel : "transparent"
 
                 GridLayout {
                     id: badgeGrid
@@ -197,8 +197,8 @@ Item {
                     implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
                     implicitHeight: implicitWidth
                     radius: implicitWidth / 2
-                    color: compactRoot.health === "session_expired" ? "#f5a524"
-                         : compactRoot.health === "not_configured" ? "#8a9099" : "#ff4d4f"
+                    color: compactRoot.health === "session_expired" ? Presets.warning
+                         : compactRoot.health === "not_configured" ? Presets.neutral : Presets.critical
                     Accessible.name: compactRoot.health === "session_expired" ? I18n.tr("Session expired")
                                    : compactRoot.health === "not_configured" ? I18n.tr("Account not set up") : I18n.tr("Account error")
                 }
@@ -238,7 +238,7 @@ Item {
                         text: "\u2191"
                         font.bold: true
                         font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.1
-                        color: "#15171b"  // cor da pílula sobre o realce clareado: >= 4,5:1
+                        color: Presets.ui.panel  // cor da pílula sobre o realce clareado: >= 4,5:1
                         textFormat: Text.PlainText
                     }
                 }
@@ -278,9 +278,9 @@ Item {
         width: Math.min(parent.width, parent.height) * 0.8
         height: width * 0.5
         radius: height / 2
-        color: "#15171b"
+        color: Presets.ui.panel
         border.width: 1
-        border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent : "#2a2d33"
+        border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent : Presets.ui.edge
         Rectangle { anchors.centerIn: parent; width: parent.height * 0.4; height: width; radius: width / 2; color: compactRoot.accent }
     }
 

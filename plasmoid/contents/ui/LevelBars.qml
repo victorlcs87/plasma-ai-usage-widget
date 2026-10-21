@@ -1,4 +1,5 @@
 import QtQuick
+import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
 
 // Barras verticais do estilo Bar: esquerda = semanal, direita = Janela Nativa. pct < 0 = desconhecido
@@ -11,8 +12,8 @@ Item {
     property real innerPct: -1
     property real outerElapsed: -1
     property real innerElapsed: -1
-    property color outerColor: "#8a9099"
-    property color innerColor: "#8a9099"
+    property color outerColor: Presets.neutral
+    property color innerColor: Presets.neutral
     property string outerLevel: ""
     property string innerLevel: ""
 

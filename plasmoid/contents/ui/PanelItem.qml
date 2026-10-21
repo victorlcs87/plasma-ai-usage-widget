@@ -35,7 +35,7 @@ Item {
         visible: pi.panelStyle === "ring"
         anchors.fill: parent
         radius: Math.min(width, height) / 2
-        color: "#15171b"
+        color: Presets.ui.panel
     }
 
     GridLayout {
@@ -68,7 +68,7 @@ Item {
                         Accessible.ignored: true
                         anchors.centerIn: parent
                         text: pi.m.letter
-                        color: "#c9ced6"
+                        color: Presets.ui.letter
                         font.pixelSize: Math.max(7, pi.geo.fontPx - 2)
                         font.bold: true
                         textFormat: Text.PlainText
@@ -146,7 +146,7 @@ Item {
             horizontalAlignment: pi.vertical ? Text.AlignHCenter : Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
             text: PanelStyle.pctText(pi.head.pct, pi.remaining)
-            color: pi.known ? "#e6e8eb" : "#8a9099"
+            color: pi.known ? Presets.ui.fg : Presets.neutral
             opacity: pi.dim ? 0.6 : 1
             font.pixelSize: pi.geo.fontPx
             font.bold: pi.head.level === "warning" || pi.head.level === "critical"

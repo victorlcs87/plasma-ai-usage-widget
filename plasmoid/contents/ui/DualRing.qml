@@ -1,4 +1,5 @@
 import QtQuick
+import "Presets.js" as Presets
 import QtQuick.Window
 
 // Anel Duplo: externo = semanal, interno = Janela Nativa. pct < 0 = desconhecido (só trilho).
@@ -10,8 +11,8 @@ Item {
     property real innerPct: -1
     property real outerElapsed: -1
     property real innerElapsed: -1
-    property color outerColor: "#8a9099"
-    property color innerColor: "#8a9099"
+    property color outerColor: Presets.neutral
+    property color innerColor: Presets.neutral
     property string outerLevel: ""
     property string innerLevel: ""
     property string letter: ""
@@ -105,7 +106,7 @@ Item {
             visible: ring.showLetter
             anchors.horizontalCenter: parent.horizontalCenter
             text: ring.letter
-            color: "#c9ced6"
+            color: Presets.ui.letter
             font.pixelSize: Math.max(8, Math.round(ring.width * (ring.showPct ? 0.2 : 0.3)))
             font.bold: true
             textFormat: Text.PlainText

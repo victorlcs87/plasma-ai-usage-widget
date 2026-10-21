@@ -1,4 +1,5 @@
 import QtQuick
+import "Presets.js" as Presets
 import QtQuick.Window
 
 // Estado da Sessão sobre um círculo (anel ou inicial): "busy" = arco girando, "waiting" = anel âmbar
@@ -44,7 +45,7 @@ Item {
         color: "transparent"
         radius: width / 2
         border.width: Math.max(2, mark.width * 0.1)
-        border.color: "#f5a524"
+        border.color: Presets.warning
         SequentialAnimation on opacity {
             loops: Animation.Infinite
             running: pulse.visible && mark.shown && !mark.reducedMotion
