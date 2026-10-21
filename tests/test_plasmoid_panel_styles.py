@@ -65,7 +65,8 @@ def contrast(a, b):
 
 
 def js(tmp_path, expr):
-    (tmp_path / "PanelStyle.js").write_text((UI_DIR / "PanelStyle.js").read_text())
+    for f in ("PanelStyle.js", "ViewPrefs.js", "Presets.js"):
+        (tmp_path / f).write_text((UI_DIR / f).read_text())
     (tmp_path / "t.qml").write_text('import QtQuick\nimport "PanelStyle.js" as PS\nItem { Timer { interval: 50; running: true; onTriggered: { '
                                     'console.log("RESULT " + JSON.stringify(%s)); Qt.quit() } } }' % expr)
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")

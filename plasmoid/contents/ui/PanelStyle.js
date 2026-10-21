@@ -1,4 +1,5 @@
 .pragma library
+.import "ViewPrefs.js" as ViewPrefs
 
 // Estilos do painel (ticket 32): validação da configuração, o que cada estilo desenha e a geometria.
 // Puro (testável sem Plasma). Cor SÓ pelo nível do contrato: aqui só se escolhe e se mede.
@@ -45,7 +46,7 @@ function headline(m) {
     return best;
 }
 
-function pctText(pct) { return pct < 0 ? "—" : Math.round(pct) + "%"; }
+function pctText(pct, remaining) { return ViewPrefs.pctText(pct, remaining); }  // "—" sem dado, nunca 0%
 
 // Forma do nível além da cor: normal ●, atenção ▲, crítico ■, sem nível ○
 function levelMark(level) {

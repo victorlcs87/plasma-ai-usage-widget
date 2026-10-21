@@ -9,6 +9,7 @@ import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.kirigami as Kirigami
 import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
+import "ViewPrefs.js" as ViewPrefs
 
 PlasmoidItem {
     id: root
@@ -47,7 +48,9 @@ PlasmoidItem {
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
     // Estado da Sessão ao vivo (--session-state), por id de Conta Claude; vence o campo do contrato
     property var sessionOverlay: ({})
-    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n, root.nowMs)
+    // Preferências de exibição (usado/restante, contagem/data): valem no painel, na dica e no popup
+    readonly property var viewPrefs: ViewPrefs.config(Plasmoid.configuration)
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n, root.nowMs)
     property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
@@ -137,7 +140,7 @@ PlasmoidItem {
         if (!statusData || !statusData.agents) {
             return safeI18n("Nenhum dado coletado ainda.");
         }
-        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n, now)];
+        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, date: viewPrefs.date }, safeI18n, now)];
         if (totalInvites > 0) {
             lines.push(safeI18n("%1 convites disponíveis", totalInvites));
         }

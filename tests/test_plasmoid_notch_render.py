@@ -23,7 +23,7 @@ STUBS = {
 }
 
 COMPACT_FILES = ("CompactRepresentation.qml", "DualRing.qml", "PanelItem.qml", "LevelBars.qml", "SessionMark.qml",
-                 "Presets.js", "NotchModel.js", "PanelStyle.js")
+                 "Presets.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
 import QtQuick

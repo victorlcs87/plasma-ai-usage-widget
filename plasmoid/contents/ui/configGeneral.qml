@@ -10,6 +10,7 @@ import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.plasma.extras as PlasmaExtras
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
+import "ViewPrefs.js" as ViewPrefs
 
 Item {
     id: configRoot
@@ -40,6 +41,29 @@ Item {
     readonly property var panelNow: PanelStyle.config({ panelStyle: cfg_panelStyle, panelMode: cfg_panelMode, ringCenter: cfg_ringCenter,
                                                         metricSize: cfg_metricSize, panelMargin: cfg_panelMargin })
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
+    // Popup (ticket 33): exibição em todo o widget, opacidade do fundo, ordem e visibilidade dos cards
+    property string cfg_usageDisplay: "used"
+    property string cfg_resetDisplay: "countdown"
+    property int cfg_popupOpacity: 100
+    property string cfg_popupProviderOrder: "claude,codex,gemini"
+    property string cfg_popupHiddenProviders: ""
+    readonly property var viewNow: ViewPrefs.config({ usageDisplay: cfg_usageDisplay, resetDisplay: cfg_resetDisplay, popupOpacity: cfg_popupOpacity,
+                                                      popupProviderOrder: cfg_popupProviderOrder, popupHiddenProviders: cfg_popupHiddenProviders })
+    readonly property var popupOrderList: Presets.normalizeOrder(cfg_popupProviderOrder)
+
+    function movePopupProvider(index, delta) {
+        var list = popupOrderList.slice();
+        var to = index + delta;
+        if (to < 0 || to >= list.length) return;
+        var tmp = list[index]; list[index] = list[to]; list[to] = tmp;
+        cfg_popupProviderOrder = list.join(",");
+    }
+
+    function setPopupProviderHidden(key, hidden) {
+        var list = cfg_popupHiddenProviders.split(",").filter(function (k) { return k && k !== key; });
+        if (hidden) list.push(key);
+        cfg_popupHiddenProviders = list.join(",");
+    }
 
     function moveProvider(index, delta) {
         var list = providerOrderList.slice();
@@ -940,6 +964,83 @@ Item {
             text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
             checked: configRoot.cfg_hoverOpen
             onToggled: configRoot.cfg_hoverOpen = checked
+        }
+
+        // Popup: usado/restante e contagem/data (valem no popup, na dica e no painel), opacidade, cards
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Popup:")
+                textFormat: Text.PlainText
+            }
+            QQC2.ComboBox {
+                textRole: "name"
+                valueRole: "key"
+                model: [
+                    { key: "used", name: configRoot.safeI18n("Mostrar usado") },
+                    { key: "remaining", name: configRoot.safeI18n("Mostrar restante") }
+                ]
+                currentIndex: configRoot.viewNow.remaining ? 1 : 0
+                onActivated: configRoot.cfg_usageDisplay = currentValue
+                Accessible.name: configRoot.safeI18n("Valores exibidos: usado ou restante")
+                Accessible.description: configRoot.safeI18n("Vale para o popup, a dica e o painel; notificações não mudam")
+            }
+            QQC2.ComboBox {
+                textRole: "name"
+                valueRole: "key"
+                model: [
+                    { key: "countdown", name: configRoot.safeI18n("Liberação em contagem") },
+                    { key: "date", name: configRoot.safeI18n("Liberação em data e hora") }
+                ]
+                currentIndex: configRoot.viewNow.date ? 1 : 0
+                onActivated: configRoot.cfg_resetDisplay = currentValue
+                Accessible.name: configRoot.safeI18n("Liberação exibida como contagem regressiva ou data e hora")
+            }
+            QQC2.Label {
+                text: configRoot.safeI18n("Opacidade do fundo (%):")
+                textFormat: Text.PlainText
+            }
+            QQC2.SpinBox {
+                from: 50
+                to: 100
+                stepSize: 5
+                editable: true
+                value: Math.round(configRoot.viewNow.opacity * 100)
+                onValueModified: configRoot.cfg_popupOpacity = value
+                Accessible.name: configRoot.safeI18n("Opacidade do fundo do popup em porcentagem (50 a 100)")
+            }
+            QQC2.Label {
+                text: configRoot.safeI18n("Provedores no popup:")
+                textFormat: Text.PlainText
+            }
+            Repeater {
+                model: configRoot.popupOrderList
+                delegate: RowLayout {
+                    required property string modelData
+                    required property int index
+                    spacing: 0
+
+                    QQC2.CheckBox {
+                        text: Presets.providerInfo(modelData).name
+                        checked: configRoot.cfg_popupHiddenProviders.split(",").indexOf(modelData) === -1
+                        onToggled: configRoot.setPopupProviderHidden(modelData, !checked)
+                    }
+                    QQC2.ToolButton {
+                        icon.name: "go-previous"
+                        enabled: index > 0
+                        onClicked: configRoot.movePopupProvider(index, -1)
+                        Accessible.name: configRoot.safeI18n("Mover %1 para antes no popup", Presets.providerInfo(modelData).name)
+                    }
+                    QQC2.ToolButton {
+                        icon.name: "go-next"
+                        enabled: index < configRoot.popupOrderList.length - 1
+                        onClicked: configRoot.movePopupProvider(index, 1)
+                        Accessible.name: configRoot.safeI18n("Mover %1 para depois no popup", Presets.providerInfo(modelData).name)
+                    }
+                }
+            }
         }
 
         // Intervalo de Atualização por provedor (mínimo de 60 s)

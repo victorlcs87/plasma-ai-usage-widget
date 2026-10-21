@@ -6,6 +6,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
+import "ViewPrefs.js" as ViewPrefs
 
 // Notch compacto: pílula sempre escura com um Anel Duplo por provedor (Conta Ativa no Sistema).
 Item {
@@ -24,6 +25,7 @@ Item {
 
     // Estilo, modo, centro, tamanho e margem (ticket 32): valores inválidos caem no padrão (PanelStyle.config)
     readonly property var panel: PanelStyle.config(Plasmoid.configuration)
+    readonly property bool remaining: ViewPrefs.config(Plasmoid.configuration).remaining  // usado/restante (ticket 33)
     readonly property bool widgetUpdate: !!(compactRoot.plasmoidItem && compactRoot.plasmoidItem.updateInfo && compactRoot.plasmoidItem.updateInfo.widget)
     readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
     readonly property bool cliUpdate: rings.some(function (r) { return !!r.update; })
@@ -125,6 +127,7 @@ Item {
                     panelStyle: compactRoot.style
                     mode: compactRoot.panel.mode
                     center: compactRoot.eff.center
+                    remaining: compactRoot.remaining
                     vertical: compactRoot.vertical
                     geo: compactRoot.geo
                     gap: compactRoot.gap

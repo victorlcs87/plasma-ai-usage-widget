@@ -1,5 +1,6 @@
 .pragma library
 .import "Presets.js" as Presets
+.import "ViewPrefs.js" as ViewPrefs
 
 // Modelo do Notch compacto: função pura sobre status.json + config (testável sem Plasma).
 // `tr` = safeI18n do chamador.
@@ -86,7 +87,10 @@ function levelWord(level, tr) {
     return tr("sem nível");
 }
 
-function pctWord(pct) { return pct < 0 ? "-" : Math.round(pct) + "%"; }
+// Usado (padrão) ou restante (preferência do usuário); desconhecido = "-"
+function pctWord(pct, remaining) {
+    return pct < 0 ? "-" : ViewPrefs.shownPct(pct, remaining) + "%" + (remaining ? " restante" : "");
+}
 
 // Estado da Sessão (busy/waiting/idle) da Conta Ativa (Claude ou Codex): o overlay ao vivo
 // (cfg.sessionOverlay, chave "provedor/id da Conta") vence o campo do contrato; desligado ou
@@ -169,8 +173,8 @@ function buildModel(statusData, cfg, tr, nowMs) {
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
         if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);
         if (m.update) tail += (tail ? ", " : "") + tr("nova versão %1", m.update.latest);
-        m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct), levelWord(m.innerLevel, tr))
-            + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct), levelWord(m.outerLevel, tr))
+        m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct, cfg.remaining), levelWord(m.innerLevel, tr))
+            + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct, cfg.remaining), levelWord(m.outerLevel, tr))
             + (tail ? ", " + tail : "");
         return m;
     });
@@ -197,13 +201,14 @@ function formatRemaining(ms, tr) {
 }
 
 // Uma linha por janela: "Janela nativa: 40% — libera em 2h 15min"; sem dado = "—", nunca 0%
-function windowLine(acc, win, resetKey, label, now, tr) {
+function windowLine(acc, win, resetKey, label, now, tr, cfg) {
+    cfg = cfg || {};
     var pct = windowPct(acc, win, resetKey);
     if (pct < 0) return label + ": —";
     var reset = parseIso(win[resetKey]);
     if (!isNaN(reset) && reset <= now) return label + ": " + formatRemaining(0, tr);  // sem % antigo ambíguo
-    var line = label + ": " + Math.round(pct) + "%";
-    if (!isNaN(reset)) line += " — " + tr("libera em %1", formatRemaining(reset - now, tr));
+    var line = label + ": " + pctWord(pct, cfg.remaining);
+    if (!isNaN(reset)) line += " — " + (cfg.date ? tr("libera %1", ViewPrefs.dateText(reset, now)) : tr("libera em %1", formatRemaining(reset - now, tr)));
     return line;
 }
 
@@ -221,9 +226,82 @@ function tooltipText(statusData, cfg, tr, now) {
         else if (st && st !== "valid") notes.push(tr("Erro na conta"));
         if (acc.stale === true) notes.push(tr("dados desatualizados"));
         if (acc.limit_changes && acc.limit_changes.length > 0) notes.push(tr("limites mudaram"));
-        return name + "\n  " + windowLine(acc, acc.native_window, "release_time", tr("Janela nativa"), now, tr)
-            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Semanal"), now, tr)
+        return name + "\n  " + windowLine(acc, acc.native_window, "release_time", tr("Janela nativa"), now, tr, cfg)
+            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Semanal"), now, tr, cfg)
             + (notes.length ? "\n  " + notes.join(", ") : "");
     });
     return blocks.join("\n");
+}
+
+// ---- Popup (ticket 33) ----
+
+// Provedores do popup na ordem/visibilidade escolhidas; cada um com suas Contas (a Ativa no Sistema primeiro)
+function popupProviders(statusData, prefs) {
+    var agents = (statusData && statusData.agents) || {};
+    return prefs.order.map(function (key) {
+        var info = Presets.providerInfo(key), ag = agents[key];
+        var accs = ((ag && ag.accounts) || []).map(function (a) {
+            if (!a.provider) a.provider = key;
+            return a;
+        });
+        var active = activeAccount(ag);
+        if (active) accs = [active].concat(accs.filter(function (a) { return a !== active; }));
+        return { key: key, name: (ag && ag.name) || info.name, letter: info.letter, accounts: accs, hasActive: !!active };
+    });
+}
+
+function windowTitle(kind, win, tr) {
+    if (kind === "weekly") return tr("Janela Semanal (7 dias)");
+    var t = (win && win.type) || "";
+    return t === "5h" ? tr("Janela Ativa (5h)") : t === "daily" ? tr("Janela Diária") : t ? tr("Janela Ativa (%1)", t) : tr("Janela Ativa");
+}
+
+// Previsão de Esgotamento: vazia sem previsão confiável (obsoleto, sem dado); `warn` = esgota antes da liberação
+function forecast(acc, win, nowMs, tr) {
+    var fc = win && win.forecast;
+    if (!fc || acc.stale === true || acc.no_data === true) return { text: "", warn: false };
+    if (!fc.exhausts_at) return { text: tr("Sem esgotamento previsto"), warn: false };
+    var at = parseIso(fc.exhausts_at);
+    if (isNaN(at)) return { text: "", warn: false };
+    var sec = Math.max(0, Math.round((at - nowMs) / 1000));
+    var when = sec <= 0 ? tr("agora")
+        : sec >= 86400 ? tr("%1d %2h", Math.floor(sec / 86400), Math.floor((sec % 86400) / 3600))
+        : sec >= 3600 ? tr("%1h %2min", Math.floor(sec / 3600), Math.floor((sec % 3600) / 60))
+        : tr("%1 min", Math.max(1, Math.round(sec / 60)));
+    var text = sec > 0 ? tr("Esgota em %1 (%2)", when, ViewPrefs.dateText(at, nowMs).slice(-5)) : tr("Esgota %1", when);
+    return { text: fc.before_release ? text : tr("%1, após a liberação", text), warn: fc.before_release === true };
+}
+
+// Tudo que o popup mostra de uma janela. `prefs` = ViewPrefs.config; sem dado: "—", esmaecido, sem nível/previsão
+function windowView(acc, win, kind, prefs, nowMs, tr) {
+    var key = kind === "weekly" ? "cycle_reset_time" : "release_time";
+    var pct = windowPct(acc, win, key), stale = acc.stale === true;
+    var v = { title: windowTitle(kind, win, tr), known: pct >= 0, pct: pct, text: ViewPrefs.pctText(pct, prefs.remaining),
+              level: windowLevel(acc, win, pct), elapsed: windowElapsed(acc, win, pct), dim: pct < 0 || stale || acc.no_data === true,
+              reset: "", resetFull: "", tokens: "", forecast: { text: "", warn: false } };
+    var resetMs = win ? parseIso(win[key] || win.resets_at) : NaN;
+    if (v.elapsed >= 0 && !isNaN(resetMs))  // marca de tempo decorrido ao vivo, em passos de 0,5%
+        v.elapsed = Math.round(Math.min(1, Math.max(0, 1 - (resetMs - nowMs) / (win.window_seconds * 1000))) * 200) / 200;
+    if (pct < 0) v.reset = v.resetFull = tr("Sem dados");
+    else if (stale) v.reset = v.resetFull = tr("Dados desatualizados") + (isNaN(resetMs) ? "" : " · " + tr("liberação prevista %1", ViewPrefs.dateText(resetMs, nowMs)));
+    else if (!isNaN(resetMs)) {
+        var sec = Math.floor((resetMs - nowMs) / 1000);
+        if (sec <= 0) v.reset = v.resetFull = tr("Cota liberada");
+        else {
+            var cd = ViewPrefs.countdown(sec), dt = ViewPrefs.dateText(resetMs, nowMs);
+            v.reset = prefs.date ? tr("libera %1", dt) : tr("libera em %1", cd);
+            v.resetFull = tr("libera em %1 (%2)", cd, dt);
+        }
+    }
+    if (pct >= 0 && win.tokens_used > 0) v.tokens = tr("%1 tokens", win.tokens_used.toLocaleString());
+    if (pct >= 0) v.forecast = forecast(acc, win, nowMs, tr);
+    return v;
+}
+
+// Texto único para tecnologias assistivas (a informação nunca depende só da cor)
+function viewSummary(v, remaining, tr) {
+    var s = v.title + ": " + (v.known ? v.text + " " + (remaining ? tr("restante") : tr("usado")) : tr("sem dados"));
+    if (v.level) s += ", " + levelWord(v.level, tr);
+    if (v.resetFull) s += ", " + v.resetFull;
+    return s + (v.forecast.text ? ", " + v.forecast.text : "");
 }

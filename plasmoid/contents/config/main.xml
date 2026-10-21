@@ -76,6 +76,28 @@
       <label>Abrir o popup ao passar o mouse sobre o Notch (desligado: só o clique)</label>
       <default>true</default>
     </entry>
+    <entry name="usageDisplay" type="String">
+      <label>Valores exibidos em todo o widget (used = usado, remaining = restante)</label>
+      <default>used</default>
+    </entry>
+    <entry name="resetDisplay" type="String">
+      <label>Liberação exibida em todo o widget (countdown = contagem regressiva, date = data e hora)</label>
+      <default>countdown</default>
+    </entry>
+    <entry name="popupOpacity" type="Int">
+      <label>Opacidade do fundo do popup em porcentagem</label>
+      <default>100</default>
+      <min>50</min>
+      <max>100</max>
+    </entry>
+    <entry name="popupProviderOrder" type="String">
+      <label>Ordem dos provedores no popup</label>
+      <default>claude,codex,gemini</default>
+    </entry>
+    <entry name="popupHiddenProviders" type="String">
+      <label>Provedores ocultos no popup (separados por vírgula)</label>
+      <default></default>
+    </entry>
   </group>
 
 </kcfg>

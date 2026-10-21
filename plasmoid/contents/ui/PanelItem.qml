@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
+import "ViewPrefs.js" as ViewPrefs
 
 // Um provedor no painel (Conta Ativa no Sistema), no estilo e modo escolhidos. Tamanho = PanelStyle.layout.
 // Cor só pelo nível do contrato (Presets.levelColor); a forma do nível vai além da cor em todos os estilos.
@@ -19,6 +20,7 @@ Item {
     property color accent: "#3daee9"
     property bool active: true
     property bool reducedMotion: false
+    property bool remaining: false      // preferência usado/restante: o % e os arcos mostram o que resta
 
     readonly property var head: PanelStyle.headline(m)
     readonly property var parts: PanelStyle.parts(panelStyle, mode)
@@ -96,8 +98,8 @@ Item {
                 height: pi.geo.unit
                 anchors.verticalCenter: parent.verticalCenter
                 sourceComponent: DualRing {
-                    outerPct: pi.m.outerPct
-                    innerPct: pi.m.innerPct
+                    outerPct: ViewPrefs.shownPct(pi.m.outerPct, pi.remaining)
+                    innerPct: ViewPrefs.shownPct(pi.m.innerPct, pi.remaining)
                     outerElapsed: pi.m.outerElapsed
                     innerElapsed: pi.m.innerElapsed
                     outerLevel: pi.m.outerLevel
@@ -106,7 +108,7 @@ Item {
                     innerColor: Presets.levelColor(pi.m.innerLevel, pi.accent)
                     letter: pi.m.letter
                     centerMode: pi.center
-                    centerPct: pi.known ? String(Math.round(pi.head.pct)) : "\u2014"
+                    centerPct: pi.known ? String(ViewPrefs.shownPct(pi.head.pct, pi.remaining)) : "\u2014"
                     centerDim: pi.dim
                     sessionState: pi.m.sessionState
                     active: pi.active
@@ -121,8 +123,8 @@ Item {
                 height: pi.geo.unit
                 anchors.verticalCenter: parent.verticalCenter
                 sourceComponent: LevelBars {
-                    outerPct: pi.m.outerPct
-                    innerPct: pi.m.innerPct
+                    outerPct: ViewPrefs.shownPct(pi.m.outerPct, pi.remaining)
+                    innerPct: ViewPrefs.shownPct(pi.m.innerPct, pi.remaining)
                     outerElapsed: pi.m.outerElapsed
                     innerElapsed: pi.m.innerElapsed
                     outerLevel: pi.m.outerLevel
@@ -143,7 +145,7 @@ Item {
             Layout.preferredHeight: pi.geo.lh
             horizontalAlignment: pi.vertical ? Text.AlignHCenter : Text.AlignLeft
             verticalAlignment: Text.AlignVCenter
-            text: PanelStyle.pctText(pi.head.pct)
+            text: PanelStyle.pctText(pi.head.pct, pi.remaining)
             color: pi.known ? "#e6e8eb" : "#8a9099"
             opacity: pi.dim ? 0.6 : 1
             font.pixelSize: pi.geo.fontPx
