@@ -252,7 +252,7 @@ Item {
                     implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
                     implicitWidth: Math.max(inviteLabel.implicitWidth + 6, implicitHeight)
                     radius: implicitHeight / 2
-                    color: "#c24d00"
+                    color: Presets.ui.badge
                     Accessible.name: I18n.trp("%1 invite available", "%1 invites available", compactRoot.totalInvites)
 
                     QQC2.Label {

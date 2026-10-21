@@ -134,7 +134,7 @@ Item {
         objectName: "popupBackground"
         anchors.fill: parent
         radius: 10
-        color: Qt.rgba(0x15 / 255, 0x17 / 255, 0x1b / 255, fullRoot.prefs.opacity)
+        color: Qt.alpha(Presets.ui.panel, fullRoot.prefs.opacity)
         border.width: 1
         border.color: Presets.ui.edge
     }

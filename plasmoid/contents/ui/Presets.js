@@ -47,6 +47,7 @@ function providerInfo(key) {
 }
 
 // Nível de alerta do contrato -> cor. Sem nível/obsoleto/sem dado: neutro, nunca verde falso.
+var defaultAccent = "#3daee9";  // realce padrão do Breeze, só enquanto o tema não informa o seu
 var neutral = "#8a9099", warning = "#f5a524", critical = "#ff4d4f";
 function levelColor(level, accent) {
     if (level === "critical") return critical;
@@ -86,4 +87,4 @@ function levelTextColor(level, accent) {
 
 // Paleta fixa do Notch (sempre escuro, independente do tema): fundo, cartão, borda, texto, texto secundário
 // e botão. Texto sobre o cartão >= 4,5:1.
-var ui = { panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#b4bac2", chip: "#2a2e36", letter: "#c9ced6" };
+var ui = { badge: "#c24d00", panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#b4bac2", chip: "#2a2e36", letter: "#c9ced6" };

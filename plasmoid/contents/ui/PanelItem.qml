@@ -17,7 +17,7 @@ Item {
     property bool vertical: false
     property var geo: ({ unit: 22, fontPx: 11, lh: 14, box: 13, markW: 11, pctW: 30, ip: 0 })
     property int gap: 4
-    property color accent: "#3daee9"
+    property color accent: Presets.defaultAccent
     property bool active: true
     property bool reducedMotion: false
     property bool remaining: false      // preferência usado/restante: o % e os arcos mostram o que resta
