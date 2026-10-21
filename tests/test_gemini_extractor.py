@@ -739,3 +739,54 @@ def test_collector_gemini_status_json_reflects_ok_with_expired_file_but_active_k
     disk_data = json.loads(cache_path.read_text(encoding="utf-8"))
     assert disk_data["agents"]["gemini"]["status"] == "ok"
     assert disk_data["agents"]["gemini"]["accounts"][0]["health"]["status"] == "valid"
+
+
+# --- Ticket 29: cota por modelo (usage_details.quota_by_model) ---
+
+def _gemini_account(tmp_path):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir()
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps({"access_token": "ya29.x"}))
+    return {"id": "g", "provider": "gemini", "gemini_dir": str(gemini_dir)}
+
+
+def _status_with_api(account, api):
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=api):
+        return extract_gemini_status(account, now=now)
+
+
+def test_gemini_quota_by_model_from_quota_summary(tmp_path):
+    api = {"buckets": [
+        {"bucketId": "gemini-5h", "remainingFraction": 0.5, "resetTime": "2026-10-20T16:00:00Z"},
+        {"modelId": "gemini-2.5-pro", "remainingFraction": 0.25, "resetTime": "2026-10-20T18:00:00Z"},
+        {"modelId": "gemini-2.5-flash", "remainingFraction": 1.0},
+        {"modelId": "gemini-sem-dado"},
+    ]}
+    res = _status_with_api(_gemini_account(tmp_path), api)
+    models = res["usage_details"]["quota_by_model"]
+    assert models == [
+        {"model": "gemini-2.5-pro", "usage_percentage": 75.0, "reset_time": "2026-10-20T18:00:00+00:00"},
+        {"model": "gemini-2.5-flash", "usage_percentage": 0.0, "reset_time": None},
+        # Sem remainingFraction: sem dado (None), nunca 0% falso
+        {"model": "gemini-sem-dado", "usage_percentage": None, "reset_time": None},
+    ]
+    # janelas agregadas intactas
+    assert res["native_window"]["usage_percentage"] == 50.0
+
+
+def test_gemini_quota_by_model_absent_without_model_buckets(tmp_path):
+    account = _gemini_account(tmp_path)
+    for api in ({"gemini-5h": {"remainingFraction": 0.5}}, {}, None, {"buckets": "x"}, {"buckets": [None, 3, {}]}):
+        assert "usage_details" not in _status_with_api(account, api)
+
+
+def test_gemini_quota_by_model_ignores_malformed_fraction(tmp_path):
+    api = {"quotaSummaries": [
+        {"model": "m1", "remainingFraction": "abc"},
+        {"model": "m2", "remainingFraction": True},
+        {"model": "m3", "remainingFraction": 1.5},
+    ]}
+    models = _status_with_api(_gemini_account(tmp_path), api)["usage_details"]["quota_by_model"]
+    assert [m["usage_percentage"] for m in models] == [None, None, 0.0]

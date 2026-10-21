@@ -141,6 +141,7 @@ def collect_and_save(
                 native_window = gemini_data.get("native_window")
                 weekly_window = gemini_data.get("weekly_window")
                 invites = gemini_data.get("free_trial_invites")
+                usage_details = gemini_data.get("usage_details")
 
             if health.get("status") == "valid":
                 agent_has_valid_account = True

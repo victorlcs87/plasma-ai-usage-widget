@@ -11,7 +11,11 @@ ColumnLayout {
     property var details: null
 
     spacing: 2
-    visible: lines.length > 0
+    // Cota por modelo (Gemini): lista recolhivel; modelo sem dado mostra "—", nunca 0%
+    property bool modelsExpanded: false
+    readonly property var models: (details && details.quota_by_model) ? details.quota_by_model : []
+
+    visible: lines.length > 0 || models.length > 0
 
     readonly property var lines: {
         var d = detailsRoot.details;
@@ -44,10 +48,44 @@ ColumnLayout {
         return res;
     }
 
+    function modelPct(p) {
+        return (p === null || p === undefined) ? "—" : Math.round(p) + "%";
+    }
+
     function fmtTokens(n) {
         if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
         if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
         return String(n);
+    }
+
+    QQC2.AbstractButton {
+        visible: detailsRoot.models.length > 0
+        Layout.fillWidth: true
+        text: detailsRoot.tr("Cota por modelo (%1)", detailsRoot.models.length)
+        onClicked: detailsRoot.modelsExpanded = !detailsRoot.modelsExpanded
+        Accessible.role: Accessible.Button
+        Accessible.name: text
+        Accessible.description: detailsRoot.modelsExpanded ? detailsRoot.tr("Recolher") : detailsRoot.tr("Expandir")
+        contentItem: QQC2.Label {
+            text: (detailsRoot.modelsExpanded ? "▾ " : "▸ ") + parent.text
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
+            opacity: 0.8
+            elide: Text.ElideRight
+        }
+    }
+
+    Repeater {
+        model: detailsRoot.modelsExpanded ? detailsRoot.models : []
+        delegate: QQC2.Label {
+            required property var modelData
+            Layout.fillWidth: true
+            Layout.leftMargin: Kirigami.Units.smallSpacing
+            text: modelData.model + "  " + detailsRoot.modelPct(modelData.usage_percentage)
+                + (modelData.reset_time ? "  ·  " + detailsRoot.tr("reinicia %1", Qt.formatDateTime(new Date(modelData.reset_time), "dd/MM HH:mm")) : "")
+            elide: Text.ElideRight
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
+            opacity: 0.8
+        }
     }
 
     Repeater {

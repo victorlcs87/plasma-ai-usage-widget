@@ -434,6 +434,42 @@ def parse_gemini_quota_buckets(
     return bucket_5h, bucket_weekly
 
 
+def parse_gemini_model_quotas(data: Any) -> list[dict[str, Any]]:
+    """Per-model quota entries (buckets carrying "modelId"/"model") from the quota summary.
+
+    usage_percentage is None when the model has no usable remainingFraction: never a fake 0%.
+    """
+    if not isinstance(data, dict):
+        return []
+    buckets: list[Any] = []
+    for key in ("buckets", "quotas", "userQuotas", "quotaSummaries"):
+        if isinstance(data.get(key), list):
+            buckets += data[key]
+    for group in data.get("groups") if isinstance(data.get("groups"), list) else []:
+        if isinstance(group, dict) and isinstance(group.get("buckets"), list):
+            buckets += group["buckets"]
+    out: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for b in buckets:
+        if not isinstance(b, dict):
+            continue
+        model = b.get("modelId") or b.get("model")
+        if not isinstance(model, str) or not model or model in seen:
+            continue
+        seen.add(model)
+        rem = b.get("remainingFraction")
+        pct = None
+        if isinstance(rem, (int, float)) and not isinstance(rem, bool) and rem == rem:
+            pct = round((1.0 - min(1.0, max(0.0, float(rem)))) * 100.0, 1)
+        reset = parse_timestamp(b.get("resetTime") or b.get("resets_at"))
+        out.append({
+            "model": model,
+            "usage_percentage": pct,
+            "reset_time": datetime.fromtimestamp(reset, tz=timezone.utc).isoformat() if reset is not None else None,
+        })
+    return out
+
+
 def gemini_bucket_seconds(bucket: dict[str, Any], default: int) -> int:
     """Duration of a quota bucket from its window or id suffix ("5h", "gemini-weekly"), else default.
 
@@ -542,6 +578,8 @@ def extract_gemini_status(
         release_time = None
         seconds_remaining = None
 
+    model_quotas: list[dict[str, Any]] = []
+
     # Weekly window calculations (last 7 days)
     start_7d_sec = now_sec - GEMINI_7D_SECONDS
     in_7d_ts = [t for t in all_timestamps if start_7d_sec <= t <= now_sec]
@@ -636,6 +674,7 @@ def extract_gemini_status(
         health["metadata"] = metadata
 
         bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data)
+        model_quotas = parse_gemini_model_quotas(api_data)
 
         # 5h window from official API
         if bucket_5h and bucket_5h.get("remainingFraction") is not None:
@@ -726,9 +765,12 @@ def extract_gemini_status(
         "window_seconds": weekly_window_seconds,
     }
 
-    return {
+    result = {
         "health": health,
         "native_window": native_window,
         "weekly_window": weekly_window,
         "free_trial_invites": invites,
     }
+    if model_quotas:
+        result["usage_details"] = {"quota_by_model": model_quotas}
+    return result

@@ -14,6 +14,7 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 }
 
 # v2: optional per-account "usage_details" and "token_history" (absent when nothing was collected)
+#     usage_details.quota_by_model (Gemini, ticket 29) is a new optional key of that field: no version bump
 # v3: optional "window_seconds" and "elapsed_fraction" on native_window/weekly_window
 CONTRACT_VERSION = 3
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3)
