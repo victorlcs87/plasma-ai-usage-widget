@@ -562,3 +562,29 @@ def set_alert_settings(
         cfg["alerts"] = new
         save_config(cfg, config_path)
     return True, f"Alertas atualizados: modo {new['mode']}, aviso {new['warning']:g}%, crítico {new['critical']:g}%."
+
+
+def set_notify_settings(
+    warning: float | None = None,
+    critical: float | None = None,
+    early: bool | None = None,
+    reset: bool | None = None,
+    muted: list[str] | None = None,
+    config_path: str | Path | None = None,
+) -> tuple[bool, str]:
+    """Grava as notificacoes de limite; None mantem o valor atual (`muted` substitui a lista)."""
+    from ai_usage_collector.notifications import notify_settings, validate_notify
+
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        cur = notify_settings(cfg)
+        new = {k: cur[k] if v is None else v for k, v in
+               (("warning", warning), ("critical", critical), ("early", early), ("reset", reset), ("muted", muted))}
+        if error := validate_notify(**new):
+            return False, error
+        new["muted"] = sorted(set(new["muted"]))
+        cfg["notifications"] = new
+        save_config(cfg, config_path)
+    yn = lambda b: "sim" if b else "não"  # noqa: E731
+    return True, (f"Notificações atualizadas: aviso {new['warning']:g}%, crítico {new['critical']:g}%, "
+                  f"antecipado {yn(new['early'])}, reset {yn(new['reset'])}, silenciados: {', '.join(new['muted']) or 'nenhum'}.")

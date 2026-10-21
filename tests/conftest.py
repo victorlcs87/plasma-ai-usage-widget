@@ -27,3 +27,28 @@ def _block_real_network(monkeypatch):
 
     monkeypatch.setattr(urllib.request, "urlopen", _offline)
     monkeypatch.setattr(urllib.request.OpenerDirector, "open", _offline)
+
+
+class Notified(list):
+    """Transporte D-Bus simulado: registra (resumo, corpo, critico); nunca envia notificacao real."""
+
+    ok = True
+    boom = False
+    real = None
+
+    def __call__(self, summary, body, critical=False):
+        if self.boom:
+            raise RuntimeError("transporte quebrou")
+        if self.ok:
+            self.append((summary, body, critical))
+        return self.ok
+
+
+@pytest.fixture(autouse=True)
+def notified(monkeypatch):
+    from ai_usage_collector import notifications
+
+    rec = Notified()
+    rec.real = notifications.dbus_notify
+    monkeypatch.setattr(notifications, "dbus_notify", rec)
+    return rec

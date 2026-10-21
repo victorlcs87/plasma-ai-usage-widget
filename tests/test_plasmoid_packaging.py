@@ -312,3 +312,12 @@ def test_forecast_text_follows_the_clock_and_alert_row_wraps():
     assert "nowMs" in card and "fc.exhausts_at" in card and "fc.seconds_until" not in card
     cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
     assert "Flow {" in cfg and "alertsDirty" in cfg
+
+
+def test_config_general_exposes_notification_settings():
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for needle in ("--set-notify-config", "--notify-warning", "--notify-critical", "--notify-early", "--notify-reset",
+                   "--notify-mute", "notifyDirty", "setProviderMuted", "Accessible.name"):
+        assert needle in cfg
+    section = cfg[cfg.index("function saveNotifySettings"):cfg.index("// Executor de remoção de conta")]
+    assert "shellQuote(configRoot.notifyMuted.join" in section  # nada vai ao shell sem aspas

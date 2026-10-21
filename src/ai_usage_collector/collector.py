@@ -41,6 +41,7 @@ from ai_usage_collector.discovery import discover_account
 from ai_usage_collector.identity import credential_identity
 from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.limit_changes import apply_limit_changes
+from ai_usage_collector.notifications import apply_notifications, notify_settings
 from ai_usage_collector.pace import alert_settings, apply_pace, reapply_levels
 from ai_usage_collector.extractors import (
     extract_claude_status,
@@ -253,16 +254,23 @@ def _collect(
     except Exception as e:  # ritmo e previsao sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Ritmo de Uso e previsao nao atualizados: {e}\n")
 
+    try:
+        apply_notifications(status_payload, config, cache_file, now_dt, {a for a in agents_to_collect if not providers or a in providers})
+    except Exception as e:  # notificacoes sao opcionais; nunca impedem o status
+        sys.stderr.write(f"Aviso: Notificacoes de limite nao processadas: {e}\n")
+
     return status_payload
 
 
 def reapply_alert_levels(config_path: str | Path | None = None, cache_path: str | Path | None = None) -> None:
-    """Reaplica modo/limiares ao status.json existente, sem consultar os provedores."""
+    """Reaplica modo/limiares de alerta e as configuracoes de notificacao ao status.json existente, sem consultar os provedores."""
     cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
     with refresh.status_lock(cache_file.with_name(refresh.STATE_FILENAME)):
         status = load_status_cache(cache_file)
         if isinstance(status, dict) and isinstance(status.get("agents"), dict):
-            reapply_levels(status, alert_settings(load_config(config_path)))
+            config = load_config(config_path)
+            reapply_levels(status, alert_settings(config))
+            status["notifications"] = notify_settings(config)  # a tela de configuracao le daqui
             save_status_cache(status, cache_file)
 
 

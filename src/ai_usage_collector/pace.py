@@ -131,13 +131,19 @@ def _level(pct: float, pace: float | None, settings: dict[str, Any]) -> str | No
     return "normal"
 
 
+def reliable_pct(acc: dict[str, Any], win: dict[str, Any], release_key: str) -> float | None:
+    """Uso da janela, so se vem de leitura da API fresca com liberacao conhecida (senao None)."""
+    pct = _num(win.get("usage_percentage"))
+    if acc.get("stale") or acc.get("no_data") or win.get("source") != "api" or _ts(win.get(release_key)) is None:
+        return None
+    return pct
+
+
 def set_level(acc: dict[str, Any], win: dict[str, Any], release_key: str, settings: dict[str, Any]) -> None:
     """Define `alert_level` da janela; so leitura da API fresca, com liberacao conhecida, recebe nivel."""
     win.pop("alert_level", None)
-    pct = _num(win.get("usage_percentage"))
-    if acc.get("stale") or acc.get("no_data") or pct is None or win.get("source") != "api" or _ts(win.get(release_key)) is None:
-        return
-    win["alert_level"] = _level(pct, _num(win.get("pace")), settings)
+    if (pct := reliable_pct(acc, win, release_key)) is not None:
+        win["alert_level"] = _level(pct, _num(win.get("pace")), settings)
 
 
 def reapply_levels(status: dict[str, Any], settings: dict[str, Any]) -> None:
