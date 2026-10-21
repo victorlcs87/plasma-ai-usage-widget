@@ -58,6 +58,7 @@ _Avoid_: reset time, data de expiracao, horario de refresh
 
 **Ritmo de Uso**:
 Relacao entre a fracao do limite ja consumida e a fracao da janela ja decorrida; indica se, mantido o ritmo atual, o limite se esgota antes do Tempo de Liberacao.
+No modo ritmo o aviso exige ritmo acima de 1,1 e ao menos 5% da janela decorrida, e o nivel critico e fixo em 90% de consumo; os limiares configuraveis (padrao 70/90) so valem no modo limiar. Leitura local nunca recebe nivel de alerta.
 _Avoid_: velocidade, taxa de consumo
 
 **Previsao de Esgotamento**:
@@ -65,7 +66,7 @@ Momento estimado em que um limite chegara a 100% se o Ritmo de Uso recente se ma
 _Avoid_: estimativa de fim, ETA
 
 **Historico de Tokens**:
-Totais diarios de tokens consumidos por provedor, Conta e modelo, preservados localmente para consulta e exportacao.
+Totais diarios de tokens consumidos por provedor, Conta e modelo, preservados localmente para consulta e exportacao. Token = entrada + saida informados pelo provedor em cada mensagem (no Claude, leituras/escritas de cache ficam fora); o dia e o do fuso local.
 _Avoid_: log de uso, estatisticas brutas
 
 **Convite de Teste Gratuito**:
@@ -93,3 +94,7 @@ _Avoid_: barra, popup generico
 **Anel Duplo**:
 Indicador circular de um provedor no Notch: o anel externo representa o Medidor da Janela Semanal e o interno a Janela Nativa, ambos com a marca do tempo decorrido.
 _Avoid_: grafico de rosca, gauge
+
+**Janela de Destaque**:
+A janela de um provedor cujo percentual os estilos Text e Bar e os modos com % mostram no painel (e o centro do anel): a mais urgente entre as conhecidas, isto é, a de maior nível de alerta do contrato (crítico, atenção, normal) e, em empate, a de maior percentual. Sem nenhuma janela conhecida, mostra "—", nunca 0%.
+_Avoid_: pior janela, janela principal

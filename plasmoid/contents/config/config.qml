@@ -5,7 +5,7 @@ import org.kde.plasma.configuration
 
 ConfigModel {
     ConfigCategory {
-        name: i18n("Contas e Configurações")
+        name: i18n("Accounts and Settings")
         icon: "preferences-system-network"
         source: "configGeneral.qml"
     }

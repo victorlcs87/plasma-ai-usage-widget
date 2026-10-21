@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -37,6 +40,8 @@ def test_plasmoid_directory_structure():
         "CompactRepresentation.qml",
         "FullRepresentation.qml",
         "AccountCard.qml",
+        "UsageDetails.qml",
+        "TokenHistory.qml",
         "configGeneral.qml",
     ]
     for qml_file in expected_qml_files:
@@ -67,7 +72,7 @@ def test_metadata_json_schema_and_plasma6_compliance():
     assert plugin.get("Icon"), "KPlugin Icon must be defined"
     assert plugin.get("Category") == "Utilities"
     assert plugin.get("License") == "MIT"
-    assert plugin.get("Version") == "1.0.0"
+    assert plugin.get("Version") == "1.1.0"
 
     authors = plugin.get("Authors")
     assert isinstance(authors, list) and len(authors) > 0
@@ -110,7 +115,13 @@ def test_qml_components_syntax_validity():
     """Verify that standalone QML components parse without syntax errors using qml6."""
     components_to_check = [
         "AccountCard.qml",
+        "UsageDetails.qml",
+        "TokenHistory.qml",
         "CompactRepresentation.qml",
+        "DualRing.qml",
+        "PanelItem.qml",
+        "LevelBars.qml",
+        "SessionMark.qml",
         "FullRepresentation.qml",
         "configGeneral.qml",
     ]
@@ -135,7 +146,7 @@ def test_qml_contract_keys_compatibility():
         account_id="claude-pro",
         label="Claude Pro",
         source="auto",
-        health={"status": "valid", "message": "Ativa", "detected": True},
+        health={"status": "valid", "message": "Active", "detected": True},
         native_window={
             "total_capacity": 45,
             "used_capacity": 13,
@@ -200,36 +211,27 @@ def test_qml_contract_keys_compatibility():
 
 
 def test_account_card_qml_symmetric_meters_and_clean_capacity():
-    """Verify AccountCard.qml implements symmetric meters without raw message counts."""
+    """O card mostra as duas janelas simétricas (via NotchModel.windowView), sem contagem crua de mensagens."""
     card_path = UI_DIR / "AccountCard.qml"
     assert card_path.is_file()
     content = card_path.read_text(encoding="utf-8")
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
 
     # 1. Raw message counters removed from primary capacity display
     assert "Capacidade:" not in content
     assert "msgs" not in content
 
-    # 2. Symmetric Active Window Meter
-    assert "Janela Ativa (5h)" in content
-    assert "Janela Ativa (3h)" in content
-    assert "Janela Diária" in content
-    assert "nativeProgressBar" in content
-    assert "liveSecondsRemaining" in content
+    # 2. Janela Ativa/Semanal simétricas, com marca de tempo decorrido ao vivo e o relógio do popup
+    assert "Active Window (5h)" in model and "Active Window (3h)" not in model  # duracao vem do provedor via %1
+    assert "Active Window (%1)" in model and "Daily Window" in model and "Weekly Window (7 days)" in model
+    assert "elapsed_fraction" in model and "cycle_reset_time" in model and "release_time" in model
+    assert "nativeRow" in content and "weeklyRow" in content and "nowMs" in content and "weekly_window" in content
 
-    # 3. Symmetric Weekly Window Meter
-    assert "Janela Semanal (7 dias)" in content
-    assert "weeklyProgressBar" in content
-    assert "weekly_window" in content
-    assert "liveWeeklySecondsRemaining" in content
-    assert "cycle_reset_time" in content
+    # 3. Cor SÓ pelo nível do contrato: nada de limiares fixos 70/90 nem cores do tema por percentual
+    assert "getUsageColor" not in content and "< 70" not in content and "<= 90" not in content
+    assert "Kirigami.Theme.positiveTextColor" not in content and "Presets.levelColor" in content
 
-    # 4. Unified dynamic color thresholds (< 70%, 70-90%, > 90%)
-    assert "Kirigami.Theme.positiveTextColor" in content
-    assert "Kirigami.Theme.neutralTextColor" in content
-    assert "Kirigami.Theme.negativeTextColor" in content
-    assert "70" in content and "90" in content
-
-    # 5. Free trial invite preservation
+    # 4. Free trial invite preservation
     assert "free_trial_invites" in content
     assert "copyToClipboard" in content
     assert "shellQuote" in content
@@ -242,7 +244,7 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     content = config_path.read_text(encoding="utf-8")
 
     # Header and expandable container
-    assert "+ Adicionar Nova Conta" in content
+    assert "Add New Account" in content
     assert "addAccountSection" in content
     assert "isAddFormExpanded" in content
     assert "toggleAddFormBtn" in content
@@ -274,18 +276,130 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     assert "--interactive-login" in content
 
 
+
+
+def test_account_card_shows_optional_token_history():
+    """AccountCard usa TokenHistory e tolera a ausencia de token_history (contrato v1)."""
+    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    assert "TokenHistory {" in card
+    assert "token_history ?? null" in card
+    comp = (UI_DIR / "TokenHistory.qml").read_text(encoding="utf-8")
+    for key in ["today", "week", "month", "daily_30d", "weekly_3m", "monthly_12m", "Repeater", "Rectangle"]:
+        assert key in comp
+    assert "visible: Boolean(history)" in comp
+
+
+def test_cards_show_forecast_and_level_with_text_and_shapes():
+    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    row = (UI_DIR / "WindowRow.qml").read_text(encoding="utf-8")
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    for needle in ("alert_level", "forecast", "Runs out in"):
+        assert needle in model
+    for needle in ("Text.PlainText", "levelWord", "levelMark", "forecast"):
+        assert needle in row  # nível por palavra e forma, além da cor
+    assert "Presets.levelTextColor" in row and "#" not in row.split("levelTextColor")[1].split("\n")[0]  # cor vem do nível, nunca hex fixo
+    assert "forecast" in card.lower() or "windowView" in card
+
+
+def test_config_general_exposes_alert_mode_and_thresholds():
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for needle in ("--set-alert-config", "--alert-mode", "--alert-warning", "--alert-critical", "alertModeCombo"):
+        assert needle in cfg
+
+
+def test_forecast_text_follows_the_clock_and_alert_row_wraps():
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    fn = model[model.index("function forecast("):model.index("function windowView")]
+    assert "nowMs" in fn and "fc.exhausts_at" in fn and "fc.seconds_until" not in fn  # exhausts_at - agora, nunca seconds_until
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    assert "Flow {" in cfg and "alertsDirty" in cfg
+
+
+def test_compact_notch_uses_contract_level_not_fixed_thresholds():
+    compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    ring = (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")
+    presets = (UI_DIR / "Presets.js").read_text(encoding="utf-8")
+    for src in (compact, main):
+        assert "< 70" not in src and "<= 90" not in src and "maxUsagePercent" not in src
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    assert "alert_level" in model and "elapsed_fraction" in model and "isActive" in model
+    assert "NotchModel" in main
+    assert "levelColor" in presets and 'return neutral' in presets  # sem nivel = neutro
+    assert "Plasmoid.formFactor" in compact and "Accessible.description" in compact
+    assert "free_trial_invites" in main and "inviteBadge" in compact and "healthDot" in compact
+    assert "Canvas" in ring and "outerPct" in ring and "innerPct" in ring
+
+
+def test_notch_config_entries_declared_and_exposed():
+    xml = (PLASMOID_DIR / "contents" / "config" / "main.xml").read_text(encoding="utf-8")
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for name in ("providerOrder", "hiddenProviders", "accentPreset"):
+        assert f'name="{name}"' in xml and f"cfg_{name}" in cfg
+    assert "highlightColor" in (UI_DIR / "main.qml").read_text(encoding="utf-8")
+
+def test_config_general_exposes_notification_settings():
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for needle in ("--set-notify-config", "--notify-warning", "--notify-critical", "--notify-early", "--notify-reset",
+                   "--notify-mute", "notifyDirty", "setProviderMuted", "Accessible.name"):
+        assert needle in cfg
+    section = cfg[cfg.index("function saveNotifySettings"):cfg.index("// Executor de remoção de conta")]
+    assert "shellQuote(configRoot.notifyMuted.join" in section  # nada vai ao shell sem aspas
+    assert "notifyThresholdsEdited" in section and "hovered || activeFocus" in cfg and "Accessible.description" in cfg
+
+
+def test_session_state_config_and_ui_wiring():
+    xml = (PLASMOID_DIR / "contents" / "config" / "main.xml").read_text(encoding="utf-8")
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for name in ("sessionState", "sessionAutoOpen", "sessionSound"):
+        assert f'name="{name}"' in xml and f"cfg_{name}" in cfg
+    assert xml.split('name="sessionState"')[1].split("</entry>")[0].count("<default>false</default>") == 1
+    assert xml.split('name="sessionSound"')[1].split("</entry>")[0].count("<default>false</default>") == 1  # som desligado por padrao
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    assert "ai-usage-session-state" in (UI_DIR / "Collector.js").read_text(encoding="utf-8") and "interval: 5000" in main and "pillHovered" in main and "sessionSound === true" in main
+    ring = (UI_DIR / "SessionMark.qml").read_text(encoding="utf-8")  # compartilhado por todos os estilos
+    assert "reducedMotion" in ring and "!mark.reducedMotion" in ring and "Presets.warning" in ring
+
+
+def test_session_attention_respects_pinned_hover_and_open_popup():
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    fn = main[main.index("function sessionAttention"):main.index("id: soundDataSource")]
+    assert "!root.open && !root.pinned" in fn  # nao abre sobre popup ja aberto
+    assert "root.pillHovered || root.popupHovered" in fn and "root.pinned" in fn  # nao fecha sob o mouse nem fixado
+    assert "root.pinned = " not in fn  # nunca altera o estado fixado
+    assert "ring.shown" in (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")  # animacao para com o widget oculto
+
+
+def test_session_polling_and_attention_respect_idle_hidden_and_defaults():
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    assert "root.visible && !root.idleHidden" in main  # nao polla com o widget oculto
+    fn = main[main.index("function sessionAttention"):main.index("id: soundDataSource")]
+    assert "!root.idleHidden" in fn and "sessionAutoOpen === true" in fn
+    # instalacao antiga (sem o entrypoint leve): cai em `ai-usage-collector --session-state` antes do python3 -m
+    cmd = (UI_DIR / "Collector.js").read_text(encoding="utf-8")
+    assert "repositorios" not in cmd  # nenhum caminho pessoal no código
+    assert "sessionFailed" in main
+    xml = (PLASMOID_DIR / "contents" / "config" / "main.xml").read_text(encoding="utf-8")
+    assert xml.split('name="sessionAutoOpen"')[1].split("</entry>")[0].count("<default>false</default>") == 1
+    assert "property bool cfg_sessionAutoOpen: false" in (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+
+
+def _package(tmp_path):
+    """Roda package-release.sh; --no-isolation (offline) se setuptools e wheel estiverem instalados."""
+    env = dict(os.environ)
+    if importlib.util.find_spec("setuptools") and importlib.util.find_spec("wheel"):
+        env["BUILD_ARGS"] = "--no-isolation"
+    env["PYTHON"] = sys.executable
+    result = subprocess.run([str(PACKAGE_SCRIPT), str(tmp_path)], capture_output=True, text=True, check=False, env=env)
+    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+
+
 def test_package_release_script_attributes_and_execution(tmp_path):
     """Verify package-release.sh exists, is executable, and produces plasmoid and wheel."""
     assert PACKAGE_SCRIPT.is_file(), "package-release.sh script must exist"
     assert os.access(PACKAGE_SCRIPT, os.X_OK), "package-release.sh must have executable bit set"
 
-    result = subprocess.run(
-        [str(PACKAGE_SCRIPT), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+    _package(tmp_path)
 
     plasmoid_file = tmp_path / "org.kde.plasma.aiusage.plasmoid"
     assert plasmoid_file.is_file(), "Plasmoid package must be generated in target directory"
@@ -296,13 +410,7 @@ def test_package_release_script_attributes_and_execution(tmp_path):
 
 def test_plasmoid_package_archive_contents(tmp_path):
     """Verify generated .plasmoid package is a valid zip with metadata at root and required QML files."""
-    result = subprocess.run(
-        [str(PACKAGE_SCRIPT), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+    _package(tmp_path)
 
     plasmoid_file = tmp_path / "org.kde.plasma.aiusage.plasmoid"
     assert plasmoid_file.is_file()
@@ -335,6 +443,11 @@ def test_plasmoid_package_archive_contents(tmp_path):
             assert ".git" not in name, f"Git file found in plasmoid: {name}"
             assert ".DS_Store" not in name, f"macOS artifact found in plasmoid: {name}"
 
+        # Traduções: os .mo não são versionados, então só chegam ao pacote se o script os compilar
+        for lang in ("en", "pt_BR"):
+            assert f"contents/locale/{lang}/LC_MESSAGES/plasma_applet_org.kde.plasma.aiusage.mo" in namelist
+        assert not any(n.startswith(".venv") or ".venv/" in n for n in namelist)
+
         # Verify metadata validity inside package
         meta_data = json.loads(zf.read("metadata.json").decode("utf-8"))
         assert meta_data.get("KPlugin", {}).get("Id") == "org.kde.plasma.aiusage"
@@ -343,13 +456,7 @@ def test_plasmoid_package_archive_contents(tmp_path):
 
 def test_collector_wheel_contents_and_entrypoint(tmp_path):
     """Verify generated wheel contains collector packages and ai-usage-collector entrypoint."""
-    result = subprocess.run(
-        [str(PACKAGE_SCRIPT), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+    _package(tmp_path)
 
     wheels = list(tmp_path.glob("plasma_ai_usage_collector-*.whl"))
     assert len(wheels) == 1, f"Expected exactly one wheel in {tmp_path}, found: {wheels}"
@@ -379,6 +486,7 @@ def test_collector_wheel_contents_and_entrypoint(tmp_path):
         assert ep_files, "entry_points.txt must be present in wheel dist-info"
         ep_content = zf.read(ep_files[0]).decode("utf-8")
         assert "ai-usage-collector = ai_usage_collector.cli:main" in ep_content
+        assert "ai-usage-session-state = ai_usage_collector.session_state:states_main" in ep_content
 
 
 def test_github_actions_release_workflow_configuration():
@@ -393,16 +501,16 @@ def test_github_actions_release_workflow_configuration():
     assert "workflow_dispatch:" in content
 
     # Permissions
-    assert "contents: write" in content
+    assert "contents: write" in content  # só no job (ver teste de segurança)
 
     # Steps
-    assert "actions/checkout@v4" in content
+    assert "actions/checkout@" in content
     assert "fetch-depth: 0" in content
-    assert "actions/setup-python@v5" in content
+    assert "actions/setup-python@" in content
     assert "3.12" in content
     assert "pip install build" in content
     assert "scripts/package-release.sh" in content
-    assert "softprops/action-gh-release@v2" in content
+    assert "softprops/action-gh-release@" in content
 
     # Artifacts attached
     assert "dist/*.plasmoid" in content
@@ -412,4 +520,39 @@ def test_github_actions_release_workflow_configuration():
     assert "latest" in content
 
 
+def test_package_release_fails_without_catalog(tmp_path):
+    """Sem o .po de um idioma o script falha em vez de publicar pacote sem traduções."""
+    repo = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT, repo, ignore=shutil.ignore_patterns(".git", ".venv", "dist", "build", "__pycache__", "*.egg-info", ".scratch"))
+    (repo / "po" / "pt_BR.po").unlink()
+    result = subprocess.run([str(repo / "scripts" / "package-release.sh"), str(tmp_path / "out")], capture_output=True, text=True, check=False)
+    assert result.returncode != 0
 
+
+def test_versions_stay_in_sync():
+    import ai_usage_collector
+
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version = re.search(r'^version = "([^"]+)"', pyproject, re.M).group(1)
+    meta = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
+    assert ai_usage_collector.__version__ == version == meta["KPlugin"]["Version"]
+
+
+def test_release_workflow_security_hardening():
+    content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    # nenhuma expressão github.* dentro de run: (injeção); passa por env:
+    for block in re.findall(r"^\s+run:\s*[|>]?-?\s*\n((?:\s{10,}.*\n?)+)|^\s+run:\s*(.+)$", content, re.M):
+        assert "${{" not in "".join(block)
+    assert "pull_request_target" not in content
+    # actions fixadas em SHA completo de commit
+    uses = re.findall(r"^\s+uses:\s*(\S+)", content, re.M)
+    assert len(uses) == 3
+    for ref in uses:
+        assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", ref), ref
+    # permissão de escrita só no job; workflow sem permissões
+    assert re.search(r"^permissions:\s*\{\}\s*$", content, re.M)
+    assert not re.search(r"^permissions:\s*\n\s+contents: write", content, re.M)
+    job = content[content.index("jobs:"):]
+    assert re.search(r"^    permissions:\n      contents: write", job, re.M)
+    assert "TAG_REF: ${{ github.ref_name }}" in content and '"$TAG_REF"' in content
+    assert "[0-9]+\\.[0-9]+\\.[0-9]+" in content

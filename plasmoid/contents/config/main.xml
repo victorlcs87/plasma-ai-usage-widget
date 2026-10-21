@@ -9,8 +9,144 @@
     <entry name="autoRefreshOnExpand" type="Bool">
       <default>true</default>
     </entry>
-    <entry name="refreshIntervalSeconds" type="Int">
-      <default>30</default>
+    <entry name="refreshIntervalClaude" type="Int">
+      <label>Claude refresh interval in seconds</label>
+      <default>300</default>
+      <min>60</min>
+    </entry>
+    <entry name="refreshIntervalCodex" type="Int">
+      <label>Codex refresh interval in seconds</label>
+      <default>300</default>
+      <min>60</min>
+    </entry>
+    <entry name="refreshIntervalGemini" type="Int">
+      <label>Gemini refresh interval in seconds</label>
+      <default>300</default>
+      <min>60</min>
+    </entry>
+    <entry name="collectorPath" type="String">
+      <label>Path to the ai-usage-collector executable (last resort)</label>
+      <default></default>
+    </entry>
+    <entry name="providerOrder" type="String">
+      <label>Provider order in the compact Notch</label>
+      <default>claude,codex,gemini</default>
+    </entry>
+    <entry name="hiddenProviders" type="String">
+      <label>Providers hidden in the compact Notch (comma separated)</label>
+      <default></default>
+    </entry>
+    <entry name="accentPreset" type="String">
+      <label>Notch accent color (plasma = the Plasma highlight color)</label>
+      <default>plasma</default>
+    </entry>
+    <entry name="panelStyle" type="String">
+      <label>Panel style (pill, ring, text or bar)</label>
+      <default>pill</default>
+    </entry>
+    <entry name="panelMode" type="String">
+      <label>Panel mode (ring = ring only, ringpct = ring + %, pct = % only)</label>
+      <default>ring</default>
+    </entry>
+    <entry name="ringCenter" type="String">
+      <label>Ring center (logo, pct or logopct)</label>
+      <default>logo</default>
+    </entry>
+    <entry name="metricSize" type="Int">
+      <label>Panel metrics size in percent</label>
+      <default>100</default>
+      <min>80</min>
+      <max>160</max>
+    </entry>
+    <entry name="panelMargin" type="Int">
+      <label>Panel inner margin in pixels (-1 = automatic)</label>
+      <default>-1</default>
+      <min>-1</min>
+      <max>16</max>
+    </entry>
+    <entry name="sessionState" type="Bool">
+      <label>Show the Session State (requires --install-hooks)</label>
+      <default>false</default>
+    </entry>
+    <entry name="sessionAutoOpen" type="Bool">
+      <label>Open the Notch for 5 s when the session finishes or asks for something</label>
+      <default>false</default>
+    </entry>
+    <entry name="sessionSound" type="Bool">
+      <label>Play a sound when the session finishes or asks for something</label>
+      <default>false</default>
+    </entry>
+    <entry name="hoverOpen" type="Bool">
+      <label>Open the popup when hovering the Notch (off: click only)</label>
+      <default>true</default>
+    </entry>
+    <entry name="usageDisplay" type="String">
+      <label>Values shown across the widget (used or remaining)</label>
+      <default>used</default>
+    </entry>
+    <entry name="resetDisplay" type="String">
+      <label>Release shown across the widget (countdown or date)</label>
+      <default>countdown</default>
+    </entry>
+    <entry name="popupOpacity" type="Int">
+      <label>Popup background opacity in percent</label>
+      <default>100</default>
+      <min>80</min>
+      <max>100</max>
+    </entry>
+    <entry name="popupProviderOrder" type="String">
+      <label>Provider order in the popup</label>
+      <default>claude,codex,gemini</default>
+    </entry>
+    <entry name="popupHiddenProviders" type="String">
+      <label>Providers hidden in the popup (comma separated)</label>
+      <default></default>
+    </entry>
+    <entry name="floatingNotch" type="Bool">
+      <label>Show the Notch as its own window pinned to a screen edge (off: it stays in the panel)</label>
+      <default>false</default>
+    </entry>
+    <entry name="floatEdge" type="String">
+      <label>Floating Notch edge (top, bottom, left or right)</label>
+      <default>top</default>
+    </entry>
+    <entry name="floatSize" type="Int">
+      <label>Floating Notch size in percent</label>
+      <default>100</default>
+      <min>80</min>
+      <max>160</max>
+    </entry>
+    <entry name="floatSnap" type="Bool">
+      <label>Snap the floating Notch to the center of the edge when dragging</label>
+      <default>true</default>
+    </entry>
+    <entry name="floatScreen" type="String">
+      <label>Screen of the floating Notch (empty = the widget's screen)</label>
+      <default></default>
+    </entry>
+    <entry name="floatOffsetTop" type="Int">
+      <label>Floating Notch position on the top edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
+    <entry name="floatOffsetBottom" type="Int">
+      <label>Floating Notch position on the bottom edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
+    <entry name="floatOffsetLeft" type="Int">
+      <label>Floating Notch position on the left edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
+    </entry>
+    <entry name="floatOffsetRight" type="Int">
+      <label>Floating Notch position on the right edge, in pixels from the center</label>
+      <default>0</default>
+      <min>-20000</min>
+      <max>20000</max>
     </entry>
   </group>
 

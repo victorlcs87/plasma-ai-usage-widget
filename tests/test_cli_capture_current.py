@@ -384,7 +384,7 @@ def test_capture_current_with_status_flag(capsys, tmp_path, monkeypatch):
     json_start = captured.out.find("{")
     assert json_start != -1
     parsed_json = json.loads(captured.out[json_start:])
-    assert parsed_json["version"] == 1
+    assert parsed_json["version"] == 5
     assert any("user.status@domain.com" in a.get("label", "") for a in parsed_json["agents"]["claude"]["accounts"])
 
 

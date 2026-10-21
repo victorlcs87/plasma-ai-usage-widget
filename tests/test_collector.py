@@ -188,3 +188,44 @@ def test_collector_consolidates_all_three_providers_simultaneously(tmp_path):
     ge_acc = agents["gemini"]["accounts"][0]
     assert ge_acc["native_window"]["type"] == "daily"
     assert ge_acc["native_window"]["used_capacity"] == 1
+
+
+def test_orphan_listing_io_failure_does_not_break_status(tmp_path, monkeypatch):  # B3
+    import ai_usage_collector.collector as col
+
+    def boom(_):
+        raise PermissionError("x")
+
+    monkeypatch.setattr(col, "list_orphans", boom)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"agents": {}}')
+    status = collect_and_save(config_path=str(cfg), cache_path=str(tmp_path / "s.json"))
+    assert status["orphan_profiles"] == []
+
+
+def test_collector_exposes_gemini_quota_by_model(tmp_path, monkeypatch):
+    from unittest.mock import patch
+    monkeypatch.setenv("HOME", str(tmp_path / "home"))
+    gemini_dir = tmp_path / "gemini"
+    gemini_dir.mkdir()
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps({"access_token": "ya29.test"}))
+    config_path = tmp_path / "config.json"
+    cache_path = tmp_path / "status.json"
+    save_config({"version": 1, "agents": {"gemini": {"accounts": [
+        {"id": "gemini-main", "gemini_dir": str(gemini_dir), "credential_path": str(gemini_dir / "oauth_creds.json")}
+    ]}}}, config_path)
+    api = {"buckets": [{"modelId": "gemini-2.5-pro", "remainingFraction": 0.4}, {"modelId": "gemini-flash"}]}
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_raw", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=api):
+        status = collect_and_save(config_path=config_path, cache_path=cache_path, now=now)
+
+    assert validate_status_contract(status)
+    acc = status["agents"]["gemini"]["accounts"][0]
+    assert acc["usage_details"]["quota_by_model"] == [
+        {"model": "gemini-2.5-pro", "window": None, "usage_percentage": 60.0, "reset_time": None},
+        {"model": "gemini-flash", "window": None, "usage_percentage": None, "reset_time": None},
+    ]
+    assert json.loads(cache_path.read_text())["agents"]["gemini"]["accounts"][0]["usage_details"]

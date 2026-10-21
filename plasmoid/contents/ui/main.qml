@@ -7,6 +7,11 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.kirigami as Kirigami
+import "Presets.js" as Presets
+import "NotchModel.js" as NotchModel
+import "ViewPrefs.js" as ViewPrefs
+import "I18n.js" as I18n
+import "Collector.js" as Collector
 
 PlasmoidItem {
     id: root
@@ -20,9 +25,35 @@ PlasmoidItem {
     preferredRepresentation: Plasmoid.formFactor === PlasmaCore.Types.Planar ? fullRepresentation : null
 
     Plasmoid.icon: "view-split-left-right"
-    Plasmoid.title: safeI18n("Monitor de Uso de IA")
+    Plasmoid.title: I18n.tr("AI Usage Monitor")
     toolTipMainText: Plasmoid.title || ""
     toolTipSubText: getSummaryToolTip() || ""
+    toolTipTextFormat: Text.PlainText
+
+    // Abrir por hover (~300 ms) e fixar com clique (ticket 34); sem hover, só o clique
+    readonly property bool hoverOpen: Plasmoid.configuration.hoverOpen !== false
+    property bool pinned: false
+    // Notch flutuante (ticket 41): com ele ativo o popup é o da janela flutuante (floatOpen) e o popup nativo do
+    // Plasma nunca abre; sem ele, `open` é exatamente `expanded` (modo Plasmoid inalterado).
+    property bool floatOpen: false
+    readonly property bool floatingActive: floatingLoader.status === Loader.Ready && floatingLoader.item !== null && floatingLoader.item.available === true
+    readonly property bool open: floatingActive ? floatOpen : expanded
+    function setOpen(v) { if (floatingActive) floatOpen = v; else expanded = v; }
+    // Opção desligada (ou layer-shell que falhou) com o popup flutuante aberto: nada fica para trás e religar
+    // nunca abre o popup sozinho
+    onFloatingActiveChanged: if (!floatingActive) {
+        floatOpen = false; pinned = false; openedByHover = false; popupHovered = false;
+        hoverOpenTimer.stop(); hoverCloseTimer.stop();
+    }
+    // Atalho global / ativação do Plasma com o flutuante ligado: alterna o popup flutuante, não o nativo
+    onExpandedChanged: if (floatingActive && expanded) { expanded = false; setOpen(!floatOpen); }
+    property bool pillHovered: false
+    property bool popupHovered: false
+    property double now: Date.now()
+    // Só fecha por hover o popup que o hover abriu (ou que foi solto); atalho/ação externa nunca
+    property bool openedByHover: false
+    // Com o mouse na pílula o press tira o foco do popup: não pode fechá-lo antes do clique fixar
+    hideOnWindowDeactivate: !pinned && !pillHovered
 
     property var statusData: null
     property string lastError: ""
@@ -30,20 +61,52 @@ PlasmoidItem {
     property bool isRefreshing: false
     property string lastUpdatedFormatted: formatLastUpdated(statusData?.last_updated)
     property int totalInvites: calculateTotalInvites()
-    property double maxUsagePercent: calculateMaxUsage()
-
-    function safeI18n(text, arg1, arg2) {
-        if (!text) return "";
-        if (typeof i18n === "function") {
-            if (arg2 !== undefined) return i18n(text, arg1, arg2);
-            if (arg1 !== undefined) return i18n(text, arg1);
-            return i18n(text);
-        }
-        var res = text || "";
-        if (arg1 !== undefined) res = res.replace("%1", arg1);
-        if (arg2 !== undefined) res = res.replace("%2", arg2);
-        return res;
+    // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
+    // Estado da Sessão ao vivo (--session-state), por id de Conta Claude; vence o campo do contrato
+    property var sessionOverlay: ({})
+    // Preferências de exibição (usado/restante, contagem/data): valem no painel, na dica e no popup
+    readonly property var viewPrefs: ViewPrefs.config(Plasmoid.configuration)
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, I18n.tr, root.nowMs)
+    property var updateInfo: NotchModel.updateSummary(statusData, I18n.tr)
+    property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
+    // Timer de 15 s e a cada status lido, para uma leitura velha deixar de esconder mesmo sem status novo.
+    property double nowMs: Date.now()
+    property int idleDelayMs: 20000
+    // Opção "ocultar sem o processo da CLI" (modo widget; desligada por padrão). Recuperação: nunca oculta
+    // com o popup aberto, o mouse sobre o widget ou a configuração aberta; no painel resta uma fatia clicável
+    // (botão direito abre "Configurar"), e na bandeja o status Passivo mantém o widget nos itens ocultos.
+    // Histerese: some só depois de `idleDelayMs` ininterruptos (sem tremor); reaparece na hora.
+    readonly property bool idleWanted: NotchModel.widgetIdle(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs)
+        && !root.open && !Plasmoid.userConfiguring && !root.pillHovered && !root.pinned && !root.popupHovered
+    property bool idleHidden: false
+    onIdleWantedChanged: {
+        if (idleWanted) idleDelay.restart();
+        else { idleDelay.stop(); idleHidden = false; }
     }
+    // Modo "provider": o provedor só some após `idleDelayMs` parado (sem reflow a cada oscilação); volta na hora
+    // string (não array): recalcular sem mudança não reinicia o atraso
+    readonly property string rawIdle: NotchModel.idleProviders(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs).join(",")
+    property var confirmedIdle: []
+    onRawIdleChanged: {
+        var raw = rawIdle === "" ? [] : rawIdle.split(",");
+        confirmedIdle = confirmedIdle.filter(function (k) { return raw.indexOf(k) >= 0; });
+        if (raw.length > confirmedIdle.length) providerIdleDelay.restart(); else providerIdleDelay.stop();
+    }
+    Timer {
+        id: providerIdleDelay
+        interval: root.idleDelayMs
+        onTriggered: root.confirmedIdle = root.rawIdle === "" ? [] : root.rawIdle.split(",")
+    }
+    Timer {
+        id: idleDelay
+        interval: root.idleDelayMs
+        onTriggered: root.idleHidden = root.idleWanted
+    }
+    Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus
+    // Acento é forma (arco, borda de foco) sobre o Notch escuro: piso de 3:1 também com o realce escuro do Plasma
+    readonly property color accentRaw: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
+    readonly property color accentColor: Presets.onPill(accentRaw.r, accentRaw.g, accentRaw.b, 3)
 
     function formatLastUpdated(isoStr) {
         if (!isoStr) return "";
@@ -53,7 +116,7 @@ PlasmoidItem {
             var hours = date.getHours();
             var minutes = date.getMinutes();
             var timeStr = (hours < 10 ? "0" : "") + hours + ":" + (minutes < 10 ? "0" : "") + minutes;
-            return safeI18n("Atualizado às %1", timeStr);
+            return I18n.tr("Updated at %1", timeStr);
         } catch (e) {
             return "";
         }
@@ -75,58 +138,85 @@ PlasmoidItem {
         return total;
     }
 
-    function calculateMaxUsage() {
-        if (!statusData || !statusData.agents) return 0.0;
-        var maxPct = 0.0;
-        for (var agentKey in statusData.agents) {
-            if (!statusData.agents.hasOwnProperty(agentKey)) continue;
-            var accounts = statusData.agents[agentKey].accounts || [];
-            for (var i = 0; i < accounts.length; i++) {
-                var nw = accounts[i].native_window;
-                if (nw && nw.usage_percentage !== undefined && nw.usage_percentage !== null) {
-                    if (nw.usage_percentage > maxPct) {
-                        maxPct = nw.usage_percentage;
-                    }
-                }
-            }
-        }
-        return maxPct;
-    }
-
     function getSummaryToolTip() {
+        if (compactModel.length === 0) {
+            return I18n.tr("No provider visible in the panel.");
+        }
         if (!statusData || !statusData.agents) {
-            return safeI18n("Nenhum dado coletado ainda.");
+            return I18n.tr("No data collected yet.");
         }
-        var lines = [];
-        var agents = statusData.agents;
-        for (var key in agents) {
-            if (!agents.hasOwnProperty(key)) continue;
-            var ag = agents[key];
-            var accs = ag.accounts || [];
-            if (accs.length > 0) {
-                var firstAcc = accs[0];
-                var pct = firstAcc.native_window?.usage_percentage;
-                var pctStr = (pct !== undefined && pct !== null) ? pct.toFixed(0) + "%" : "-";
-                lines.push(ag.name + ": " + pctStr);
-            }
-        }
+        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, date: viewPrefs.date }, I18n.tr, now)];
         if (totalInvites > 0) {
-            lines.push(safeI18n("%1 convites disponíveis", totalInvites));
+            lines.push(I18n.trp("%1 invite available", "%1 invites available", totalInvites));
         }
-        return lines.join(" • ");
+        if (sessionFailed && Plasmoid.configuration.sessionState === true) {
+            lines.push(I18n.tr("Session state unavailable: reinstall the collector package (pip install -e .)"));
+        }
+        return lines.join("\n");
     }
 
-    function shellQuote(str) {
-        if (str === null || str === undefined) return "''";
-        return "'" + String(str).replace(/'/g, "'\\''") + "'";
+    function setPillHovered(h) {
+        pillHovered = h;
+        if (h) {
+            now = Date.now();
+            if (hoverOpen && !open) hoverOpenTimer.restart();
+        } else {
+            hoverOpenTimer.stop();
+            scheduleHoverClose();
+        }
     }
 
-    function buildCollectorCommand(quotedArgs) {
-        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
-               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
+    function scheduleHoverClose() {
+        if (hoverOpen && open && openedByHover && !pinned && !pillHovered && !popupHovered) hoverCloseTimer.restart();
     }
+
+    function setPopupHovered(h) {
+        popupHovered = h;
+        if (h) hoverCloseTimer.stop();
+        else scheduleHoverClose();
+    }
+
+    // Clique: fecha/abre como antes; com hover ligado, clicar no popup aberto por hover o fixa, e de novo o solta
+    function pillClicked() {
+        hoverOpenTimer.stop();
+        if (!hoverOpen) { setOpen(!open); return; }
+        if (!open) { pinned = true; setOpen(true); }
+        else {
+            pinned = !pinned;
+            if (!pinned) { openedByHover = true; scheduleHoverClose(); }  // solto: volta a fechar ao sair
+        }
+    }
+
+    function closePopup() {
+        pinned = false;
+        setOpen(false);
+    }
+
+    // Abre depois de ~300 ms com o mouse sobre a pílula
+    Timer {
+        id: hoverOpenTimer
+        interval: 300
+        onTriggered: if (root.hoverOpen && root.pillHovered && !root.open) { root.openedByHover = true; root.setOpen(true); }
+    }
+
+    // Atraso curto de saída: o mouse transita pílula -> popup sem piscar
+    Timer {
+        id: hoverCloseTimer
+        interval: 250
+        onTriggered: if (root.hoverOpen && root.openedByHover && !root.pinned && !root.pillHovered && !root.popupHovered) root.setOpen(false)
+    }
+
+    // Contagem regressiva da dica: só enquanto o mouse está na pílula com o popup fechado
+    Timer {
+        id: tooltipTick
+        interval: 1000
+        repeat: true
+        running: root.pillHovered && !root.open
+        onTriggered: root.now = Date.now()
+    }
+
+    function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, Plasmoid.configuration.collectorPath); }
+    function buildSessionCommand() { return Collector.buildSessionCommand(Plasmoid.configuration.collectorPath); }
 
     // Executor assíncrono de comandos do coletor (refresh / remoção)
     Plasma5Support.DataSource {
@@ -144,19 +234,105 @@ PlasmoidItem {
                 root.lastError = "";
                 root.loadStatus();
             } else {
-                var errMsg = stderr || stdout || safeI18n("Código de saída %1", exitCode);
-                root.lastError = safeI18n("Erro ao executar coletor: %1", errMsg);
+                var errMsg = stderr || stdout || I18n.tr("Exit code %1", exitCode);
+                root.lastError = I18n.tr("Error running the collector: %1", errMsg);
             }
+            disconnectSource(sourceName);
+            root.runPendingRemoval();
+        }
+    }
+
+    property var pendingRemovals: []
+
+    function runPendingRemoval() {
+        var next = root.pendingRemovals.shift();
+        if (next) root.removeAccount(next[0], next[1]);
+    }
+
+    // Segurança: coletor travado não pode bloquear as próximas execuções para sempre
+    Timer {
+        id: refreshWatchdog
+        interval: 120000
+        running: root.isRefreshing
+        onTriggered: {
+            var stuck = collectorDataSource.connectedSources.slice();
+            for (var i = 0; i < stuck.length; i++) collectorDataSource.disconnectSource(stuck[i]);
+            root.isRefreshing = false;
+            root.lastError = I18n.tr("The collector did not respond within 120 s; retrying on the next cycle.");
+            root.runPendingRemoval();
+        }
+    }
+
+    // Intervalo de Atualização por provedor (ADR-0007); o coletor respeita pausas (429) por conta própria
+    readonly property var providers: ["claude", "codex", "gemini"]
+    property var lastProviderRefresh: ({})
+
+    function providerInterval(provider) {
+        var key = "refreshInterval" + provider.charAt(0).toUpperCase() + provider.slice(1);
+        return Math.max(60, Plasmoid.configuration[key] || 300);
+    }
+
+    function runCollectorRefresh(dueProviders) {
+        if (root.isRefreshing) return;
+        var now = Date.now();
+        var targets = dueProviders || root.providers;
+        for (var i = 0; i < targets.length; i++) root.lastProviderRefresh[targets[i]] = now;
+
+        var args = Collector.shellQuote("--refresh");
+        if (dueProviders) args += " " + Collector.shellQuote("--provider") + " " + Collector.shellQuote(dueProviders.join(","));
+        for (var j = 0; j < root.providers.length; j++) {
+            var p = root.providers[j];
+            args += " " + Collector.shellQuote("--refresh-interval") + " " + Collector.shellQuote(p + "=" + providerInterval(p));
+        }
+        root.isRefreshing = true;
+        root.lastError = "";
+        collectorDataSource.connectSource(buildCollectorCommand(args));
+    }
+
+    // "Atualizar agora": ignora o intervalo de todos os provedores
+    function refreshCollector() {
+        runCollectorRefresh(null);
+    }
+
+    Timer {
+        id: providerRefreshScheduler
+        interval: 15000
+        repeat: true
+        running: true
+        onTriggered: {
+            var now = Date.now();
+            var due = [];
+            for (var i = 0; i < root.providers.length; i++) {
+                var p = root.providers[i];
+                var last = root.lastProviderRefresh[p];
+                if (last === undefined || now - last >= root.providerInterval(p) * 1000) due.push(p);
+            }
+            if (due.length > 0) root.runCollectorRefresh(due);
+        }
+    }
+
+    // Execução da CLI de cada provedor: leitura barata de /proc pelo coletor, só com a opção ligada
+    Plasma5Support.DataSource {
+        id: runningDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            if (data["exit code"] === 0) root.loadStatus();
             disconnectSource(sourceName);
         }
     }
 
-    function refreshCollector() {
-        if (root.isRefreshing) return;
-        root.isRefreshing = true;
-        root.lastError = "";
-        var cmd = buildCollectorCommand(shellQuote("--refresh"));
-        collectorDataSource.connectSource(cmd);
+    Timer {
+        interval: 15000
+        repeat: true
+        running: NotchModel.hideMode(root.statusData) !== "off"
+        triggeredOnStart: true
+        onTriggered: {
+            root.nowMs = Date.now();  // antes da chamada: se o coletor falhar, a leitura velha ainda expira
+            if (runningDataSource.connectedSources.length === 0)
+                runningDataSource.connectSource(root.buildCollectorCommand(Collector.shellQuote("--detect-running")));
+        }
     }
 
     function removeAccount(provider, accountId) {
@@ -164,21 +340,14 @@ PlasmoidItem {
         var provClean = String(provider).toLowerCase().trim();
         if (["claude", "codex", "gemini"].indexOf(provClean) === -1) return;
 
+        // Coletor já em execução: enfileira a remoção para quando ele terminar
+        if (root.isRefreshing) {
+            root.pendingRemovals.push([provClean, accountId]);
+            return;
+        }
         root.isRefreshing = true;
         root.lastError = "";
-        var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(accountId);
-        var cmd = buildCollectorCommand(safeArgs);
-        collectorDataSource.connectSource(cmd);
-    }
-
-    function switchAccount(provider, accountId) {
-        if (!provider || !accountId) return;
-        var provClean = String(provider).toLowerCase().trim();
-        if (["claude", "codex", "gemini"].indexOf(provClean) === -1) return;
-
-        root.isRefreshing = true;
-        root.lastError = "";
-        var safeArgs = shellQuote("--switch-account") + " " + shellQuote(provClean) + " " + shellQuote(accountId) + " " + shellQuote("--status");
+        var safeArgs = Collector.shellQuote("--remove-account") + " " + Collector.shellQuote(provClean) + " " + Collector.shellQuote(accountId);
         var cmd = buildCollectorCommand(safeArgs);
         collectorDataSource.connectSource(cmd);
     }
@@ -198,17 +367,114 @@ PlasmoidItem {
             if (exitCode === 0 && stdout && stdout.trim().length > 0) {
                 try {
                     var parsed = JSON.parse(stdout);
+                    root.nowMs = Date.now();
                     root.statusData = parsed;
                     root.lastError = "";
                 } catch (e) {
-                    root.lastError = safeI18n("Erro ao ler JSON de status: %1", e.message);
+                    root.lastError = I18n.tr("Error reading status JSON: %1", e.message);
                 }
             } else {
                 if (exitCode !== 0) {
-                    root.lastError = safeI18n("Cache de status não encontrado. Execute o coletor.");
+                    root.lastError = I18n.tr("Status cache not found. Run the collector.");
                 }
             }
             disconnectSource(sourceName);
+        }
+    }
+
+    // Estado da Sessão (ADR-0009): só consulta com a opção ligada; nada toca em hooks aqui
+    property bool sessionPolling: false
+    property bool autoOpened: false
+    property bool sessionFailed: false  // consulta do estado falhou: aviso discreto na configuração e no tooltip
+
+    property var sessionConfirmed: ({})  // "codex/<id>" -> ociosa confirmada pelo notify (fim real do turno)
+
+    function applySessionStates(byProvider) {
+        var prev = root.sessionOverlay || {};
+        var prevConf = root.sessionConfirmed || {};
+        var next = {};
+        var confirmed = {};
+        var list = (byProvider && byProvider.codex_idle_confirmed) || [];
+        for (var i = 0; i < list.length; i++) confirmed["codex/" + list[i]] = true;
+        for (var p in (byProvider || {})) {
+            if (p === "codex_idle_confirmed") continue;
+            for (var aid in byProvider[p]) next[p + "/" + aid] = byProvider[p][aid];
+        }
+        var fired = false;
+        for (var id in next) {
+            // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa.
+            // Codex: ociosa por silêncio do log (turno longo sem escrita) oscila e não conta; só a ociosa
+            // confirmada pelo notify, no momento em que passa a confirmada (ADR-0009)
+            var was = prev[id];
+            if (was === undefined || was === next[id] && !(id.indexOf("codex/") === 0 && confirmed[id] && !prevConf[id])) continue;
+            if (next[id] === "waiting") fired = true;
+            else if (next[id] === "idle") {
+                if (id.indexOf("codex/") !== 0) fired = fired || was === "busy";
+                else fired = fired || (confirmed[id] === true && !prevConf[id]);
+            }
+        }
+        root.sessionOverlay = next;
+        root.sessionConfirmed = confirmed;
+        if (fired) root.sessionAttention();
+    }
+
+    // Abre o Notch por 5 s e toca o som, só se o usuário ligou cada opção. Não abre se o popup já está
+    // aberto (nem fixado) e não altera pinned. Limitação: abrir o popup pode roubar o foco do teclado do
+    // terminal onde o usuário digita; por isso a abertura automática é desligável (sessionAutoOpen).
+    function sessionAttention() {
+        if (Plasmoid.configuration.sessionAutoOpen === true && !root.open && !root.pinned && !root.idleHidden) {
+            root.autoOpened = true;
+            root.setOpen(true);
+            sessionCloseTimer.restart();
+        }
+        if (Plasmoid.configuration.sessionSound === true) {
+            soundDataSource.connectSource("sh -c 'command -v canberra-gtk-play >/dev/null 2>&1 && canberra-gtk-play -i complete || paplay /usr/share/sounds/freedesktop/stereo/complete.oga' 2>/dev/null; true");
+        }
+    }
+
+    // Fim dos 5 s: fixado ou com o mouse em cima, não fecha (o hover normal assume e fecha ao sair)
+    Timer {
+        id: sessionCloseTimer
+        interval: 5000
+        onTriggered: {
+            var mine = root.autoOpened && root.open;
+            root.autoOpened = false;
+            if (!mine || root.pinned) return;
+            if (root.pillHovered || root.popupHovered) { root.openedByHover = true; return; }
+            root.setOpen(false);
+        }
+    }
+
+    Plasma5Support.DataSource {
+        id: soundDataSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => disconnectSource(sourceName)
+    }
+
+    Plasma5Support.DataSource {
+        id: sessionDataSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            root.sessionPolling = false;
+            try {
+                root.sessionFailed = data["exit code"] !== 0;
+                if (!root.sessionFailed) root.applySessionStates(JSON.parse(data["stdout"]));
+            } catch (e) { root.sessionFailed = true; /* leitura inválida: mantém o último estado */ }
+            disconnectSource(sourceName);
+        }
+    }
+
+    Timer {
+        interval: 5000
+        repeat: true
+        running: Plasmoid.configuration.sessionState === true && root.visible && !root.idleHidden
+        triggeredOnStart: true
+        onTriggered: {
+            if (root.sessionPolling) return;
+            root.sessionPolling = true;
+            sessionDataSource.connectSource(root.buildSessionCommand());
         }
     }
 
@@ -217,27 +483,37 @@ PlasmoidItem {
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
         var cachePath = (typeof cacheLoc === "string" ? cacheLoc : cacheLoc.toString()).replace(/^file:\/\//, "");
         var statusFilePath = cachePath + "/plasma-ai-usage/status.json";
-        var cmd = "cat " + shellQuote(statusFilePath) + " 2>/dev/null";
+        var cmd = "cat " + Collector.shellQuote(statusFilePath) + " 2>/dev/null";
         statusDataSource.connectSource(cmd);
     }
 
-    // Timer para recarregar periodicamente com intervalo configurável via KConfigXT (somente quando ativo/visível)
-    Timer {
-        id: autoReloadTimer
-        interval: (Plasmoid.configuration.refreshIntervalSeconds || 30) * 1000
-        repeat: true
-        running: root.expanded || !root.inPanel
-        onTriggered: root.loadStatus()
-    }
-
-    onExpandedChanged: {
-        if (root.expanded && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
+    onOpenChanged: {
+        if (!root.open) root.autoOpened = false;
+        if (!root.open) {
+            root.pinned = false;
+            root.openedByHover = false;
+            root.popupHovered = false;
+            hoverOpenTimer.stop();
+            hoverCloseTimer.stop();
+        }
+        if (root.open && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }
     }
 
     Component.onCompleted: {
+        if (root.idleWanted) idleDelay.restart();
+        if (root.rawIdle !== "") providerIdleDelay.restart();
         root.loadStatus();
+    }
+
+    // Janela flutuante: só é carregada (e FloatingNotch.qml só é resolvido) com a opção ligada
+    Loader {
+        id: floatingLoader
+        // só no painel (no desktop o widget já é uma janela própria) e uma instância por tela (FloatingNotch.ownsScreen)
+        active: Plasmoid.configuration.floatingNotch === true && root.inPanel
+        source: "FloatingNotch.qml"
+        onLoaded: item.plasmoidItem = root
     }
 
     compactRepresentation: CompactRepresentation {

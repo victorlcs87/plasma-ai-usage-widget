@@ -1,0 +1,128 @@
+import QtQuick
+import QtQuick.Layouts
+import QtQuick.Controls as QQC2
+import org.kde.kirigami as Kirigami
+import "Presets.js" as Presets
+import "I18n.js" as I18n
+
+// Historico de Tokens de uma Conta: totais de hoje/semana/mes e grafico de barras.
+// Apenas apresenta o campo opcional `token_history` do contrato (calculado no coletor).
+ColumnLayout {
+    id: root
+
+    property var history: null
+    property color barColor: Kirigami.Theme.highlightColor
+    // 0 = 30 dias (diario), 1 = 3 meses (semanal), 2 = 12 meses (mensal)
+    property int period: 0
+    // Recolhido: só o resumo Hoje/Semana/Mês; gráfico e períodos aparecem expandidos
+    property bool summaryOnly: false
+    property string owner: ""  // Conta dona (nomes acessíveis dos botões de período não se repetem por cartão)
+
+    readonly property var series: {
+        if (!history) return [];
+        var s = period === 1 ? history.weekly_3m : (period === 2 ? history.monthly_12m : history.daily_30d);
+        return s || [];
+    }
+    readonly property real maxTokens: {
+        var m = 0;
+        for (var i = 0; i < series.length; i++) m = Math.max(m, series[i].tokens || 0);
+        return m;
+    }
+
+    visible: Boolean(history)
+    spacing: Kirigami.Units.smallSpacing
+
+    function compact(n) { return I18n.compactNumber(n); }
+
+    readonly property var periodNames: [I18n.tr("30 days"), I18n.tr("3 months"), I18n.tr("12 months")]
+
+    function pointLabel(p) {
+        return p.date || p.week_start || p.month || "";
+    }
+
+    RowLayout {
+        Layout.fillWidth: true
+        spacing: Kirigami.Units.smallSpacing
+
+        Kirigami.Icon {
+            source: "office-chart-bar"
+            implicitWidth: Kirigami.Units.iconSizes.small
+            implicitHeight: Kirigami.Units.iconSizes.small
+            color: Presets.ui.muted
+        }
+
+        QQC2.Label {
+            objectName: "historySummary"
+            Layout.fillWidth: true
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
+            color: Presets.ui.muted
+            wrapMode: Text.WordWrap  // com fonte grande quebra em até 2 linhas: Hoje, Semana e Mês sempre à vista
+            maximumLineCount: 2
+            elide: Text.ElideRight
+            textFormat: Text.PlainText
+            text: root.history
+                ? (root.history.estimated
+                    ? I18n.tr("Today %1 • Week %2 • Month %3 • estimated", root.compact(root.history.today), root.compact(root.history.week), root.compact(root.history.month))
+                    : I18n.tr("Today %1 • Week %2 • Month %3", root.compact(root.history.today), root.compact(root.history.week), root.compact(root.history.month)))
+                : ""
+        }
+
+        Repeater {
+            model: root.summaryOnly ? [] : [I18n.tr("30d"), I18n.tr("3m"), I18n.tr("12m")]
+            delegate: NotchButton {
+                required property int index
+                required property string modelData
+                text: modelData
+                visible: !root.summaryOnly
+                accessibleName: root.owner ? I18n.tr("%1, %2", root.periodNames[index], root.owner) : root.periodNames[index]
+                hint: root.periodNames[index]
+                checkable: true
+                checked: root.period === index
+                accent: root.barColor
+                onClicked: root.period = index
+            }
+        }
+    }
+
+    Item {
+        id: chart
+        visible: !root.summaryOnly
+        // Resumo para tecnologias assistivas: as barras são só visuais
+        Accessible.role: Accessible.Chart
+        Accessible.name: I18n.tr("Token history, %1", root.periodNames[root.period])
+        Accessible.description: root.series.length === 0 ? I18n.tr("No data") : I18n.tr("Highest value: %1", root.compact(root.maxTokens))
+        Layout.fillWidth: true
+        implicitHeight: Kirigami.Units.gridUnit * 2
+
+        Row {
+            anchors.fill: parent
+            spacing: 1
+
+            Repeater {
+                model: root.series
+                delegate: Item {
+                    required property var modelData
+                    width: root.series.length > 0 ? (chart.width - (root.series.length - 1)) / root.series.length : 0
+                    height: chart.height
+
+                    Rectangle {
+                        anchors.bottom: parent.bottom
+                        width: parent.width
+                        radius: 1
+                        height: root.maxTokens > 0 ? Math.max(1, parent.height * (modelData.tokens || 0) / root.maxTokens) : 1
+                        color: (modelData.tokens || 0) > 0 ? root.barColor : Presets.ui.muted
+                        opacity: (modelData.tokens || 0) > 0 ? 0.85 : 0.25
+                    }
+
+                    MouseArea {
+                        id: barMouse
+                        anchors.fill: parent
+                        hoverEnabled: true
+                    }
+
+                    PlainTip { visible: barMouse.containsMouse; text: I18n.tr("%1: %2 tokens", root.pointLabel(modelData), root.compact(modelData.tokens)) }
+                }
+            }
+        }
+    }
+}

@@ -554,3 +554,171 @@ def test_extract_codex_status_fallback_when_api_fails(tmp_path):
     assert ww["used_capacity"] == 2
     assert ww["available_capacity"] == (50 * 7) - 2
     assert ww["usage_percentage"] == round((2 / (50 * 7)) * 100, 1)
+
+    # Sem API: a constante vira fallback da heuristica local
+    assert nw["type"] == "3h"
+    assert nw["window_seconds"] == 3 * 3600
+    assert ww["window_seconds"] == 7 * 86400
+
+
+def test_extract_codex_status_uses_provider_window_duration(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    fake_api_response = {
+        "rate_limit": {
+            "primary_window": {
+                "used_percent": 10.0,
+                "limit_window_seconds": 18000,
+                "reset_at": "2026-10-20T16:00:00Z",
+            },
+            "secondary_window": {
+                "used_percent": 20.0,
+                "limit_window_seconds": 604800,
+                "reset_at": "2026-10-25T12:00:00Z",
+            },
+        },
+    }
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=fake_api_response):
+        res = extract_codex_status(account, now=now)
+
+    nw = res["native_window"]
+    assert nw["type"] == "5h"
+    assert nw["window_seconds"] == 18000
+    assert nw["seconds_remaining"] == 3600
+    assert res["weekly_window"]["window_seconds"] == 604800
+
+
+def test_extract_codex_status_window_minutes_and_missing_duration(tmp_path):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+    api = {"rate_limit": {"primary_window": {"used_percent": 1.0, "window_minutes": 300}}}
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=api):
+        res = extract_codex_status(account, now=now)
+    assert res["native_window"]["window_seconds"] == 18000
+    assert res["native_window"]["type"] == "5h"
+    # secundaria sem duracao informada: fallback semanal
+    assert res["weekly_window"]["window_seconds"] == 7 * 86400
+
+
+def _codex_api_run(tmp_path, api, history_offsets_sec=()):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    now_ms = int(now.timestamp() * 1000)
+    (codex_dir / "history.jsonl").write_text(
+        "".join(f'{{"timestamp": {now_ms - off * 1000}}}\n' for off in history_offsets_sec)
+    )
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=api):
+        return extract_codex_status(account, now=now), now
+
+
+def test_codex_infinite_window_duration_does_not_crash(tmp_path):
+    # M1: json.loads aceita Infinity; a coleta nao pode cair
+    api = json.loads(
+        '{"rate_limit": {"primary_window": {"used_percent": 10, "limit_window_seconds": Infinity,'
+        ' "reset_after_seconds": Infinity},'
+        ' "secondary_window": {"used_percent": 5, "window_minutes": 1e400}}}'
+    )
+    res, _ = _codex_api_run(tmp_path, api)
+    assert res["native_window"]["window_seconds"] == 3 * 3600
+    assert res["native_window"]["type"] == "3h"
+    assert res["weekly_window"]["window_seconds"] == 7 * 86400
+
+
+def test_codex_api_duration_without_reset_does_not_mix_heuristic(tmp_path):
+    # M2: duracao 5h da API sem reset -> nada de seconds_remaining da heuristica de 3h
+    api = {"rate_limit": {"primary_window": {"used_percent": 10.0, "limit_window_seconds": 18000}}}
+    res, _ = _codex_api_run(tmp_path, api, history_offsets_sec=(2 * 3600,))
+    nw = res["native_window"]
+    assert nw["type"] == "5h"
+    assert nw["usage_percentage"] == 10.0
+    assert nw["seconds_remaining"] is None
+    assert nw["release_time"] is None
+
+
+def test_codex_api_duration_without_percent_recounts_with_api_duration(tmp_path):
+    # M2: sem used_percent, a heuristica local usa a duracao informada (5h), nao 3h
+    api = {"rate_limit": {"primary_window": {"limit_window_seconds": 18000}}}
+    res, _ = _codex_api_run(tmp_path, api, history_offsets_sec=(4 * 3600, 3600))
+    nw = res["native_window"]
+    assert nw["used_capacity"] == 2
+    assert nw["usage_percentage"] == round(2 / 50 * 100, 1)
+    assert nw["seconds_remaining"] is None
+
+
+def test_codex_reset_after_seconds_is_reset_source(tmp_path):
+    api = {"rate_limit": {
+        "primary_window": {"used_percent": 10.0, "limit_window_seconds": 18000, "reset_after_seconds": 3600},
+        "secondary_window": {"used_percent": 5.0, "limit_window_seconds": 604800, "reset_after_seconds": 86400},
+    }}
+    res, now = _codex_api_run(tmp_path, api)
+    assert res["native_window"]["seconds_remaining"] == 3600
+    assert res["native_window"]["release_time"] == (now + timedelta(hours=1)).isoformat()
+    assert res["weekly_window"]["seconds_remaining"] == 86400
+
+
+def test_codex_single_weekly_primary_window_becomes_weekly(tmp_path):
+    # B1: uma unica janela de 7d na primaria alimenta o medidor semanal
+    api = {"rate_limit": {"primary_window": {
+        "used_percent": 40.0, "limit_window_seconds": 604800, "reset_at": "2026-10-25T12:00:00Z",
+    }}}
+    res, _ = _codex_api_run(tmp_path, api)
+    ww = res["weekly_window"]
+    assert ww["window_seconds"] == 604800
+    assert ww["usage_percentage"] == 40.0
+    assert ww["cycle_reset_time"] == "2026-10-25T12:00:00+00:00"
+    assert res["native_window"]["type"] == "3h"  # sem janela curta informada: fallback
+
+
+def test_codex_windows_carry_source_marker(tmp_path):
+    """A origem da leitura (api / api_missing / local) alimenta a nota de mudanca de limites."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+    primary_only = {"rate_limit": {"primary_window": {"used_percent": 1.0, "limit_window_seconds": 18000}}}
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=primary_only):
+        res = extract_codex_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("api", "api_missing")
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=None):
+        res = extract_codex_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("local", "local")
+
+
+def _codex_windows(tmp_path, api):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(exist_ok=True)
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=api):
+        res = extract_codex_status({"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}, now=now)
+    return res["native_window"], res["weekly_window"]
+
+
+def test_codex_partial_api_responses_do_not_claim_unread_facts(tmp_path):
+    # Janela sem limit_window_seconds nem reset: duracao padrao (3h) e release nao foram lidos
+    nw, _ = _codex_windows(tmp_path, {"rate_limit": {"primary_window": {"used_percent": 5.0}}})
+    assert nw["source"] == "api" and nw["api_fields"] == []
+
+    nw, _ = _codex_windows(tmp_path, {"rate_limit": {"primary_window": {
+        "used_percent": 5.0, "limit_window_seconds": 18000, "reset_after_seconds": 60}}})
+    assert nw["api_fields"] == ["duration", "release"]
+
+    # Resposta vazia / janelas nulas: nenhuma janela reconhecida, nada foi "removido"
+    for empty in ({"rate_limit": {}}, {"rate_limit": {"primary_window": None, "secondary_window": None}},
+                  {"primary_window": None}):
+        nw, ww = _codex_windows(tmp_path, empty)
+        assert (nw["source"], ww["source"]) == ("local", "local")

@@ -4,14 +4,15 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plasma-ai-usage-collector"
-version = "1.0.0"
-description = "Coletor sob demanda de métricas de uso e cotas de agentes de IA para KDE Plasma 6"
+version = "1.1.0"
+description = "Coletor de métricas de uso e cotas de agentes de IA para KDE Plasma 6"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = []
 
 [project.scripts]
 ai-usage-collector = "ai_usage_collector.cli:main"
+ai-usage-session-state = "ai_usage_collector.session_state:states_main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

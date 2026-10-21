@@ -110,8 +110,8 @@ def test_config_general_gui_add_account_form_elements():
     config_general_path = UI_DIR / "configGeneral.qml"
     content = config_general_path.read_text(encoding="utf-8")
 
-    # 1. Expandable section "+ Adicionar Nova Conta"
-    assert "+ Adicionar Nova Conta" in content
+    # 1. Expandable section "Add New Account"
+    assert "Add New Account" in content
     assert "addAccountSection" in content
     assert "toggleAddFormBtn" in content
     assert "isAddFormExpanded" in content
@@ -126,33 +126,33 @@ def test_config_general_gui_add_account_form_elements():
 
     # 4. Quick Action Buttons: Capture Current CLI Login and Interactive Terminal Login
     assert "captureCurrentAccountBtn" in content
-    assert "Capturar Login Atual do CLI" in content
+    assert "Capture Current CLI Login" in content
     assert "captureCurrentAccount" in content
 
     assert "interactiveLoginAccountBtn" in content
-    assert "Fazer Login no Terminal..." in content
+    assert "Log In in the Terminal..." in content
     assert "interactiveLoginAccount" in content
 
     # 5. Collapsible Advanced Options Section (Manual Configuration)
-    assert "Opções Avançadas (Configuração Manual)" in content
+    assert "Advanced Options (Manual Setup)" in content
     assert "toggleAdvancedBtn" in content
     assert "isAdvancedExpanded" in content
 
     # 6. Manual Path and Default button
     assert "credentialPathField" in content
     assert "useDefaultPathBtn" in content
-    assert "Usar Caminho Padrão" in content
+    assert "Use Default Path" in content
     assert "~/.claude" in content
     assert "~/.codex" in content
     assert "~/.gemini" in content
 
     # 7. Optional invite URL TextField
     assert "inviteUrlField" in content
-    assert "https://... (opcional)" in content
+    assert "https://... (optional)" in content
 
     # 8. Save Account button and Clear button
     assert "saveAccountBtn" in content
-    assert "Salvar Manualmente" in content
+    assert "Save Manually" in content
     assert "document-save" in content or "list-add" in content
     assert "clearFormBtn" in content
 
@@ -204,15 +204,15 @@ def test_account_card_copy_invite_and_clipboard_actions():
     """Verify that AccountCard.qml supports clipboard copy with visual feedback."""
     card_path = UI_DIR / "AccountCard.qml"
     content = card_path.read_text(encoding="utf-8")
+    full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")  # executor e clipboard únicos do popup
 
     # Clipboard function and utilities
-    assert "copyToClipboard" in content
-    assert "wl-copy" in content
-    assert "xclip" in content
+    assert "copyToClipboard" in content and "copyText" in content
+    assert "wl-copy" in full and "xclip" in full and "wl-copy" not in content
 
     # Visual feedback
     assert "copiedFeedback" in content
-    assert "Copiado!" in content
+    assert "Copied!" in content
     assert "copiedFeedbackTimer" in content
 
 
@@ -318,7 +318,7 @@ def test_simulated_remove_account_from_widget(tmp_path: Path):
     ]
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert res.returncode == 0, f"Removal failed: {res.stderr}"
-    assert "sucesso" in res.stdout.lower() or "removida" in res.stdout.lower()
+    assert "sucesso" in res.stdout.lower() or "removed" in res.stdout.lower()
 
     # Verify account was removed from config.json
     with open(config_path, "r", encoding="utf-8") as f:
@@ -370,46 +370,20 @@ def test_main_qml_interactive_contracts():
     assert "loadStatus" in content
 
 
-def test_build_collector_command_resolution_in_shell():
-    """Verify that the shell command construct in QML executes successfully."""
-    venv_bin = REPO_ROOT / ".venv" / "bin" / "ai-usage-collector"
-    assert venv_bin.is_file() and os.access(venv_bin, os.X_OK)
-
-    args = "'--version'"
-    bash_cmd = (
-        f"bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; "
-        f"elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; "
-        f"elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; "
-        f"else python3 -m ai_usage_collector \"$@\"; fi' _ {args}"
-    )
-    res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True, check=False)
-    assert res.returncode == 0
-    assert "ai-usage-collector" in res.stdout
+# a resolução do comando do coletor no shell é testada com HOME falso em test_plasmoid_popup.py (test_collector_command_resolution_in_shell)
 
 
 def test_account_card_weekly_meter_reactive_bindings():
-    """Verify AccountCard.qml contains reactive countdowns, token formatters and weekly bindings."""
-    card_path = UI_DIR / "AccountCard.qml"
-    content = card_path.read_text(encoding="utf-8")
+    """O card reage ao relógio do popup (contagem ao vivo) e as duas janelas vêm do mesmo modelo."""
+    content = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    prefs = (UI_DIR / "ViewPrefs.js").read_text(encoding="utf-8")
 
-    # Verification of progress bars and bindings to percentage / 100.0
-    assert "nativeProgressBar" in content
-    assert "weeklyProgressBar" in content
-    assert "/ 100.0" in content
-    assert "usage_percentage" in content
-
-    # Formatter functions for tokens, percentages and timestamps
-    assert "formatPercentage" in content
-    assert "formatNumber" in content
-    assert "formatCountdown" in content
-    assert "formatDateTime" in content
-    assert "getUsageColor" in content
-
-    # Symmetric layout elements
-    assert "activeWindowTitleLabel" in content
-    assert "activeWindowPercentageLabel" in content
-    assert "weeklyWindowTitleLabel" in content
-    assert "weeklyWindowPercentageLabel" in content
+    assert "nowMs" in content and "windowView" in content and "nativeView" in content and "weeklyView" in content
+    assert "usage_percentage" in model and "tokens_used" in model
+    assert "function countdown" in prefs and "function dateText" in prefs and "function shownPct" in prefs
+    assert "nativeRow" in content and "weeklyRow" in content
+    assert "countdownTimer" not in content  # o único relógio de 1 s é o do popup (FullRepresentation), só com ele aberto
 
 
 def test_simulated_gui_add_account_invocation(tmp_path: Path):
@@ -610,8 +584,8 @@ def test_config_general_qml_confirm_dialog_clean_layout_and_no_conflicting_stand
 
     # 3. Verify custom action buttons exist and are wired correctly
     assert "PlasmaComponents3.Button" in dialog_block
-    assert "Cancelar" in dialog_block
-    assert "Remover Conta" in dialog_block
+    assert "Cancel" in dialog_block
+    assert "Remove Account" in dialog_block
     assert "confirmDialog.close()" in dialog_block
     assert "configRoot.confirmDelete()" in dialog_block
 
@@ -645,8 +619,8 @@ def test_config_general_qml_rename_dialog_clean_layout_and_no_conflicting_standa
     assert "renameAccountField" in dialog_block
     assert "QQC2.TextField" in dialog_block
     assert "PlasmaComponents3.Button" in dialog_block
-    assert "Cancelar" in dialog_block
-    assert "Salvar" in dialog_block
+    assert "Cancel" in dialog_block
+    assert "Save" in dialog_block
     assert "saveRenameButton" in dialog_block
     assert "highlighted: true" in dialog_block
     assert "renameDialog.close()" in dialog_block
@@ -693,9 +667,9 @@ def test_account_card_active_cli_badge():
     assert "accountData.isActive" in content
     assert "isActive" in content
 
-    # 2. Visual badge [✓ Ativa no CLI]
+    # 2. Visual badge [✓ Active in the CLI]
     assert "activeCliBadge" in content
-    assert "✓ Ativa no CLI" in content
+    assert "✓ Active in the CLI" in content
     assert "visible: cardRoot.isActive" in content
     assert "Kirigami.Theme.highlightColor" in content
 
@@ -707,8 +681,8 @@ def test_account_card_switch_account_button_and_contracts():
 
     # 1. Switch button with lightning icon/text
     assert "switchAccountButton" in content
-    assert "⚡ Ativar no Sistema" in content
-    assert "Ativando..." in content
+    assert "⚡ Activate on System" in content
+    assert "Activating..." in content
 
     # 2. Display condition: inactive accounts with valid health
     assert "!cardRoot.isActive" in content
@@ -718,9 +692,8 @@ def test_account_card_switch_account_button_and_contracts():
     assert "isSwitching" in content
     assert "enabled: !cardRoot.isSwitching" in content
 
-    # 4. Asynchronous DataSource execution and buildCollectorCommand
-    assert "switchDataSource" in content
-    assert "buildCollectorCommand" in content
+    # 4. Execução assíncrona pelo executor único do popup (sem DataSource por card)
+    assert "runCollector" in content and "DataSource" not in content
     assert "switchAccount" in content
     assert "--switch-account" in content
     assert "--status" in content
@@ -738,15 +711,15 @@ def test_account_card_switch_account_shell_injection_resilience(tmp_path: Path):
     # Locate switchAccount function
     func_start = content.find("function switchAccount()")
     assert func_start != -1, "switchAccount function not found in AccountCard.qml"
-    func_end = content.find("}", content.find("switchDataSource.connectSource", func_start))
+    func_end = content.find("}", content.find("cardRoot.runCollector(", func_start))
     assert func_end != -1
     func_code = content[func_start:func_end]
 
     # Verify shellQuote is applied to all positional arguments
-    assert 'shellQuote("--switch-account")' in func_code
-    assert 'shellQuote(provClean)' in func_code
-    assert 'shellQuote(accId)' in func_code
-    assert 'shellQuote("--status")' in func_code
+    assert 'Collector.shellQuote("--switch-account")' in func_code
+    assert 'Collector.shellQuote(provClean)' in func_code
+    assert 'Collector.shellQuote(accId)' in func_code
+    assert 'Collector.shellQuote("--status")' in func_code
 
     # Test malicious command injection simulation
     pwned_marker = tmp_path / "pwned_switch.txt"
@@ -787,15 +760,34 @@ def test_full_representation_wires_plasmoid_item_to_account_card():
     assert "loadStatus" in content
 
 
-def test_main_qml_switch_account_contract():
-    """Verify that main.qml provides switchAccount method with safe execution."""
+def test_main_qml_has_no_duplicate_switch_account():
+    """AccountCard.qml is the only switch path; main.qml must not duplicate it (ADR-0008)."""
     main_path = UI_DIR / "main.qml"
     content = main_path.read_text(encoding="utf-8")
 
-    assert "function switchAccount(provider, accountId)" in content
-    assert "--switch-account" in content
+    assert "function switchAccount" not in content
+    assert "--switch-account" not in content
     assert "shellQuote" in content
     assert "buildCollectorCommand" in content
 
 
 
+
+
+def test_hover_open_option_and_wiring():
+    """Ticket 34: opcao hoverOpen (main.xml + configGeneral) e ligacoes de hover/clique/Escape."""
+    root = ET.parse(CONFIG_DIR / "main.xml").getroot()
+    entries = {e.attrib["name"]: e for e in root.iter() if e.tag.endswith("entry")}
+    assert entries["hoverOpen"].attrib["type"] == "Bool"
+    assert entries["hoverOpen"].find("{*}default").text == "true"
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    assert "property bool cfg_hoverOpen" in cfg and "configRoot.cfg_hoverOpen = checked" in cfg
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    assert "toolTipTextFormat: Text.PlainText" in main and "hideOnWindowDeactivate: !pinned" in main
+    compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
+    assert "setPillHovered(containsMouse)" in compact and "pillClicked()" in compact
+    assert "Keys.onEscapePressed" in compact
+    full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
+    assert "HoverHandler" in full and "setPopupHovered(hovered)" in full
+    assert "hideOnWindowDeactivate: !pinned && !pillHovered" in main and "openedByHover" in main
+    assert "Component.onDestruction" in compact and "forceActiveFocus" in full

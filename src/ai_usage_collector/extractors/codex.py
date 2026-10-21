@@ -2,7 +2,11 @@
 
 from __future__ import annotations
 
+import glob
 import json
+import math
+import os
+import re
 import sqlite3
 import urllib.error
 import urllib.request
@@ -10,8 +14,11 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector import refresh
+from ai_usage_collector.contract import MAX_WINDOW_SECONDS, parse_window_seconds, window_type_from_seconds
 from ai_usage_collector.discovery import discover_codex
 
+# Fallback of the local heuristic only; the API reports the real Native Window duration
 CODEX_3H_SECONDS = 3 * 3600  # 10800s
 CODEX_7D_SECONDS = 7 * 86400  # 604800s
 
@@ -221,7 +228,7 @@ def extract_codex_invites(
 
 
 def resolve_codex_capacity(account: dict[str, Any], health: dict[str, Any]) -> int:
-    """Resolve total capacity for 3h window based on config or account metadata."""
+    """Resolve total capacity for the Native Window based on config or account metadata."""
     for key in ["rate_limit_capacity", "capacity_limit", "quota_limit"]:
         val = account.get(key)
         if isinstance(val, (int, float)) and val > 0:
@@ -268,19 +275,75 @@ def fetch_codex_usage_api(
     if account_id:
         headers["ChatGPT-Account-Id"] = account_id
     req = urllib.request.Request(url, headers=headers, method="GET")
-    try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
-            status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
-            if status in (200, 201):
-                body = resp.read()
-                if isinstance(body, bytes):
-                    body = body.decode("utf-8")
-                data = json.loads(body)
-                if isinstance(data, dict):
-                    return data
-    except Exception:
+    return refresh.fetch_json(
+        "codex", f"{access_token}|{account_id or ''}", req, timeout,
+        valid=lambda d: isinstance(d.get("rate_limit"), dict) or "primary_window" in d,
+    )
+
+
+def parse_codex_credits(api_data: dict[str, Any] | None) -> dict[str, Any] | None:
+    """Map the optional credits block of wham/usage ({has_credits, unlimited, balance})."""
+    credits = (api_data or {}).get("credits")
+    if not isinstance(credits, dict):
         return None
+    if credits.get("unlimited") is True:
+        return {"unlimited": True}
+    if not credits.get("has_credits"):
+        return None
+    try:
+        return {"unlimited": False, "balance": float(credits.get("balance"))}
+    except (TypeError, ValueError):
+        return None
+
+
+def codex_window_seconds(window: dict[str, Any]) -> int | None:
+    """Duration reported by wham/usage for a rate-limit window (limit_window_seconds or window_minutes)."""
+    seconds = parse_window_seconds(window.get("limit_window_seconds"))
+    if seconds:
+        return seconds
+    minutes = window.get("window_minutes")
+    return parse_window_seconds(f"{minutes}m") if isinstance(minutes, (int, float, str)) else None
+
+
+def codex_reset_sec(window: dict[str, Any], now_sec: float) -> float | None:
+    """Reset epoch of a rate-limit window from reset_at, else now + reset_after_seconds."""
+    reset_sec = parse_timestamp(window.get("reset_at"))
+    if reset_sec is not None and math.isfinite(reset_sec):
+        return reset_sec
+    after = window.get("reset_after_seconds")
+    if isinstance(after, (int, float)) and not isinstance(after, bool) and 0 <= after <= MAX_WINDOW_SECONDS:
+        return now_sec + after
     return None
+
+
+def read_codex_current_model(codex_dir: Path) -> str | None:
+    """Model of the latest session turn (sessions rollout), else the `model` key of config.toml."""
+    rollouts = glob.glob(str(codex_dir / "sessions" / "*" / "*" / "*" / "rollout-*.jsonl"))
+    if rollouts:
+        try:
+            latest = max(rollouts, key=os.path.getmtime)
+            model = None
+            with open(latest, "r", encoding="utf-8", errors="replace") as f:
+                for line in f:
+                    if '"turn_context"' not in line:
+                        continue
+                    try:
+                        payload = json.loads(line).get("payload") or {}
+                    except ValueError:
+                        continue
+                    if isinstance(payload.get("model"), str) and payload["model"]:
+                        model = payload["model"]
+            if model:
+                return model
+        except OSError:
+            pass
+    try:
+        config_text = (codex_dir / "config.toml").read_text(encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    # ponytail: top-level `model = "..."` via regex (tomllib needs 3.11); profiles ignored
+    match = re.search(r'^model\s*=\s*["\']([^"\']+)["\']', config_text, re.MULTILINE)
+    return match.group(1) if match else None
 
 
 def extract_codex_status(
@@ -288,7 +351,7 @@ def extract_codex_status(
     initial_health: dict[str, Any] | None = None,
     now: datetime | None = None,
 ) -> dict[str, Any]:
-    """Extract metrics, calculate 3h and weekly windows, and format Codex status."""
+    """Extract metrics, calculate Native Window and weekly windows, and format Codex status."""
     now_dt = now or datetime.now(timezone.utc)
     now_sec = now_dt.timestamp()
 
@@ -337,7 +400,9 @@ def extract_codex_status(
 
     all_timestamps = deduplicate_timestamps(raw_timestamps)
 
-    # 3-hour window calculations
+    # Native Window via local heuristic (fallback duration; overridden by the API below)
+    native_window_seconds = CODEX_3H_SECONDS
+    weekly_window_seconds = CODEX_7D_SECONDS
     start_3h_sec = now_sec - CODEX_3H_SECONDS
     in_3h_ts = [t for t in all_timestamps if start_3h_sec <= t <= now_sec]
     used_3h = len(in_3h_ts)
@@ -397,6 +462,10 @@ def extract_codex_status(
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
+    native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+    native_api_fields: list[str] = []  # fatos realmente lidos da API: "duration", "release"
+    weekly_api_fields: list[str] = []
+
     # Attempt primary official API usage route
     api_data = None
     if access_token and health.get("status") == "valid":
@@ -406,6 +475,18 @@ def extract_codex_status(
         rate_limit = api_data.get("rate_limit") or api_data
         primary = rate_limit.get("primary_window") or {}
         secondary = rate_limit.get("secondary_window") or {}
+        if not secondary and codex_window_seconds(primary) == CODEX_7D_SECONDS:
+            # A single 7-day window is the weekly limit, not a Native Window
+            primary, secondary = {}, primary
+        if primary or secondary:  # resposta sem nenhuma janela reconhecivel nao diz que o limite sumiu
+            native_source = "api" if primary else "api_missing"
+            weekly_source = "api" if secondary else "api_missing"
+        if codex_window_seconds(primary) is not None:
+            native_api_fields.append("duration")
+        if codex_window_seconds(secondary) is not None:
+            weekly_api_fields.append("duration")
+        native_window_seconds = codex_window_seconds(primary) or native_window_seconds
+        weekly_window_seconds = codex_window_seconds(secondary) or weekly_window_seconds
 
         # Primary window (active window)
         used_pct_primary = primary.get("used_percent")
@@ -413,14 +494,22 @@ def extract_codex_status(
             usage_percentage = round(float(used_pct_primary), 1)
             used_3h = round(total_capacity * (usage_percentage / 100.0))
             available_capacity = max(0, total_capacity - used_3h)
+        elif native_window_seconds != CODEX_3H_SECONDS:
+            # Local heuristic recounted over the duration reported by the API
+            used_3h = len([t for t in all_timestamps if now_sec - native_window_seconds <= t <= now_sec])
+            available_capacity = max(0, total_capacity - used_3h)
+            usage_percentage = min(100.0, round((used_3h / total_capacity) * 100.0, 1)) if total_capacity > 0 else 0.0
 
-        resets_at_primary = primary.get("reset_at")
-        if resets_at_primary:
-            r_sec = parse_timestamp(resets_at_primary)
-            if r_sec is not None:
-                release_sec = r_sec
-                seconds_remaining = max(0, int(release_sec - now_sec))
-                release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+        r_sec = codex_reset_sec(primary, now_sec)
+        if r_sec is not None:
+            native_api_fields.append("release")
+            release_sec = r_sec
+            seconds_remaining = max(0, int(release_sec - now_sec))
+            release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+        elif native_window_seconds != CODEX_3H_SECONDS:
+            # API duration without a reset: the 3h heuristic release would be wrong, so leave it unknown
+            seconds_remaining = None
+            release_time = None
 
         # Secondary window (weekly window)
         used_pct_secondary = secondary.get("used_percent")
@@ -433,13 +522,15 @@ def extract_codex_status(
             weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
             weekly_used_capacity = used_7d
 
-        resets_at_secondary = secondary.get("reset_at")
-        if resets_at_secondary:
-            w_sec = parse_timestamp(resets_at_secondary)
-            if w_sec is not None:
-                cycle_reset_sec = w_sec
-                weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
-                cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+        w_sec = codex_reset_sec(secondary, now_sec)
+        if w_sec is not None:
+            weekly_api_fields.append("release")
+            cycle_reset_sec = w_sec
+            weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
+            cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+        elif weekly_window_seconds != CODEX_7D_SECONDS:
+            weekly_seconds_remaining = None
+            cycle_reset_time = None
 
         # Promo / invite mapping
         promo = api_data.get("promo")
@@ -460,7 +551,10 @@ def extract_codex_status(
         weekly_used_capacity = used_7d
 
     native_window = {
-        "type": "3h",
+        "type": window_type_from_seconds(native_window_seconds),
+        "source": native_source,
+        "api_fields": native_api_fields,
+        "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
         "used_capacity": used_3h,
         "available_capacity": available_capacity,
@@ -479,13 +573,27 @@ def extract_codex_status(
         "usage_percentage": weekly_usage_percentage,
         "messages_used": used_7d,
         "tokens_used": 0,
+        "source": weekly_source,
+        "api_fields": weekly_api_fields,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
+        "window_seconds": weekly_window_seconds,
     }
 
-    return {
+    usage_details: dict[str, Any] = {}
+    credits = parse_codex_credits(api_data)
+    if credits:
+        usage_details["credits"] = credits
+    current_model = read_codex_current_model(codex_dir)
+    if current_model:
+        usage_details["current_model"] = current_model
+
+    result = {
         "health": health,
         "native_window": native_window,
         "weekly_window": weekly_window,
         "free_trial_invites": invites,
     }
+    if usage_details:
+        result["usage_details"] = usage_details
+    return result
