@@ -28,6 +28,8 @@ Item {
     property string errorMessage: ""
     property var accountPendingDeletion: null
     property var accountPendingRename: null
+    property var orphanPendingDeletion: null
+    readonly property var orphanProfiles: (statusData && statusData.orphan_profiles) ? statusData.orphan_profiles : []
 
     readonly property bool isBusy: isLoading || isDeleting || isRenaming || isAdding || isCapturing || isInteractiveLogin
 
@@ -229,6 +231,34 @@ Item {
             } else {
                 configRoot.errorMessage = configRoot.safeI18n("Falha ao remover conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
                 configRoot.statusMessage = "";
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Perfis Órfãos: reimportar ou excluir (a exclusão só roda com --confirm, após o diálogo)
+    function runOrphanAction(flag, orphan, confirm) {
+        configRoot.isLoading = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        var args = shellQuote(flag) + " " + shellQuote(orphan.provider) + " " + shellQuote(orphan.id) + (confirm ? " " + shellQuote("--confirm") : "");
+        orphanDataSource.connectSource(configRoot.buildCollectorCommand(args));
+    }
+
+    Plasma5Support.DataSource {
+        id: orphanDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isLoading = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
             }
             disconnectSource(sourceName);
         }
@@ -928,6 +958,91 @@ Item {
                     iconName: "im-user-offline"
                     text: configRoot.safeI18n("Nenhuma conta cadastrada")
                     explanation: configRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
+                }
+            }
+        }
+
+        // Perfis Órfãos: perfis em disco sem Conta cadastrada (nunca apagados sem confirmação)
+        ColumnLayout {
+            Layout.fillWidth: true
+            visible: configRoot.orphanProfiles.length > 0
+            spacing: Kirigami.Units.smallSpacing
+
+            Kirigami.Heading {
+                level: 4
+                text: configRoot.safeI18n("Perfis Órfãos")
+            }
+
+            Repeater {
+                model: configRoot.orphanProfiles
+
+                RowLayout {
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        elide: Text.ElideRight
+                        text: (modelData.provider || "").toUpperCase() + " · " + (modelData.email || modelData.id)
+                    }
+
+                    PlasmaComponents3.Button {
+                        text: configRoot.safeI18n("Reimportar")
+                        enabled: !configRoot.isBusy
+                        onClicked: configRoot.runOrphanAction("--reimport-orphan", modelData, false)
+                    }
+
+                    PlasmaComponents3.Button {
+                        text: configRoot.safeI18n("Excluir")
+                        icon.name: "delete"
+                        enabled: !configRoot.isBusy
+                        onClicked: {
+                            configRoot.orphanPendingDeletion = modelData;
+                            orphanDeleteDialog.open();
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    // Diálogo de confirmação de exclusão de Perfil Órfão
+    QQC2.Dialog {
+        id: orphanDeleteDialog
+        title: configRoot.safeI18n("Excluir Perfil Órfão")
+        modal: true
+        anchors.centerIn: parent
+
+        ColumnLayout {
+            spacing: Kirigami.Units.largeSpacing
+
+            QQC2.Label {
+                text: configRoot.orphanPendingDeletion
+                    ? configRoot.safeI18n("Excluir definitivamente o perfil '%1' do disco? As credenciais dele serão apagadas.", configRoot.orphanPendingDeletion.id)
+                    : ""
+                wrapMode: Text.WordWrap
+                Layout.fillWidth: true
+                Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+            }
+
+            RowLayout {
+                Layout.alignment: Qt.AlignRight
+                spacing: Kirigami.Units.smallSpacing
+
+                PlasmaComponents3.Button {
+                    text: configRoot.safeI18n("Cancelar")
+                    onClicked: orphanDeleteDialog.close()
+                }
+
+                PlasmaComponents3.Button {
+                    text: configRoot.safeI18n("Excluir Perfil")
+                    icon.name: "delete"
+                    highlighted: true
+                    enabled: !configRoot.isBusy
+                    onClicked: {
+                        orphanDeleteDialog.close();
+                        configRoot.runOrphanAction("--delete-orphan", configRoot.orphanPendingDeletion, true);
+                    }
                 }
             }
         }

@@ -9,6 +9,7 @@ from typing import Any
 
 from datetime import datetime, timezone
 
+from ai_usage_collector.orphans import list_orphans
 from ai_usage_collector.capture import (
     find_matching_account,
     get_active_credentials,
@@ -183,6 +184,8 @@ def collect_and_save(
                     status_payload["agents"][agent_id]["status"] = "warning"
         else:
             status_payload["agents"][agent_id]["status"] = "not_configured"
+
+    status_payload["orphan_profiles"] = list_orphans(config_path)
 
     try:
         apply_token_history(status_payload, config, cache_path, now_dt)

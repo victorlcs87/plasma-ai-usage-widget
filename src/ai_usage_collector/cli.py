@@ -20,6 +20,7 @@ from ai_usage_collector.collector import (
 )
 from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
 from ai_usage_collector.history import export_history
+from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -99,6 +100,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Exporta o Historico de Tokens diario (ate 400 dias) em CSV ou JSON na saida padrao",
     )
     parser.add_argument(
+        "--list-orphans",
+        action="store_true",
+        help="Lista os Perfis Órfãos (Perfis Isolados sem Conta cadastrada) em JSON",
+    )
+    parser.add_argument(
+        "--reimport-orphan",
+        nargs=2,
+        metavar=("PROVIDER", "PROFILE"),
+        help="Reimporta um Perfil Órfão como Conta (funde se a identidade já existir)",
+    )
+    parser.add_argument(
+        "--delete-orphan",
+        nargs=2,
+        metavar=("PROVIDER", "PROFILE"),
+        help="Exclui um Perfil Órfão do disco; exige --confirm",
+    )
+    parser.add_argument(
+        "--confirm",
+        action="store_true",
+        help="Confirma explicitamente a exclusão de um Perfil Órfão",
+    )
+    parser.add_argument(
         "--provider",
         type=str,
         help="Provedor da conta ('claude', 'codex', 'gemini')",
@@ -157,6 +180,21 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdout.write(export_history(cache_path, args.export_history))
             sys.stdout.flush()
             return 0
+
+        if args.list_orphans:
+            sys.stdout.write(json.dumps(list_orphans(config_path), indent=2, ensure_ascii=False) + "\n")
+            return 0
+
+        for pair, action in ((args.reimport_orphan, reimport_orphan), (args.delete_orphan, delete_orphan)):
+            if pair:
+                if action is delete_orphan:
+                    ok, message = action(*pair, confirm=args.confirm, config_path=config_path)
+                else:
+                    ok, message = action(*pair, config_path=config_path)
+                if ok:
+                    collect_and_save(config_path=config_path, cache_path=cache_path)
+                (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
+                return 0 if ok else 1
 
         if args.switch_account:
             provider, account_id = args.switch_account
@@ -330,6 +368,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         should_refresh = args.refresh or (
             not args.refresh
             and not args.status
+            and not args.list_orphans
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account
