@@ -330,7 +330,7 @@ Item {
                             }
                             QQC2.Label {
                                 Accessible.ignored: true
-                                Layout.maximumWidth: flick.width * 0.5  // da Flickable (estável), nunca do bloco: block.width dependia do próprio layout (laço de rearranjo)
+                                Layout.maximumWidth: flick.width * 0.5  // da Flickable (estável), nunca da largura do próprio bloco (laço de rearranjo)
                                 text: block.modelData.name
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
