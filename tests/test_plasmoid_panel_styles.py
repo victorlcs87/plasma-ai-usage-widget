@@ -90,13 +90,13 @@ def test_panel_options_declared_with_defaults_that_keep_todays_look():
 def test_config_page_validates_and_is_accessible():
     cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
     assert "PanelStyle.config(" in cfg and "panelNow" in cfg  # valor inválido do arquivo cai no padrão
-    block = cfg[cfg.index("// Estilo do painel: Pílula"):cfg.index("// Estado da Sessão do Claude")]
+    block = cfg[cfg.index("// Estilo do painel: Pílula"):cfg.index("// Aba Popup")]
     # todo controle do bloco tem Accessible.name e todo rótulo é texto puro
     for ctl in ("QQC2.ComboBox {", "QQC2.SpinBox {", "QQC2.CheckBox {"):
         for chunk in block.split(ctl)[1:]:
-            assert "Accessible.name: configRoot.safeI18n(" in chunk.split("\n            }\n")[0], (ctl, chunk[:120])
+            assert "Accessible.name: configRoot.safeI18n(" in chunk.split("\n" + " " * 24 + "}\n")[0], (ctl, chunk[:120])
     for chunk in block.split("QQC2.Label {")[1:]:
-        assert "textFormat: Text.PlainText" in chunk.split("\n            }\n")[0]
+        assert "textFormat: Text.PlainText" in chunk.split("\n" + " " * 24 + "}\n")[0]
     assert block.count("QQC2.ComboBox {") == 3 and block.count("QQC2.SpinBox {") == 2
     assert 'Accessible.description: configRoot.safeI18n("Pílula:' in block  # texto de ajuda dos estilos
     assert "40 px de largura" in block and "28 px" in block and "Só o gráfico" in block  # limites documentados

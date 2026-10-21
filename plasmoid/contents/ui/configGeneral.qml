@@ -783,959 +783,1079 @@ Item {
             }
         }
 
-        // Notch compacto: cor de destaque, visibilidade e ordem dos provedores
-        Flow {
+        // Abas (Geral abre por padrão)
+        QQC2.TabBar {
+            id: configTabBar
+            objectName: "configTabBar"
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            currentIndex: 0
+            Accessible.role: Accessible.PageTabList
+            Accessible.name: configRoot.safeI18n("Seções da configuração")
 
-            QQC2.Label {
-                text: configRoot.safeI18n("Cor de destaque:")
+            QQC2.TabButton {
+                text: configRoot.safeI18n("Geral")
+                activeFocusOnTab: true
+                Accessible.role: Accessible.PageTab
+                Accessible.name: configRoot.safeI18n("Geral")
+                Accessible.description: configRoot.safeI18n("Configurações gerais: atualização, alertas, ocultar sem CLI e verificação de versões")
             }
-
-            QQC2.ComboBox {
-                id: accentCombo
-                textRole: "name"
-                valueRole: "key"
-                model: Presets.accents
-                currentIndex: Math.max(0, indexOfValue(configRoot.cfg_accentPreset))
-                onActivated: configRoot.cfg_accentPreset = currentValue
-                Accessible.name: configRoot.safeI18n("Cor de destaque do Notch")
+            QQC2.TabButton {
+                text: configRoot.safeI18n("Painel")
+                activeFocusOnTab: true
+                Accessible.role: Accessible.PageTab
+                Accessible.name: configRoot.safeI18n("Painel")
+                Accessible.description: configRoot.safeI18n("Aparência do Notch compacto no painel")
             }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Provedores no painel:")
+            QQC2.TabButton {
+                text: configRoot.safeI18n("Popup")
+                activeFocusOnTab: true
+                Accessible.role: Accessible.PageTab
+                Accessible.name: configRoot.safeI18n("Popup")
+                Accessible.description: configRoot.safeI18n("Popup: abertura, exibição, opacidade e provedores")
             }
-
-            Repeater {
-                model: configRoot.providerOrderList
-                delegate: RowLayout {
-                    required property string modelData
-                    required property int index
-                    spacing: 0
-
-                    QQC2.CheckBox {
-                        text: Presets.providerInfo(modelData).name
-                        checked: configRoot.cfg_hiddenProviders.split(",").indexOf(modelData) === -1
-                        onToggled: configRoot.setProviderHidden(modelData, !checked)
-                    }
-                    QQC2.ToolButton {
-                        icon.name: "go-previous"
-                        enabled: index > 0
-                        onClicked: configRoot.moveProvider(index, -1)
-                        Accessible.name: configRoot.safeI18n("Mover %1 para antes", Presets.providerInfo(modelData).name)
-                    }
-                    QQC2.ToolButton {
-                        icon.name: "go-next"
-                        enabled: index < configRoot.providerOrderList.length - 1
-                        onClicked: configRoot.moveProvider(index, 1)
-                        Accessible.name: configRoot.safeI18n("Mover %1 para depois", Presets.providerInfo(modelData).name)
-                    }
-                }
+            QQC2.TabButton {
+                text: configRoot.safeI18n("Contas")
+                activeFocusOnTab: true
+                Accessible.role: Accessible.PageTab
+                Accessible.name: configRoot.safeI18n("Contas")
+                Accessible.description: configRoot.safeI18n("Contas cadastradas, criação, captura e perfis órfãos")
+            }
+            QQC2.TabButton {
+                text: configRoot.safeI18n("Notificações")
+                activeFocusOnTab: true
+                Accessible.role: Accessible.PageTab
+                Accessible.name: configRoot.safeI18n("Notificações")
+                Accessible.description: configRoot.safeI18n("Estado da sessão, notificações e sons")
             }
         }
 
-        // Estilo do painel: Pílula (padrão), Ring, Text e Bar; modo e centro do anel; tamanho e margem
-        Flow {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Estilo do painel:")
-                textFormat: Text.PlainText
-            }
-            QQC2.ComboBox {
-                textRole: "name"
-                valueRole: "key"
-                model: [
-                    { key: "pill", name: configRoot.safeI18n("Pílula") },
-                    { key: "ring", name: configRoot.safeI18n("Ring") },
-                    { key: "text", name: configRoot.safeI18n("Text (% e ponto)") },
-                    { key: "bar", name: configRoot.safeI18n("Bar (barras)") }
-                ]
-                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.style))
-                onActivated: configRoot.cfg_panelStyle = currentValue
-                Accessible.name: configRoot.safeI18n("Estilo do painel")
-                Accessible.description: configRoot.safeI18n("Pílula: cápsula escura com anéis. Ring: anéis soltos. Text: porcentagem e ponto de nível. Bar: barras verticais com marcador de tempo")
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Exibir:")
-                textFormat: Text.PlainText
-            }
-            QQC2.ComboBox {
-                textRole: "name"
-                valueRole: "key"
-                model: [
-                    { key: "ring", name: configRoot.safeI18n("Só o gráfico") },
-                    { key: "ringpct", name: configRoot.safeI18n("Gráfico e %") },
-                    { key: "pct", name: configRoot.safeI18n("Só %") }
-                ]
-                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.mode))
-                onActivated: configRoot.cfg_panelMode = currentValue
-                Accessible.name: configRoot.safeI18n("Modo de exibição do painel")
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Centro do anel:")
-                textFormat: Text.PlainText
-            }
-            QQC2.ComboBox {
-                textRole: "name"
-                valueRole: "key"
-                model: [
-                    { key: "logo", name: configRoot.safeI18n("Logo") },
-                    { key: "pct", name: configRoot.safeI18n("%") },
-                    { key: "logopct", name: configRoot.safeI18n("Logo e %") }
-                ]
-                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.center))
-                onActivated: configRoot.cfg_ringCenter = currentValue
-                Accessible.name: configRoot.safeI18n("Centro do anel")
-                Accessible.description: configRoot.safeI18n("Com % no centro o anel cresce para 28 px; em painéis finos volta ao logo")
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Tamanho (%):")
-                textFormat: Text.PlainText
-            }
-            QQC2.SpinBox {
-                from: 80
-                to: 160
-                stepSize: 10
-                editable: true
-                value: Math.round(configRoot.panelNow.scale * 100)
-                onValueModified: configRoot.cfg_metricSize = value
-                Accessible.name: configRoot.safeI18n("Tamanho das métricas em porcentagem (80 a 160)")
-                QQC2.ToolTip.text: configRoot.safeI18n("80 a 160. O painel limita o tamanho à sua espessura, sem cortar")
-                QQC2.ToolTip.visible: hovered || activeFocus
-            }
-
-            QQC2.CheckBox {
-                text: configRoot.safeI18n("Margem automática")
-                checked: configRoot.panelNow.margin < 0
-                onToggled: configRoot.cfg_panelMargin = checked ? -1 : Kirigami.Units.smallSpacing
-                Accessible.name: configRoot.safeI18n("Margem interna automática do painel")
-            }
-            QQC2.SpinBox {
-                from: 0
-                to: 16
-                editable: true
-                enabled: configRoot.panelNow.margin >= 0
-                value: Math.max(0, configRoot.panelNow.margin)
-                onValueModified: configRoot.cfg_panelMargin = value
-                Accessible.name: configRoot.safeI18n("Margem interna do painel em pixels (0 a 16)")
-            }
-
-            QQC2.Label {
-                Layout.fillWidth: true
-                wrapMode: Text.WordWrap
-                textFormat: Text.PlainText
-                text: configRoot.safeI18n("Bar em painel vertical precisa de cerca de 40 px de largura: mais estreito, o painel usa Text ou Pílula em vez de cortar. No estilo Text, \"Só o gráfico\" vale como \"Gráfico e %\". Com % no centro, o anel cresce para 28 px (em painéis finos, volta ao logo).")
-            }
-        }
-
-        // Estado da Sessão do Claude Code e do Codex (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
-        Flow {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.CheckBox {
-                text: configRoot.safeI18n("Mostrar o estado da sessão (Claude e Codex)")
-                checked: configRoot.cfg_sessionState
-                onToggled: configRoot.cfg_sessionState = checked
-                Accessible.description: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
-                QQC2.ToolTip.text: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
-                QQC2.ToolTip.visible: hovered || activeFocus
-            }
-            QQC2.CheckBox {
-                text: configRoot.safeI18n("Abrir o Notch por 5 s quando a sessão terminar ou pedir algo")
-                enabled: configRoot.cfg_sessionState
-                checked: configRoot.cfg_sessionAutoOpen
-                onToggled: configRoot.cfg_sessionAutoOpen = checked
-            }
-            QQC2.CheckBox {
-                text: configRoot.safeI18n("Tocar um som nesses momentos")
-                enabled: configRoot.cfg_sessionState
-                checked: configRoot.cfg_sessionSound
-                onToggled: configRoot.cfg_sessionSound = checked
-            }
-        }
-
-        QQC2.CheckBox {
-            text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
-            checked: configRoot.cfg_hoverOpen
-            onToggled: configRoot.cfg_hoverOpen = checked
-        }
-
-        // Popup: usado/restante e contagem/data (valem no popup, na dica e no painel), opacidade, cards
-        Flow {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Popup:")
-                textFormat: Text.PlainText
-            }
-            QQC2.ComboBox {
-                textRole: "name"
-                valueRole: "key"
-                model: [
-                    { key: "used", name: configRoot.safeI18n("Mostrar usado") },
-                    { key: "remaining", name: configRoot.safeI18n("Mostrar restante") }
-                ]
-                currentIndex: configRoot.viewNow.remaining ? 1 : 0
-                onActivated: configRoot.cfg_usageDisplay = currentValue
-                Accessible.name: configRoot.safeI18n("Valores exibidos: usado ou restante")
-                Accessible.description: configRoot.safeI18n("Vale para o popup, a dica e o painel; notificações não mudam")
-            }
-            QQC2.ComboBox {
-                textRole: "name"
-                valueRole: "key"
-                model: [
-                    { key: "countdown", name: configRoot.safeI18n("Liberação em contagem") },
-                    { key: "date", name: configRoot.safeI18n("Liberação em data e hora") }
-                ]
-                currentIndex: configRoot.viewNow.date ? 1 : 0
-                onActivated: configRoot.cfg_resetDisplay = currentValue
-                Accessible.name: configRoot.safeI18n("Liberação exibida como contagem regressiva ou data e hora")
-            }
-            QQC2.Label {
-                text: configRoot.safeI18n("Opacidade do fundo (%):")
-                textFormat: Text.PlainText
-            }
-            QQC2.SpinBox {
-                from: 80
-                to: 100
-                stepSize: 5
-                editable: true
-                value: Math.round(configRoot.viewNow.opacity * 100)
-                onValueModified: configRoot.cfg_popupOpacity = value
-                Accessible.name: configRoot.safeI18n("Opacidade do fundo do popup em porcentagem (80 a 100)")
-            }
-            QQC2.Label {
-                text: configRoot.safeI18n("Provedores no popup:")
-                textFormat: Text.PlainText
-            }
-            Repeater {
-                model: configRoot.popupOrderList
-                delegate: RowLayout {
-                    required property string modelData
-                    required property int index
-                    spacing: 0
-
-                    QQC2.CheckBox {
-                        text: Presets.providerInfo(modelData).name
-                        checked: configRoot.cfg_popupHiddenProviders.split(",").indexOf(modelData) === -1
-                        onToggled: configRoot.setPopupProviderHidden(modelData, !checked)
-                    }
-                    QQC2.ToolButton {
-                        icon.name: "go-previous"
-                        enabled: index > 0
-                        onClicked: configRoot.movePopupProvider(index, -1)
-                        Accessible.name: configRoot.safeI18n("Mover %1 para antes no popup", Presets.providerInfo(modelData).name)
-                    }
-                    QQC2.ToolButton {
-                        icon.name: "go-next"
-                        enabled: index < configRoot.popupOrderList.length - 1
-                        onClicked: configRoot.movePopupProvider(index, 1)
-                        Accessible.name: configRoot.safeI18n("Mover %1 para depois no popup", Presets.providerInfo(modelData).name)
-                    }
-                }
-            }
-        }
-
-        // Intervalo de Atualização por provedor (mínimo de 60 s)
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Atualizar a cada (s):")
-            }
-
-            Repeater {
-                model: [
-                    { key: "cfg_refreshIntervalClaude", name: "Claude" },
-                    { key: "cfg_refreshIntervalCodex", name: "Codex" },
-                    { key: "cfg_refreshIntervalGemini", name: "Gemini" }
-                ]
-                delegate: RowLayout {
-                    required property var modelData
-                    spacing: Kirigami.Units.smallSpacing
-
-                    QQC2.Label {
-                        text: modelData.name
-                    }
-
-                    QQC2.SpinBox {
-                        from: 60
-                        to: 86400
-                        stepSize: 60
-                        editable: true
-                        value: configRoot[modelData.key]
-                        onValueModified: configRoot[modelData.key] = value
-                        QQC2.ToolTip.text: configRoot.safeI18n("Intervalo de Atualização do %1 em segundos (mínimo 60)", modelData.name)
-                        QQC2.ToolTip.visible: hovered
-                    }
-                }
-            }
-        }
-
-        // Alertas: cor por ritmo de uso (padrão) ou por limiares fixos
-        Flow {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Alerta por:")
-            }
-
-            QQC2.ComboBox {
-                id: alertModeCombo
-                textRole: "text"
-                valueRole: "value"
-                model: [
-                    { value: "pace", text: configRoot.safeI18n("Ritmo de uso") },
-                    { value: "threshold", text: configRoot.safeI18n("Limiar fixo") }
-                ]
-                currentIndex: configRoot.alertMode === "threshold" ? 1 : 0
-                onActivated: { configRoot.alertMode = currentValue; configRoot.alertsDirty = true; }
-                Accessible.name: configRoot.safeI18n("Modo de alerta")
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Aviso (%):")
-                enabled: configRoot.alertMode === "threshold"
-            }
-
-            QQC2.SpinBox {
-                from: 1
-                to: 99
-                editable: true
-                enabled: configRoot.alertMode === "threshold"
-                value: configRoot.alertWarning
-                onValueModified: { configRoot.alertWarning = value; configRoot.alertsDirty = true; }
-                Accessible.name: configRoot.safeI18n("Limiar de aviso em porcentagem")
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Crítico (%):")
-                enabled: configRoot.alertMode === "threshold"
-            }
-
-            QQC2.SpinBox {
-                from: 2
-                to: 100
-                editable: true
-                enabled: configRoot.alertMode === "threshold"
-                value: configRoot.alertCritical
-                onValueModified: { configRoot.alertCritical = value; configRoot.alertsDirty = true; }
-                Accessible.name: configRoot.safeI18n("Limiar crítico em porcentagem")
-            }
-
-            PlasmaComponents3.Button {
-                text: configRoot.safeI18n("Aplicar")
-                icon.name: "dialog-ok-apply"
-                enabled: !configRoot.isBusy && !configRoot.isSavingAlerts
-                onClicked: configRoot.saveAlertSettings()
-            }
-        }
-
-        // Notificações do sistema: limiares, aviso antecipado, aviso de reset e silenciar por provedor
-        Flow {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Notificar em (%):")
-                textFormat: Text.PlainText
-            }
-
-            QQC2.SpinBox {
-                from: 1
-                to: 99
-                editable: true
-                value: configRoot.notifyWarning
-                onValueModified: { configRoot.notifyWarning = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
-                Accessible.name: configRoot.safeI18n("Notificar ao atingir esta porcentagem de uso")
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("e em (%):")
-                textFormat: Text.PlainText
-            }
-
-            QQC2.SpinBox {
-                from: 2
-                to: 100
-                editable: true
-                value: configRoot.notifyCritical
-                onValueModified: { configRoot.notifyCritical = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
-                Accessible.name: configRoot.safeI18n("Notificar com urgência ao atingir esta porcentagem de uso")
-            }
-
-            QQC2.CheckBox {
-                text: configRoot.safeI18n("Avisar antes de esgotar")
-                checked: configRoot.notifyEarly
-                onToggled: { configRoot.notifyEarly = checked; configRoot.notifyDirty = true; }
-                Accessible.description: configRoot.safeI18n("Janela nativa: previsão de esgotamento em 30 min; semanal: em 24 h (uma vez por janela)")
-                QQC2.ToolTip.text: Accessible.description
-                QQC2.ToolTip.visible: hovered || activeFocus
-            }
-
-            QQC2.CheckBox {
-                text: configRoot.safeI18n("Avisar quando o limite for liberado")
-                checked: configRoot.notifyReset
-                onToggled: { configRoot.notifyReset = checked; configRoot.notifyDirty = true; }
-                Accessible.description: configRoot.safeI18n("Só para limites que já geraram aviso")
-                QQC2.ToolTip.text: Accessible.description
-                QQC2.ToolTip.visible: hovered || activeFocus
-            }
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Silenciar:")
-                textFormat: Text.PlainText
-            }
-
-            Repeater {
-                model: [
-                    { key: "claude", name: "Claude" },
-                    { key: "codex", name: "Codex" },
-                    { key: "gemini", name: "Gemini" }
-                ]
-                delegate: QQC2.CheckBox {
-                    required property var modelData
-                    text: modelData.name
-                    checked: configRoot.notifyMuted.indexOf(modelData.key) >= 0
-                    onToggled: configRoot.setProviderMuted(modelData.key, checked)
-                    Accessible.name: configRoot.safeI18n("Silenciar notificações do %1", modelData.name)
-                }
-            }
-
-            PlasmaComponents3.Button {
-                text: configRoot.safeI18n("Aplicar")
-                icon.name: "dialog-ok-apply"
-                enabled: !configRoot.isBusy && !configRoot.isSavingNotify
-                onClicked: configRoot.saveNotifySettings()
-            }
-        }
-
-        // Ocultar quando a CLI não está rodando (desligado por padrão)
-        Flow {
-            Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
-
-            QQC2.Label {
-                text: configRoot.safeI18n("Ocultar sem a CLI em execução:")
-                textFormat: Text.PlainText
-            }
-
-            QQC2.ComboBox {
-                textRole: "text"
-                valueRole: "value"
-                model: [
-                    { value: "off", text: configRoot.safeI18n("Nunca") },
-                    { value: "provider", text: configRoot.safeI18n("Só o provedor parado") },
-                    { value: "widget", text: configRoot.safeI18n("O widget inteiro") }
-                ]
-                currentIndex: configRoot.hideMode === "widget" ? 2 : (configRoot.hideMode === "provider" ? 1 : 0)
-                onActivated: { configRoot.hideMode = currentValue; configRoot.hideDirty = true; }
-                Accessible.name: configRoot.safeI18n("Ocultar quando o processo da CLI não está em execução")
-                Accessible.description: configRoot.safeI18n("O widget inteiro reaparece ao abrir o popup ou a configuração; no painel resta uma fatia fina com o menu de botão direito")
-                QQC2.ToolTip.text: Accessible.description
-                QQC2.ToolTip.visible: hovered || activeFocus
-            }
-
-            PlasmaComponents3.Button {
-                text: configRoot.safeI18n("Aplicar")
-                icon.name: "dialog-ok-apply"
-                enabled: !configRoot.isBusy && !configRoot.isSavingHide
-                onClicked: configRoot.saveHideSettings()
-            }
-
-            QQC2.Label {
-                width: parent.width
-                wrapMode: Text.WordWrap
-                color: Kirigami.Theme.disabledTextColor
-                textFormat: Text.PlainText
-                text: configRoot.safeI18n("Para reencontrar o widget oculto: aponte para a fatia fina no painel (ela reabre o monitor e o botão direito leva a Configurar), use o modo de edição do painel, ou, na bandeja do sistema, abra os itens ocultos. O widget nunca some com o popup ou esta janela abertos.")
-            }
-        }
-
-        // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
-        QQC2.CheckBox {
-            id: updateCheckBox
-            text: configRoot.safeI18n("Verificar novas versões uma vez por dia")
-            checked: configRoot.updateCheck
-            enabled: !configRoot.isBusy && !configRoot.isSavingUpdates
-            onToggled: { configRoot.updateCheck = checked; configRoot.saveUpdateSetting(checked); }
-            Accessible.description: configRoot.safeI18n("Consulta o GitHub Releases do widget e o npm do Claude Code, Codex e Gemini CLI; nada é baixado nem instalado")
-            QQC2.ToolTip.text: Accessible.description
-            QQC2.ToolTip.visible: hovered || activeFocus
-        }
-
-        // Seção expansível: Adicionar Nova Conta
-        Kirigami.AbstractCard {
-            id: addAccountSection
-            Layout.fillWidth: true
-
-            contentItem: ColumnLayout {
-                spacing: Kirigami.Units.smallSpacing
-
-                // Cabeçalho retrátil clicável
-                RowLayout {
-                    Layout.fillWidth: true
-                    spacing: Kirigami.Units.smallSpacing
-
-                    Kirigami.Icon {
-                        source: configRoot.isAddFormExpanded ? "list-remove" : "list-add"
-                        implicitWidth: Kirigami.Units.iconSizes.small
-                        implicitHeight: Kirigami.Units.iconSizes.small
-                    }
-
-                    QQC2.Label {
-                        text: configRoot.safeI18n("+ Adicionar Nova Conta")
-                        font.bold: true
-                        font.pointSize: Kirigami.Theme.defaultFont.pointSize
-                        Layout.fillWidth: true
-
-                        MouseArea {
-                            anchors.fill: parent
-                            cursorShape: Qt.PointingHandCursor
-                            onClicked: {
-                                configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
-                            }
-                        }
-                    }
-
-                    PlasmaComponents3.Button {
-                        id: toggleAddFormBtn
-                        text: configRoot.isAddFormExpanded ? configRoot.safeI18n("Recolher") : configRoot.safeI18n("Expandir")
-                        icon.name: configRoot.isAddFormExpanded ? "arrow-up" : "arrow-down"
-                        display: QQC2.AbstractButton.TextBesideIcon
-                        onClicked: {
-                            configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
-                        }
-                    }
-                }
-
-                // Formulário de adição (visível apenas quando expandido)
-                ColumnLayout {
-                    id: addAccountFormLayout
-                    Layout.fillWidth: true
-                    visible: configRoot.isAddFormExpanded
-                    spacing: Kirigami.Units.smallSpacing
-
-                    Kirigami.Separator {
-                        Layout.fillWidth: true
-                    }
-
-                    // Campo 1: Seleção do Provedor
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        QQC2.Label {
-                            text: configRoot.safeI18n("Provedor:")
-                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                            font.bold: true
-                        }
-
-                        Rectangle {
-                            id: providerIndicator
-                            implicitWidth: Math.round(Kirigami.Units.gridUnit * 0.75)
-                            implicitHeight: Math.round(Kirigami.Units.gridUnit * 0.75)
-                            radius: width / 2
-                            color: configRoot.getProviderColor(providerComboBox.currentText)
-                            Layout.alignment: Qt.AlignVCenter
-                            border.width: 1
-                            border.color: Qt.rgba(0, 0, 0, 0.15)
-                        }
-
-                        PlasmaComponents3.ComboBox {
-                            id: providerComboBox
-                            Layout.fillWidth: true
-                            model: ["Claude", "Codex", "Gemini"]
-                            currentIndex: 0
-                            enabled: !configRoot.isBusy
-                        }
-                    }
-
-                    // Campo 2: Apelido / Nome da Conta
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        QQC2.Label {
-                            text: configRoot.safeI18n("Apelido:")
-                            Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                            font.bold: true
-                        }
-
-                        QQC2.TextField {
-                            id: accountNameField
-                            Layout.fillWidth: true
-                            placeholderText: configRoot.safeI18n("Ex: Claude Trabalho, Codex Pessoal (opcional)")
-                            enabled: !configRoot.isBusy
-                        }
-                    }
-
-                    // Ações Rápidas: Captura Direta e Login no Terminal
-                    RowLayout {
-                        Layout.fillWidth: true
-                        Layout.topMargin: Kirigami.Units.smallSpacing
-                        spacing: Kirigami.Units.smallSpacing
-
-                        PlasmaComponents3.Button {
-                            id: captureCurrentAccountBtn
-                            text: configRoot.safeI18n("Capturar Login Atual do CLI")
-                            icon.name: "document-import"
-                            highlighted: true
-                            enabled: !configRoot.isBusy
-                            QQC2.ToolTip.text: configRoot.safeI18n("Detecta e importa a sessão ativa atual no sistema para %1 sem exigir digitação de caminhos", providerComboBox.currentText)
-                            QQC2.ToolTip.visible: hovered
-                            onClicked: {
-                                configRoot.captureCurrentAccount();
-                            }
-                        }
-
-                        PlasmaComponents3.Button {
-                            id: interactiveLoginAccountBtn
-                            text: configRoot.safeI18n("Fazer Login no Terminal...")
-                            icon.name: "utilities-terminal"
-                            enabled: !configRoot.isBusy
-                            QQC2.ToolTip.text: configRoot.safeI18n("Abre terminal isolado para autenticar nova conta de %1 sem sobrescrever o login principal", providerComboBox.currentText)
-                            QQC2.ToolTip.visible: hovered
-                            onClicked: {
-                                configRoot.interactiveLoginAccount();
-                            }
-                        }
-
-                        Item {
-                            Layout.fillWidth: true
-                        }
-                    }
-
-                    // Subseção retrátil: Opções Avançadas (Configuração Manual)
-                    Kirigami.Separator {
-                        Layout.fillWidth: true
-                        Layout.topMargin: Kirigami.Units.smallSpacing
-                    }
-
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Kirigami.Units.smallSpacing
-
-                        Kirigami.Icon {
-                            source: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
-                            implicitWidth: Kirigami.Units.iconSizes.small
-                            implicitHeight: Kirigami.Units.iconSizes.small
-                        }
-
-                        QQC2.Label {
-                            text: configRoot.safeI18n("Opções Avançadas (Configuração Manual)")
-                            font.bold: false
-                            color: Kirigami.Theme.disabledTextColor
-                            Layout.fillWidth: true
-
-                            MouseArea {
-                                anchors.fill: parent
-                                cursorShape: Qt.PointingHandCursor
-                                onClicked: {
-                                    configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
-                                }
-                            }
-                        }
-
-                        PlasmaComponents3.Button {
-                            id: toggleAdvancedBtn
-                            text: configRoot.isAdvancedExpanded ? configRoot.safeI18n("Ocultar") : configRoot.safeI18n("Configurar Manualmente")
-                            icon.name: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
-                            display: QQC2.AbstractButton.TextBesideIcon
-                            onClicked: {
-                                configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
-                            }
-                        }
-                    }
-
-                    ColumnLayout {
-                        id: advancedFieldsLayout
-                        Layout.fillWidth: true
-                        visible: configRoot.isAdvancedExpanded
-                        spacing: Kirigami.Units.smallSpacing
-
-                        // Campo: Caminho das Credenciais / Diretório
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            QQC2.Label {
-                                text: configRoot.safeI18n("Caminho:")
-                                Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                                font.bold: true
-                            }
-
-                            QQC2.TextField {
-                                id: credentialPathField
-                                Layout.fillWidth: true
-                                placeholderText: configRoot.safeI18n("Ex: %1", configRoot.getDefaultPath(providerComboBox.currentText))
-                                enabled: !configRoot.isBusy
-                            }
-
-                            PlasmaComponents3.Button {
-                                id: useDefaultPathBtn
-                                text: configRoot.safeI18n("Usar Caminho Padrão")
-                                icon.name: "document-open"
-                                enabled: !configRoot.isBusy
-                                QQC2.ToolTip.text: configRoot.safeI18n("Preencher com o diretório padrão '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
-                                QQC2.ToolTip.visible: hovered
-                                onClicked: {
-                                    credentialPathField.text = configRoot.getDefaultPath(providerComboBox.currentText);
-                                }
-                            }
-                        }
-
-                        // Campo: Link de Convite Opcional
-                        RowLayout {
-                            Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
-
-                            QQC2.Label {
-                                text: configRoot.safeI18n("Link de Convite:")
-                                Layout.minimumWidth: Kirigami.Units.gridUnit * 7
-                            }
-
-                            QQC2.TextField {
-                                id: inviteUrlField
-                                Layout.fillWidth: true
-                                placeholderText: configRoot.safeI18n("https://... (opcional)")
-                                enabled: !configRoot.isBusy
-                            }
-                        }
-
-                        // Ações Manuais: Limpar e Salvar
-                        RowLayout {
-                            Layout.fillWidth: true
-                            Layout.topMargin: Kirigami.Units.smallSpacing
-                            spacing: Kirigami.Units.smallSpacing
-
-                            Item {
-                                Layout.fillWidth: true
-                            }
-
-                            PlasmaComponents3.Button {
-                                id: clearFormBtn
-                                text: configRoot.safeI18n("Limpar")
-                                icon.name: "edit-clear"
-                                enabled: !configRoot.isBusy
-                                onClicked: {
-                                    configRoot.clearAddAccountForm();
-                                }
-                            }
-
-                            PlasmaComponents3.Button {
-                                id: saveAccountBtn
-                                text: configRoot.safeI18n("Salvar Manualmente")
-                                icon.name: "document-save"
-                                enabled: !configRoot.isBusy
-                                QQC2.ToolTip.text: configRoot.safeI18n("Salvar Conta informando o caminho customizado manualmente")
-                                QQC2.ToolTip.visible: hovered
-                                onClicked: {
-                                    configRoot.addAccount();
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-
-        // Lista de Contas
-        PlasmaComponents3.ScrollView {
+        Shortcut { sequences: ["Ctrl+Tab"]; onActivated: configTabBar.currentIndex = (configTabBar.currentIndex + 1) % configTabBar.count }
+        Shortcut { sequences: ["Ctrl+Shift+Tab"]; onActivated: configTabBar.currentIndex = (configTabBar.currentIndex + configTabBar.count - 1) % configTabBar.count }
+
+        StackLayout {
+            id: configStack
             Layout.fillWidth: true
             Layout.fillHeight: true
+            currentIndex: configTabBar.currentIndex
 
-            contentItem: ListView {
-                id: accountsListView
-                spacing: Kirigami.Units.smallSpacing
+            // Aba Geral: valores editados vivem nas propriedades cfg_* da raiz; o StackLayout mantém todas as abas instanciadas
+            QQC2.ScrollView {
+                id: tabGeralScroll
+                objectName: "tabGeral"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
                 clip: true
-                boundsBehavior: Flickable.StopAtBounds
+                ColumnLayout {
+                    width: tabGeralScroll.availableWidth
+                    spacing: Kirigami.Units.smallSpacing
 
-                model: configRoot.getAccountsList()
-
-                delegate: Kirigami.AbstractCard {
-                    id: cardItem
-                    width: accountsListView.width
-
-                    contentItem: RowLayout {
-                        spacing: Kirigami.Units.smallSpacing * 1.5
-
-                        // Badge colorido do provedor
-                        Rectangle {
-                            implicitWidth: providerTag.implicitWidth + Kirigami.Units.smallSpacing * 2
-                            implicitHeight: providerTag.implicitHeight + Kirigami.Units.smallSpacing
-                            radius: 4
-                            color: configRoot.getProviderColor(modelData.provider)
+                        // Intervalo de Atualização por provedor (mínimo de 60 s); Flow: quebra de linha em largura estreita
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                id: providerTag
-                                anchors.centerIn: parent
-                                text: (modelData.provider || "").toUpperCase()
-                                font.bold: true
-                                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                color: "white"
+                                text: configRoot.safeI18n("Atualizar a cada (s):")
+                            }
+
+                            Repeater {
+                                model: [
+                                    { key: "cfg_refreshIntervalClaude", name: "Claude" },
+                                    { key: "cfg_refreshIntervalCodex", name: "Codex" },
+                                    { key: "cfg_refreshIntervalGemini", name: "Gemini" }
+                                ]
+                                delegate: RowLayout {
+                                    required property var modelData
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    QQC2.Label {
+                                        text: modelData.name
+                                    }
+
+                                    QQC2.SpinBox {
+                                        from: 60
+                                        to: 86400
+                                        stepSize: 60
+                                        editable: true
+                                        value: configRoot[modelData.key]
+                                        onValueModified: configRoot[modelData.key] = value
+                                        QQC2.ToolTip.text: configRoot.safeI18n("Intervalo de Atualização do %1 em segundos (mínimo 60)", modelData.name)
+                                        QQC2.ToolTip.visible: hovered
+                                    }
+                                }
                             }
                         }
 
-                        // Informações da conta: Nome, ID e Saúde
-                        ColumnLayout {
+                        // Alertas: cor por ritmo de uso (padrão) ou por limiares fixos
+                        Flow {
                             Layout.fillWidth: true
-                            spacing: 2
+                            spacing: Kirigami.Units.smallSpacing
 
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Alerta por:")
+                            }
+
+                            QQC2.ComboBox {
+                                id: alertModeCombo
+                                textRole: "text"
+                                valueRole: "value"
+                                model: [
+                                    { value: "pace", text: configRoot.safeI18n("Ritmo de uso") },
+                                    { value: "threshold", text: configRoot.safeI18n("Limiar fixo") }
+                                ]
+                                currentIndex: configRoot.alertMode === "threshold" ? 1 : 0
+                                onActivated: { configRoot.alertMode = currentValue; configRoot.alertsDirty = true; }
+                                Accessible.name: configRoot.safeI18n("Modo de alerta")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Aviso (%):")
+                                enabled: configRoot.alertMode === "threshold"
+                            }
+
+                            QQC2.SpinBox {
+                                from: 1
+                                to: 99
+                                editable: true
+                                enabled: configRoot.alertMode === "threshold"
+                                value: configRoot.alertWarning
+                                onValueModified: { configRoot.alertWarning = value; configRoot.alertsDirty = true; }
+                                Accessible.name: configRoot.safeI18n("Limiar de aviso em porcentagem")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Crítico (%):")
+                                enabled: configRoot.alertMode === "threshold"
+                            }
+
+                            QQC2.SpinBox {
+                                from: 2
+                                to: 100
+                                editable: true
+                                enabled: configRoot.alertMode === "threshold"
+                                value: configRoot.alertCritical
+                                onValueModified: { configRoot.alertCritical = value; configRoot.alertsDirty = true; }
+                                Accessible.name: configRoot.safeI18n("Limiar crítico em porcentagem")
+                            }
+
+                            PlasmaComponents3.Button {
+                                text: configRoot.safeI18n("Aplicar")
+                                icon.name: "dialog-ok-apply"
+                                enabled: !configRoot.isBusy && !configRoot.isSavingAlerts
+                                onClicked: configRoot.saveAlertSettings()
+                            }
+                        }
+
+                        // Ocultar quando a CLI não está rodando (desligado por padrão)
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Ocultar sem a CLI em execução:")
+                                textFormat: Text.PlainText
+                            }
+
+                            QQC2.ComboBox {
+                                textRole: "text"
+                                valueRole: "value"
+                                model: [
+                                    { value: "off", text: configRoot.safeI18n("Nunca") },
+                                    { value: "provider", text: configRoot.safeI18n("Só o provedor parado") },
+                                    { value: "widget", text: configRoot.safeI18n("O widget inteiro") }
+                                ]
+                                currentIndex: configRoot.hideMode === "widget" ? 2 : (configRoot.hideMode === "provider" ? 1 : 0)
+                                onActivated: { configRoot.hideMode = currentValue; configRoot.hideDirty = true; }
+                                Accessible.name: configRoot.safeI18n("Ocultar quando o processo da CLI não está em execução")
+                                Accessible.description: configRoot.safeI18n("O widget inteiro reaparece ao abrir o popup ou a configuração; no painel resta uma fatia fina com o menu de botão direito")
+                                QQC2.ToolTip.text: Accessible.description
+                                QQC2.ToolTip.visible: hovered || activeFocus
+                            }
+
+                            PlasmaComponents3.Button {
+                                text: configRoot.safeI18n("Aplicar")
+                                icon.name: "dialog-ok-apply"
+                                enabled: !configRoot.isBusy && !configRoot.isSavingHide
+                                onClicked: configRoot.saveHideSettings()
+                            }
+
+                            QQC2.Label {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                color: Kirigami.Theme.disabledTextColor
+                                textFormat: Text.PlainText
+                                text: configRoot.safeI18n("Para reencontrar o widget oculto: aponte para a fatia fina no painel (ela reabre o monitor e o botão direito leva a Configurar), use o modo de edição do painel, ou, na bandeja do sistema, abra os itens ocultos. O widget nunca some com o popup ou esta janela abertos.")
+                            }
+                        }
+
+                        // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
+                        QQC2.CheckBox {
+                            id: updateCheckBox
+                            text: configRoot.safeI18n("Verificar novas versões uma vez por dia")
+                            checked: configRoot.updateCheck
+                            enabled: !configRoot.isBusy && !configRoot.isSavingUpdates
+                            onToggled: { configRoot.updateCheck = checked; configRoot.saveUpdateSetting(checked); }
+                            Accessible.description: configRoot.safeI18n("Consulta o GitHub Releases do widget e o npm do Claude Code, Codex e Gemini CLI; nada é baixado nem instalado")
+                            QQC2.ToolTip.text: Accessible.description
+                            QQC2.ToolTip.visible: hovered || activeFocus
+                        }
+                }
+            }
+
+            // Aba Painel: valores editados vivem nas propriedades cfg_* da raiz; o StackLayout mantém todas as abas instanciadas
+            QQC2.ScrollView {
+                id: tabPainelScroll
+                objectName: "tabPainel"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                ColumnLayout {
+                    width: tabPainelScroll.availableWidth
+                    spacing: Kirigami.Units.smallSpacing
+
+                        // Notch compacto: cor de destaque, visibilidade e ordem dos provedores
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Cor de destaque:")
+                            }
+
+                            QQC2.ComboBox {
+                                id: accentCombo
+                                textRole: "name"
+                                valueRole: "key"
+                                model: Presets.accents
+                                currentIndex: Math.max(0, indexOfValue(configRoot.cfg_accentPreset))
+                                onActivated: configRoot.cfg_accentPreset = currentValue
+                                Accessible.name: configRoot.safeI18n("Cor de destaque do Notch")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Provedores no painel:")
+                            }
+
+                            Repeater {
+                                model: configRoot.providerOrderList
+                                delegate: RowLayout {
+                                    required property string modelData
+                                    required property int index
+                                    spacing: 0
+
+                                    QQC2.CheckBox {
+                                        text: Presets.providerInfo(modelData).name
+                                        checked: configRoot.cfg_hiddenProviders.split(",").indexOf(modelData) === -1
+                                        onToggled: configRoot.setProviderHidden(modelData, !checked)
+                                    }
+                                    QQC2.ToolButton {
+                                        icon.name: "go-previous"
+                                        enabled: index > 0
+                                        onClicked: configRoot.moveProvider(index, -1)
+                                        Accessible.name: configRoot.safeI18n("Mover %1 para antes", Presets.providerInfo(modelData).name)
+                                    }
+                                    QQC2.ToolButton {
+                                        icon.name: "go-next"
+                                        enabled: index < configRoot.providerOrderList.length - 1
+                                        onClicked: configRoot.moveProvider(index, 1)
+                                        Accessible.name: configRoot.safeI18n("Mover %1 para depois", Presets.providerInfo(modelData).name)
+                                    }
+                                }
+                            }
+                        }
+
+                        // Estilo do painel: Pílula (padrão), Ring, Text e Bar; modo e centro do anel; tamanho e margem
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Estilo do painel:")
+                                textFormat: Text.PlainText
+                            }
+                            QQC2.ComboBox {
+                                textRole: "name"
+                                valueRole: "key"
+                                model: [
+                                    { key: "pill", name: configRoot.safeI18n("Pílula") },
+                                    { key: "ring", name: configRoot.safeI18n("Ring") },
+                                    { key: "text", name: configRoot.safeI18n("Text (% e ponto)") },
+                                    { key: "bar", name: configRoot.safeI18n("Bar (barras)") }
+                                ]
+                                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.style))
+                                onActivated: configRoot.cfg_panelStyle = currentValue
+                                Accessible.name: configRoot.safeI18n("Estilo do painel")
+                                Accessible.description: configRoot.safeI18n("Pílula: cápsula escura com anéis. Ring: anéis soltos. Text: porcentagem e ponto de nível. Bar: barras verticais com marcador de tempo")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Exibir:")
+                                textFormat: Text.PlainText
+                            }
+                            QQC2.ComboBox {
+                                textRole: "name"
+                                valueRole: "key"
+                                model: [
+                                    { key: "ring", name: configRoot.safeI18n("Só o gráfico") },
+                                    { key: "ringpct", name: configRoot.safeI18n("Gráfico e %") },
+                                    { key: "pct", name: configRoot.safeI18n("Só %") }
+                                ]
+                                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.mode))
+                                onActivated: configRoot.cfg_panelMode = currentValue
+                                Accessible.name: configRoot.safeI18n("Modo de exibição do painel")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Centro do anel:")
+                                textFormat: Text.PlainText
+                            }
+                            QQC2.ComboBox {
+                                textRole: "name"
+                                valueRole: "key"
+                                model: [
+                                    { key: "logo", name: configRoot.safeI18n("Logo") },
+                                    { key: "pct", name: configRoot.safeI18n("%") },
+                                    { key: "logopct", name: configRoot.safeI18n("Logo e %") }
+                                ]
+                                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.center))
+                                onActivated: configRoot.cfg_ringCenter = currentValue
+                                Accessible.name: configRoot.safeI18n("Centro do anel")
+                                Accessible.description: configRoot.safeI18n("Com % no centro o anel cresce para 28 px; em painéis finos volta ao logo")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Tamanho (%):")
+                                textFormat: Text.PlainText
+                            }
+                            QQC2.SpinBox {
+                                from: 80
+                                to: 160
+                                stepSize: 10
+                                editable: true
+                                value: Math.round(configRoot.panelNow.scale * 100)
+                                onValueModified: configRoot.cfg_metricSize = value
+                                Accessible.name: configRoot.safeI18n("Tamanho das métricas em porcentagem (80 a 160)")
+                                QQC2.ToolTip.text: configRoot.safeI18n("80 a 160. O painel limita o tamanho à sua espessura, sem cortar")
+                                QQC2.ToolTip.visible: hovered || activeFocus
+                            }
+
+                            QQC2.CheckBox {
+                                text: configRoot.safeI18n("Margem automática")
+                                checked: configRoot.panelNow.margin < 0
+                                onToggled: configRoot.cfg_panelMargin = checked ? -1 : Kirigami.Units.smallSpacing
+                                Accessible.name: configRoot.safeI18n("Margem interna automática do painel")
+                            }
+                            QQC2.SpinBox {
+                                from: 0
+                                to: 16
+                                editable: true
+                                enabled: configRoot.panelNow.margin >= 0
+                                value: Math.max(0, configRoot.panelNow.margin)
+                                onValueModified: configRoot.cfg_panelMargin = value
+                                Accessible.name: configRoot.safeI18n("Margem interna do painel em pixels (0 a 16)")
+                            }
+
+                            QQC2.Label {
+                                width: parent.width
+                                wrapMode: Text.WordWrap
+                                textFormat: Text.PlainText
+                                text: configRoot.safeI18n("Bar em painel vertical precisa de cerca de 40 px de largura: mais estreito, o painel usa Text ou Pílula em vez de cortar. No estilo Text, \"Só o gráfico\" vale como \"Gráfico e %\". Com % no centro, o anel cresce para 28 px (em painéis finos, volta ao logo).")
+                            }
+                        }
+                }
+            }
+
+            // Aba Popup: valores editados vivem nas propriedades cfg_* da raiz; o StackLayout mantém todas as abas instanciadas
+            QQC2.ScrollView {
+                id: tabPopupScroll
+                objectName: "tabPopup"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                ColumnLayout {
+                    width: tabPopupScroll.availableWidth
+                    spacing: Kirigami.Units.smallSpacing
+
+                        QQC2.CheckBox {
+                            text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
+                            checked: configRoot.cfg_hoverOpen
+                            onToggled: configRoot.cfg_hoverOpen = checked
+                        }
+
+                        // Popup: usado/restante e contagem/data (valem no popup, na dica e no painel), opacidade, cards
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Popup:")
+                                textFormat: Text.PlainText
+                            }
+                            QQC2.ComboBox {
+                                textRole: "name"
+                                valueRole: "key"
+                                model: [
+                                    { key: "used", name: configRoot.safeI18n("Mostrar usado") },
+                                    { key: "remaining", name: configRoot.safeI18n("Mostrar restante") }
+                                ]
+                                currentIndex: configRoot.viewNow.remaining ? 1 : 0
+                                onActivated: configRoot.cfg_usageDisplay = currentValue
+                                Accessible.name: configRoot.safeI18n("Valores exibidos: usado ou restante")
+                                Accessible.description: configRoot.safeI18n("Vale para o popup, a dica e o painel; notificações não mudam")
+                            }
+                            QQC2.ComboBox {
+                                textRole: "name"
+                                valueRole: "key"
+                                model: [
+                                    { key: "countdown", name: configRoot.safeI18n("Liberação em contagem") },
+                                    { key: "date", name: configRoot.safeI18n("Liberação em data e hora") }
+                                ]
+                                currentIndex: configRoot.viewNow.date ? 1 : 0
+                                onActivated: configRoot.cfg_resetDisplay = currentValue
+                                Accessible.name: configRoot.safeI18n("Liberação exibida como contagem regressiva ou data e hora")
+                            }
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Opacidade do fundo (%):")
+                                textFormat: Text.PlainText
+                            }
+                            QQC2.SpinBox {
+                                from: 80
+                                to: 100
+                                stepSize: 5
+                                editable: true
+                                value: Math.round(configRoot.viewNow.opacity * 100)
+                                onValueModified: configRoot.cfg_popupOpacity = value
+                                Accessible.name: configRoot.safeI18n("Opacidade do fundo do popup em porcentagem (80 a 100)")
+                            }
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Provedores no popup:")
+                                textFormat: Text.PlainText
+                            }
+                            Repeater {
+                                model: configRoot.popupOrderList
+                                delegate: RowLayout {
+                                    required property string modelData
+                                    required property int index
+                                    spacing: 0
+
+                                    QQC2.CheckBox {
+                                        text: Presets.providerInfo(modelData).name
+                                        checked: configRoot.cfg_popupHiddenProviders.split(",").indexOf(modelData) === -1
+                                        onToggled: configRoot.setPopupProviderHidden(modelData, !checked)
+                                    }
+                                    QQC2.ToolButton {
+                                        icon.name: "go-previous"
+                                        enabled: index > 0
+                                        onClicked: configRoot.movePopupProvider(index, -1)
+                                        Accessible.name: configRoot.safeI18n("Mover %1 para antes no popup", Presets.providerInfo(modelData).name)
+                                    }
+                                    QQC2.ToolButton {
+                                        icon.name: "go-next"
+                                        enabled: index < configRoot.popupOrderList.length - 1
+                                        onClicked: configRoot.movePopupProvider(index, 1)
+                                        Accessible.name: configRoot.safeI18n("Mover %1 para depois no popup", Presets.providerInfo(modelData).name)
+                                    }
+                                }
+                            }
+                        }
+                }
+            }
+
+            // Aba Contas
+            ColumnLayout {
+                objectName: "tabContas"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                spacing: Kirigami.Units.smallSpacing
+
+                // Seção expansível: Adicionar Nova Conta
+                Kirigami.AbstractCard {
+                    id: addAccountSection
+                    Layout.fillWidth: true
+
+                    contentItem: ColumnLayout {
+                        spacing: Kirigami.Units.smallSpacing
+
+                        // Cabeçalho retrátil clicável
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Kirigami.Icon {
+                                source: configRoot.isAddFormExpanded ? "list-remove" : "list-add"
+                                implicitWidth: Kirigami.Units.iconSizes.small
+                                implicitHeight: Kirigami.Units.iconSizes.small
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("+ Adicionar Nova Conta")
+                                font.bold: true
+                                font.pointSize: Kirigami.Theme.defaultFont.pointSize
+                                Layout.fillWidth: true
+
+                                MouseArea {
+                                    anchors.fill: parent
+                                    cursorShape: Qt.PointingHandCursor
+                                    onClicked: {
+                                        configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
+                                    }
+                                }
+                            }
+
+                            PlasmaComponents3.Button {
+                                id: toggleAddFormBtn
+                                text: configRoot.isAddFormExpanded ? configRoot.safeI18n("Recolher") : configRoot.safeI18n("Expandir")
+                                icon.name: configRoot.isAddFormExpanded ? "arrow-up" : "arrow-down"
+                                display: QQC2.AbstractButton.TextBesideIcon
+                                onClicked: {
+                                    configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
+                                }
+                            }
+                        }
+
+                        // Formulário de adição (visível apenas quando expandido)
+                        ColumnLayout {
+                            id: addAccountFormLayout
+                            Layout.fillWidth: true
+                            visible: configRoot.isAddFormExpanded
+                            spacing: Kirigami.Units.smallSpacing
+
+                            Kirigami.Separator {
+                                Layout.fillWidth: true
+                            }
+
+                            // Campo 1: Seleção do Provedor
                             RowLayout {
+                                Layout.fillWidth: true
                                 spacing: Kirigami.Units.smallSpacing
 
                                 QQC2.Label {
-                                    text: modelData.name || modelData.id
+                                    text: configRoot.safeI18n("Provedor:")
+                                    Layout.minimumWidth: Kirigami.Units.gridUnit * 7
                                     font.bold: true
-                                    font.pointSize: Kirigami.Theme.defaultFont.pointSize
-                                    elide: Text.ElideRight
                                 }
 
                                 Rectangle {
-                                    implicitWidth: healthText.implicitWidth + Kirigami.Units.smallSpacing
-                                    implicitHeight: healthText.implicitHeight + 2
-                                    radius: 3
-                                    color: {
-                                        if (modelData.healthStatus === "valid") return "#27ae60";
-                                        if (modelData.healthStatus === "session_expired") return "#f39c12";
-                                        return "#7f8c8d";
-                                    }
+                                    id: providerIndicator
+                                    implicitWidth: Math.round(Kirigami.Units.gridUnit * 0.75)
+                                    implicitHeight: Math.round(Kirigami.Units.gridUnit * 0.75)
+                                    radius: width / 2
+                                    color: configRoot.getProviderColor(providerComboBox.currentText)
+                                    Layout.alignment: Qt.AlignVCenter
+                                    border.width: 1
+                                    border.color: Qt.rgba(0, 0, 0, 0.15)
+                                }
 
-                                    QQC2.Label {
-                                        id: healthText
-                                        anchors.centerIn: parent
-                                        text: {
-                                            if (modelData.healthStatus === "valid") return configRoot.safeI18n("Ativa");
-                                            if (modelData.healthStatus === "session_expired") return configRoot.safeI18n("Expirada");
-                                            if (modelData.healthStatus === "not_configured") return configRoot.safeI18n("Não config.");
-                                            return modelData.healthStatus;
-                                        }
-                                        font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
-                                        font.bold: true
-                                        color: "white"
-                                    }
+                                PlasmaComponents3.ComboBox {
+                                    id: providerComboBox
+                                    Layout.fillWidth: true
+                                    model: ["Claude", "Codex", "Gemini"]
+                                    currentIndex: 0
+                                    enabled: !configRoot.isBusy
                                 }
                             }
 
+                            // Campo 2: Apelido / Nome da Conta
                             RowLayout {
+                                Layout.fillWidth: true
                                 spacing: Kirigami.Units.smallSpacing
 
                                 QQC2.Label {
-                                    text: "ID: " + modelData.id
-                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                    color: Kirigami.Theme.disabledTextColor
+                                    text: configRoot.safeI18n("Apelido:")
+                                    Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                                    font.bold: true
+                                }
+
+                                QQC2.TextField {
+                                    id: accountNameField
+                                    Layout.fillWidth: true
+                                    placeholderText: configRoot.safeI18n("Ex: Claude Trabalho, Codex Pessoal (opcional)")
+                                    enabled: !configRoot.isBusy
+                                }
+                            }
+
+                            // Ações Rápidas: Captura Direta e Login no Terminal
+                            RowLayout {
+                                Layout.fillWidth: true
+                                Layout.topMargin: Kirigami.Units.smallSpacing
+                                spacing: Kirigami.Units.smallSpacing
+
+                                PlasmaComponents3.Button {
+                                    id: captureCurrentAccountBtn
+                                    text: configRoot.safeI18n("Capturar Login Atual do CLI")
+                                    icon.name: "document-import"
+                                    highlighted: true
+                                    enabled: !configRoot.isBusy
+                                    QQC2.ToolTip.text: configRoot.safeI18n("Detecta e importa a sessão ativa atual no sistema para %1 sem exigir digitação de caminhos", providerComboBox.currentText)
+                                    QQC2.ToolTip.visible: hovered
+                                    onClicked: {
+                                        configRoot.captureCurrentAccount();
+                                    }
+                                }
+
+                                PlasmaComponents3.Button {
+                                    id: interactiveLoginAccountBtn
+                                    text: configRoot.safeI18n("Fazer Login no Terminal...")
+                                    icon.name: "utilities-terminal"
+                                    enabled: !configRoot.isBusy
+                                    QQC2.ToolTip.text: configRoot.safeI18n("Abre terminal isolado para autenticar nova conta de %1 sem sobrescrever o login principal", providerComboBox.currentText)
+                                    QQC2.ToolTip.visible: hovered
+                                    onClicked: {
+                                        configRoot.interactiveLoginAccount();
+                                    }
+                                }
+
+                                Item {
+                                    Layout.fillWidth: true
+                                }
+                            }
+
+                            // Subseção retrátil: Opções Avançadas (Configuração Manual)
+                            Kirigami.Separator {
+                                Layout.fillWidth: true
+                                Layout.topMargin: Kirigami.Units.smallSpacing
+                            }
+
+                            RowLayout {
+                                Layout.fillWidth: true
+                                spacing: Kirigami.Units.smallSpacing
+
+                                Kirigami.Icon {
+                                    source: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
+                                    implicitWidth: Kirigami.Units.iconSizes.small
+                                    implicitHeight: Kirigami.Units.iconSizes.small
                                 }
 
                                 QQC2.Label {
-                                    text: "•"
-                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                    text: configRoot.safeI18n("Opções Avançadas (Configuração Manual)")
+                                    font.bold: false
                                     color: Kirigami.Theme.disabledTextColor
+                                    Layout.fillWidth: true
+
+                                    MouseArea {
+                                        anchors.fill: parent
+                                        cursorShape: Qt.PointingHandCursor
+                                        onClicked: {
+                                            configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
+                                        }
+                                    }
                                 }
 
-                                QQC2.Label {
-                                    text: modelData.source === "auto" ? configRoot.safeI18n("Detecção automática") : configRoot.safeI18n("Configuração manual")
-                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                    color: Kirigami.Theme.disabledTextColor
+                                PlasmaComponents3.Button {
+                                    id: toggleAdvancedBtn
+                                    text: configRoot.isAdvancedExpanded ? configRoot.safeI18n("Ocultar") : configRoot.safeI18n("Configurar Manualmente")
+                                    icon.name: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
+                                    display: QQC2.AbstractButton.TextBesideIcon
+                                    onClicked: {
+                                        configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
+                                    }
                                 }
                             }
-                        }
 
-                        // Botão de Renomear Conta
-                        PlasmaComponents3.Button {
-                            id: renameAccountBtn
-                            icon.name: "document-edit"
-                            text: configRoot.safeI18n("Renomear conta")
-                            display: QQC2.AbstractButton.IconOnly
-                            enabled: !configRoot.isBusy
+                            ColumnLayout {
+                                id: advancedFieldsLayout
+                                Layout.fillWidth: true
+                                visible: configRoot.isAdvancedExpanded
+                                spacing: Kirigami.Units.smallSpacing
 
-                            QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: configRoot.safeI18n("Renomear conta '%1'", modelData.name || modelData.id)
+                                // Campo: Caminho das Credenciais / Diretório
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
 
-                            onClicked: {
-                                configRoot.requestRenameAccount(modelData);
-                            }
-                        }
+                                    QQC2.Label {
+                                        text: configRoot.safeI18n("Caminho:")
+                                        Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                                        font.bold: true
+                                    }
 
-                        // Botão de Excluir / Remover Conta
-                        PlasmaComponents3.Button {
-                            id: deleteAccountBtn
-                            icon.name: "delete"
-                            text: configRoot.safeI18n("Remover conta")
-                            display: QQC2.AbstractButton.IconOnly
-                            enabled: !configRoot.isBusy
+                                    QQC2.TextField {
+                                        id: credentialPathField
+                                        Layout.fillWidth: true
+                                        placeholderText: configRoot.safeI18n("Ex: %1", configRoot.getDefaultPath(providerComboBox.currentText))
+                                        enabled: !configRoot.isBusy
+                                    }
 
-                            QQC2.ToolTip.visible: hovered
-                            QQC2.ToolTip.text: configRoot.safeI18n("Remover conta '%1'", modelData.name || modelData.id)
+                                    PlasmaComponents3.Button {
+                                        id: useDefaultPathBtn
+                                        text: configRoot.safeI18n("Usar Caminho Padrão")
+                                        icon.name: "document-open"
+                                        enabled: !configRoot.isBusy
+                                        QQC2.ToolTip.text: configRoot.safeI18n("Preencher com o diretório padrão '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
+                                        QQC2.ToolTip.visible: hovered
+                                        onClicked: {
+                                            credentialPathField.text = configRoot.getDefaultPath(providerComboBox.currentText);
+                                        }
+                                    }
+                                }
 
-                            onClicked: {
-                                configRoot.requestDeleteAccount(modelData);
+                                // Campo: Link de Convite Opcional
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    QQC2.Label {
+                                        text: configRoot.safeI18n("Link de Convite:")
+                                        Layout.minimumWidth: Kirigami.Units.gridUnit * 7
+                                    }
+
+                                    QQC2.TextField {
+                                        id: inviteUrlField
+                                        Layout.fillWidth: true
+                                        placeholderText: configRoot.safeI18n("https://... (opcional)")
+                                        enabled: !configRoot.isBusy
+                                    }
+                                }
+
+                                // Ações Manuais: Limpar e Salvar
+                                RowLayout {
+                                    Layout.fillWidth: true
+                                    Layout.topMargin: Kirigami.Units.smallSpacing
+                                    spacing: Kirigami.Units.smallSpacing
+
+                                    Item {
+                                        Layout.fillWidth: true
+                                    }
+
+                                    PlasmaComponents3.Button {
+                                        id: clearFormBtn
+                                        text: configRoot.safeI18n("Limpar")
+                                        icon.name: "edit-clear"
+                                        enabled: !configRoot.isBusy
+                                        onClicked: {
+                                            configRoot.clearAddAccountForm();
+                                        }
+                                    }
+
+                                    PlasmaComponents3.Button {
+                                        id: saveAccountBtn
+                                        text: configRoot.safeI18n("Salvar Manualmente")
+                                        icon.name: "document-save"
+                                        enabled: !configRoot.isBusy
+                                        QQC2.ToolTip.text: configRoot.safeI18n("Salvar Conta informando o caminho customizado manualmente")
+                                        QQC2.ToolTip.visible: hovered
+                                        onClicked: {
+                                            configRoot.addAccount();
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
                 }
 
-                // Placeholder se não houver contas
-                PlasmaExtras.PlaceholderMessage {
-                    anchors.centerIn: parent
-                    width: parent.width - Kirigami.Units.gridUnit * 2
-                    visible: accountsListView.count === 0
-                    iconName: "im-user-offline"
-                    text: configRoot.safeI18n("Nenhuma conta cadastrada")
-                    explanation: configRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
-                }
-            }
-        }
-
-        // Perfis Órfãos: perfis em disco sem Conta cadastrada (nunca apagados sem confirmação)
-        ColumnLayout {
-            Layout.fillWidth: true
-            visible: configRoot.orphanProfiles.length > 0
-            spacing: Kirigami.Units.smallSpacing
-
-            Kirigami.Heading {
-                level: 4
-                text: configRoot.safeI18n("Perfis Órfãos")
-            }
-
-            Repeater {
-                model: configRoot.orphanProfiles
-
-                RowLayout {
+                // Lista de Contas
+                PlasmaComponents3.ScrollView {
                     Layout.fillWidth: true
+                    Layout.fillHeight: true
+
+                    contentItem: ListView {
+                        id: accountsListView
+                        spacing: Kirigami.Units.smallSpacing
+                        clip: true
+                        boundsBehavior: Flickable.StopAtBounds
+
+                        model: configRoot.getAccountsList()
+
+                        delegate: Kirigami.AbstractCard {
+                            id: cardItem
+                            width: accountsListView.width
+
+                            contentItem: RowLayout {
+                                spacing: Kirigami.Units.smallSpacing * 1.5
+
+                                // Badge colorido do provedor
+                                Rectangle {
+                                    implicitWidth: providerTag.implicitWidth + Kirigami.Units.smallSpacing * 2
+                                    implicitHeight: providerTag.implicitHeight + Kirigami.Units.smallSpacing
+                                    radius: 4
+                                    color: configRoot.getProviderColor(modelData.provider)
+
+                                    QQC2.Label {
+                                        id: providerTag
+                                        anchors.centerIn: parent
+                                        text: (modelData.provider || "").toUpperCase()
+                                        font.bold: true
+                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                        color: "white"
+                                    }
+                                }
+
+                                // Informações da conta: Nome, ID e Saúde
+                                ColumnLayout {
+                                    Layout.fillWidth: true
+                                    spacing: 2
+
+                                    RowLayout {
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        QQC2.Label {
+                                            text: modelData.name || modelData.id
+                                            font.bold: true
+                                            font.pointSize: Kirigami.Theme.defaultFont.pointSize
+                                            elide: Text.ElideRight
+                                        }
+
+                                        Rectangle {
+                                            implicitWidth: healthText.implicitWidth + Kirigami.Units.smallSpacing
+                                            implicitHeight: healthText.implicitHeight + 2
+                                            radius: 3
+                                            color: {
+                                                if (modelData.healthStatus === "valid") return "#27ae60";
+                                                if (modelData.healthStatus === "session_expired") return "#f39c12";
+                                                return "#7f8c8d";
+                                            }
+
+                                            QQC2.Label {
+                                                id: healthText
+                                                anchors.centerIn: parent
+                                                text: {
+                                                    if (modelData.healthStatus === "valid") return configRoot.safeI18n("Ativa");
+                                                    if (modelData.healthStatus === "session_expired") return configRoot.safeI18n("Expirada");
+                                                    if (modelData.healthStatus === "not_configured") return configRoot.safeI18n("Não config.");
+                                                    return modelData.healthStatus;
+                                                }
+                                                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
+                                                font.bold: true
+                                                color: "white"
+                                            }
+                                        }
+                                    }
+
+                                    RowLayout {
+                                        spacing: Kirigami.Units.smallSpacing
+
+                                        QQC2.Label {
+                                            text: "ID: " + modelData.id
+                                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                            color: Kirigami.Theme.disabledTextColor
+                                        }
+
+                                        QQC2.Label {
+                                            text: "•"
+                                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                            color: Kirigami.Theme.disabledTextColor
+                                        }
+
+                                        QQC2.Label {
+                                            text: modelData.source === "auto" ? configRoot.safeI18n("Detecção automática") : configRoot.safeI18n("Configuração manual")
+                                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                            color: Kirigami.Theme.disabledTextColor
+                                        }
+                                    }
+                                }
+
+                                // Botão de Renomear Conta
+                                PlasmaComponents3.Button {
+                                    id: renameAccountBtn
+                                    icon.name: "document-edit"
+                                    text: configRoot.safeI18n("Renomear conta")
+                                    display: QQC2.AbstractButton.IconOnly
+                                    enabled: !configRoot.isBusy
+
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: configRoot.safeI18n("Renomear conta '%1'", modelData.name || modelData.id)
+
+                                    onClicked: {
+                                        configRoot.requestRenameAccount(modelData);
+                                    }
+                                }
+
+                                // Botão de Excluir / Remover Conta
+                                PlasmaComponents3.Button {
+                                    id: deleteAccountBtn
+                                    icon.name: "delete"
+                                    text: configRoot.safeI18n("Remover conta")
+                                    display: QQC2.AbstractButton.IconOnly
+                                    enabled: !configRoot.isBusy
+
+                                    QQC2.ToolTip.visible: hovered
+                                    QQC2.ToolTip.text: configRoot.safeI18n("Remover conta '%1'", modelData.name || modelData.id)
+
+                                    onClicked: {
+                                        configRoot.requestDeleteAccount(modelData);
+                                    }
+                                }
+                            }
+                        }
+
+                        // Placeholder se não houver contas
+                        PlasmaExtras.PlaceholderMessage {
+                            anchors.centerIn: parent
+                            width: parent.width - Kirigami.Units.gridUnit * 2
+                            visible: accountsListView.count === 0
+                            iconName: "im-user-offline"
+                            text: configRoot.safeI18n("Nenhuma conta cadastrada")
+                            explanation: configRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
+                        }
+                    }
+                }
+
+                // Perfis Órfãos: perfis em disco sem Conta cadastrada (nunca apagados sem confirmação)
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    visible: configRoot.orphanProfiles.length > 0
                     spacing: Kirigami.Units.smallSpacing
 
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        elide: Text.ElideRight
-                        textFormat: Text.PlainText
-                        text: (modelData.provider || "").toUpperCase() + " · " + (modelData.email || modelData.id)
+                    Kirigami.Heading {
+                        level: 4
+                        text: configRoot.safeI18n("Perfis Órfãos")
                     }
 
-                    PlasmaComponents3.Button {
-                        text: configRoot.safeI18n("Reimportar")
-                        enabled: !configRoot.isBusy
-                        onClicked: configRoot.runOrphanAction("--reimport-orphan", modelData, false)
-                    }
+                    Repeater {
+                        model: configRoot.orphanProfiles
 
-                    PlasmaComponents3.Button {
-                        text: configRoot.safeI18n("Excluir")
-                        icon.name: "delete"
-                        enabled: !configRoot.isBusy
-                        onClicked: {
-                            configRoot.orphanPendingDeletion = modelData;
-                            orphanDeleteDialog.open();
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                Layout.fillWidth: true
+                                elide: Text.ElideRight
+                                textFormat: Text.PlainText
+                                text: (modelData.provider || "").toUpperCase() + " · " + (modelData.email || modelData.id)
+                            }
+
+                            PlasmaComponents3.Button {
+                                text: configRoot.safeI18n("Reimportar")
+                                enabled: !configRoot.isBusy
+                                onClicked: configRoot.runOrphanAction("--reimport-orphan", modelData, false)
+                            }
+
+                            PlasmaComponents3.Button {
+                                text: configRoot.safeI18n("Excluir")
+                                icon.name: "delete"
+                                enabled: !configRoot.isBusy
+                                onClicked: {
+                                    configRoot.orphanPendingDeletion = modelData;
+                                    orphanDeleteDialog.open();
+                                }
+                            }
                         }
                     }
+                }
+            }
+
+            // Aba Notificações: valores editados vivem nas propriedades cfg_* da raiz; o StackLayout mantém todas as abas instanciadas
+            QQC2.ScrollView {
+                id: tabNotifScroll
+                objectName: "tabNotif"
+                Layout.fillWidth: true
+                Layout.fillHeight: true
+                contentWidth: availableWidth
+                clip: true
+                ColumnLayout {
+                    width: tabNotifScroll.availableWidth
+                    spacing: Kirigami.Units.smallSpacing
+
+                        // Estado da Sessão do Claude Code e do Codex (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.CheckBox {
+                                text: configRoot.safeI18n("Mostrar o estado da sessão (Claude e Codex)")
+                                checked: configRoot.cfg_sessionState
+                                onToggled: configRoot.cfg_sessionState = checked
+                                Accessible.description: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
+                                QQC2.ToolTip.text: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
+                                QQC2.ToolTip.visible: hovered || activeFocus
+                            }
+                            QQC2.CheckBox {
+                                text: configRoot.safeI18n("Abrir o Notch por 5 s quando a sessão terminar ou pedir algo")
+                                enabled: configRoot.cfg_sessionState
+                                checked: configRoot.cfg_sessionAutoOpen
+                                onToggled: configRoot.cfg_sessionAutoOpen = checked
+                            }
+                            QQC2.CheckBox {
+                                text: configRoot.safeI18n("Tocar um som nesses momentos")
+                                enabled: configRoot.cfg_sessionState
+                                checked: configRoot.cfg_sessionSound
+                                onToggled: configRoot.cfg_sessionSound = checked
+                            }
+                        }
+
+                        // Notificações do sistema: limiares, aviso antecipado, aviso de reset e silenciar por provedor
+                        Flow {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Notificar em (%):")
+                                textFormat: Text.PlainText
+                            }
+
+                            QQC2.SpinBox {
+                                from: 1
+                                to: 99
+                                editable: true
+                                value: configRoot.notifyWarning
+                                onValueModified: { configRoot.notifyWarning = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
+                                Accessible.name: configRoot.safeI18n("Notificar ao atingir esta porcentagem de uso")
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("e em (%):")
+                                textFormat: Text.PlainText
+                            }
+
+                            QQC2.SpinBox {
+                                from: 2
+                                to: 100
+                                editable: true
+                                value: configRoot.notifyCritical
+                                onValueModified: { configRoot.notifyCritical = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
+                                Accessible.name: configRoot.safeI18n("Notificar com urgência ao atingir esta porcentagem de uso")
+                            }
+
+                            QQC2.CheckBox {
+                                text: configRoot.safeI18n("Avisar antes de esgotar")
+                                checked: configRoot.notifyEarly
+                                onToggled: { configRoot.notifyEarly = checked; configRoot.notifyDirty = true; }
+                                Accessible.description: configRoot.safeI18n("Janela nativa: previsão de esgotamento em 30 min; semanal: em 24 h (uma vez por janela)")
+                                QQC2.ToolTip.text: Accessible.description
+                                QQC2.ToolTip.visible: hovered || activeFocus
+                            }
+
+                            QQC2.CheckBox {
+                                text: configRoot.safeI18n("Avisar quando o limite for liberado")
+                                checked: configRoot.notifyReset
+                                onToggled: { configRoot.notifyReset = checked; configRoot.notifyDirty = true; }
+                                Accessible.description: configRoot.safeI18n("Só para limites que já geraram aviso")
+                                QQC2.ToolTip.text: Accessible.description
+                                QQC2.ToolTip.visible: hovered || activeFocus
+                            }
+
+                            QQC2.Label {
+                                text: configRoot.safeI18n("Silenciar:")
+                                textFormat: Text.PlainText
+                            }
+
+                            Repeater {
+                                model: [
+                                    { key: "claude", name: "Claude" },
+                                    { key: "codex", name: "Codex" },
+                                    { key: "gemini", name: "Gemini" }
+                                ]
+                                delegate: QQC2.CheckBox {
+                                    required property var modelData
+                                    text: modelData.name
+                                    checked: configRoot.notifyMuted.indexOf(modelData.key) >= 0
+                                    onToggled: configRoot.setProviderMuted(modelData.key, checked)
+                                    Accessible.name: configRoot.safeI18n("Silenciar notificações do %1", modelData.name)
+                                }
+                            }
+
+                            PlasmaComponents3.Button {
+                                text: configRoot.safeI18n("Aplicar")
+                                icon.name: "dialog-ok-apply"
+                                enabled: !configRoot.isBusy && !configRoot.isSavingNotify
+                                onClicked: configRoot.saveNotifySettings()
+                            }
+                        }
                 }
             }
         }
