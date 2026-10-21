@@ -110,8 +110,8 @@ def test_config_general_gui_add_account_form_elements():
     config_general_path = UI_DIR / "configGeneral.qml"
     content = config_general_path.read_text(encoding="utf-8")
 
-    # 1. Expandable section "+ Add New Account"
-    assert "+ Add New Account" in content
+    # 1. Expandable section "Add New Account"
+    assert "Add New Account" in content
     assert "addAccountSection" in content
     assert "toggleAddFormBtn" in content
     assert "isAddFormExpanded" in content

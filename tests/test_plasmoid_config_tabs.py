@@ -146,6 +146,7 @@ def config(tmp_path, drive="", size=(560, 640), pngs=None):
         shutil.copy(UI_DIR / f, run / f)
     shutil.copy(UI_DIR / "configGeneral.qml", run / "ConfigGeneral.qml")
     shutil.copy(UI_DIR / "WrapCheckBox.qml", run / "WrapCheckBox.qml")
+    shutil.copy(UI_DIR / "PlainTip.qml", run / "PlainTip.qml")
     (run / "h.qml").write_text(HARNESS % {"w": size[0], "h": size[1], "data": json.dumps(fixture()), "drive": drive, "pngs": json.dumps(pngs or [])})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
     res = subprocess.run(["qml6", "-I", str(tmp_path / "imp"), str(run / "h.qml")], env=env, capture_output=True, text=True, timeout=90)
