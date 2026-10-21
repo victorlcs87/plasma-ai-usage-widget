@@ -20,8 +20,15 @@ Kirigami.AbstractCard {
     // ADR-0007: dados desatualizados (servidos do cache) ou ausentes (sem cache nem histórico local)
     readonly property bool isStale: cardRoot.accountData?.stale === true
     readonly property bool hasNoData: cardRoot.accountData?.no_data === true
+    // Dado desatualizado cuja liberacao ja passou: o percentual antigo nao vale mais
+    function staleExpired(iso) {
+        var t = iso ? Date.parse(iso) : NaN;
+        return cardRoot.isStale && !isNaN(t) && t <= Date.now();
+    }
     readonly property bool nativeUnknown: cardRoot.hasNoData || cardRoot.accountData?.native_window?.usage_percentage === null
+        || cardRoot.staleExpired(cardRoot.accountData?.native_window?.release_time)
     readonly property bool weeklyUnknown: cardRoot.hasNoData || cardRoot.accountData?.weekly_window?.usage_percentage === null
+        || cardRoot.staleExpired(cardRoot.accountData?.weekly_window?.cycle_reset_time)
 
     signal accountSwitched()
 

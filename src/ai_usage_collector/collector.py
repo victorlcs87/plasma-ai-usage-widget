@@ -351,6 +351,7 @@ def _remove_account_locked(
         save_config(updated_cfg, cfg_file)
 
     # Sync cache if exists
+    refresh.forget_account(c_file.with_name(refresh.STATE_FILENAME), prov, acc_id)
     if c_file.exists():
         cache_data = load_status_cache(c_file)
         if cache_data is not None:

@@ -1,9 +1,12 @@
 """Atualizacao periodica por provedor (ADR-0007): 429/retry-after, backoff, cache desatualizado."""
 
+import http.client
 import json
 import os
 import stat
 import urllib.error
+import urllib.request
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -447,3 +450,64 @@ def test_no_data_after_429_keeps_api_baseline_and_never_notes():
     status = {"agents": {"claude": {"accounts": [entry]}}}
     apply_limit_changes(status, {"agents": {"claude": {"accounts": [previous]}}}, T0)
     assert "limit_changes" not in entry
+
+
+def _req():
+    return urllib.request.Request("https://api.anthropic.com/x")
+
+
+@pytest.mark.parametrize("exc", [http.client.IncompleteRead(b"x"), http.client.BadStatusLine("x")])
+def test_http_client_errors_degrade_to_network(monkeypatch, exc):
+    def boom(*a, **k):
+        raise exc
+
+    monkeypatch.setattr("urllib.request.urlopen", boom)
+    with pytest.raises(refresh.FetchError) as e:
+        refresh.request_json(_req(), 1)
+    assert e.value.kind == "network"
+
+
+@pytest.mark.parametrize("hostile", [1e18, 1e300, "99999999999999"])
+def test_hostile_paused_until_is_clamped(tmp_path, hostile):
+    path = tmp_path / "refresh_state.json"
+    path.write_text(json.dumps({"credentials": {"claude:a": {"paused_until": hostile, "failures": 10**6}}}))
+    cyc = refresh.RefreshCycle(path, T0)
+    entry = cyc.state["claude:a"]
+    assert entry["paused_until"] <= T0.timestamp() + refresh.MAX_PAUSE_SECONDS
+    assert entry["failures"] <= refresh.MAX_FAILURES
+    cyc.save()  # nao quebra
+    assert refresh._iso(1e300)  # nao levanta
+
+
+def test_pause_is_saved_even_if_cycle_raises(tmp_path):
+    path = tmp_path / "refresh_state.json"
+    with pytest.raises(RuntimeError):
+        with refresh.cycle(path, T0) as cyc:
+            cyc.state["claude:a"] = {"paused_until": T0.timestamp() + 60, "failures": 1}
+            raise RuntimeError("coleta falhou")
+    assert "claude:a" in json.loads(path.read_text())["credentials"]
+    assert (path.with_suffix(".lock").stat().st_mode & 0o777) == 0o600
+
+
+def test_idle_account_with_null_windows_is_a_valid_response(env, tmp_path):
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    status = env["run"]("--provider", "claude", http=FakeHttp(claude=[{"five_hour": None, "seven_day": None}]))
+    acc = acc_of(status, "claude")
+    assert acc["stale"] is False and "no_data" not in acc and "fetch_error" not in acc
+
+
+def test_remove_account_forgets_its_pause(env, tmp_path):
+    from ai_usage_collector.collector import remove_account
+
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    env["run"]("--provider", "claude", http=FakeHttp(claude=[http_error(429, "226")]))
+    state_path = env["cache"].with_name(refresh.STATE_FILENAME)
+    assert "claude:a" in json.loads(state_path.read_text())["credentials"]
+    ok, _ = remove_account("claude", "a", env["config"], env["cache"])
+    assert ok and "claude:a" not in json.loads(state_path.read_text())["credentials"]
+
+
+def test_stale_card_hides_percentage_after_release_passed():
+    qml = (Path(__file__).parent.parent / "plasmoid/contents/ui/AccountCard.qml").read_text()
+    assert "staleExpired(cardRoot.accountData?.native_window?.release_time)" in qml
+    assert "staleExpired(cardRoot.accountData?.weekly_window?.cycle_reset_time)" in qml

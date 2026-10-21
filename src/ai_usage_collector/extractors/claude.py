@@ -391,7 +391,7 @@ def fetch_claude_usage_api(
     )
     return refresh.fetch_json(
         "claude", access_token, req, timeout, opener=_NO_REDIRECT,
-        valid=lambda d: isinstance(d.get("five_hour"), dict) or isinstance(d.get("seven_day"), dict),
+        valid=lambda d: "five_hour" in d or "seven_day" in d,  # valor nulo = conta ociosa, resposta valida
     )
 
 

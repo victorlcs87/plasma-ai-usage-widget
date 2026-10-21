@@ -14,6 +14,8 @@ from __future__ import annotations
 import copy
 import fcntl
 import hashlib
+import http.client
+import os
 import json
 import math
 import urllib.error
@@ -33,6 +35,7 @@ DEFAULT_INTERVAL_SECONDS = 300
 BACKOFF_BASE_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
 MAX_PAUSE_SECONDS = 86400
+MAX_FAILURES = 20  # 2 ** 20 ja excede BACKOFF_MAX_SECONDS
 
 MESSAGES = {
     "rate_limited": "Limite de requisições do provedor atingido (HTTP 429); aguardando a pausa pedida.",
@@ -53,7 +56,10 @@ def utcnow() -> datetime:
 
 
 def _iso(ts: float) -> str:
-    return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    try:
+        return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+    except (OverflowError, OSError, ValueError):
+        return datetime.max.replace(tzinfo=timezone.utc).isoformat()
 
 
 def _hash(value: str) -> str:
@@ -130,7 +136,7 @@ def request_json(
         raise FetchError("auth" if e.code in (401, 403) else "network") from None
     except ValueError:  # JSON invalido
         raise FetchError("invalid_response") from None
-    except OSError:  # URLError, timeout
+    except (OSError, http.client.HTTPException):  # URLError, timeout, IncompleteRead, BadStatusLine
         raise FetchError("network") from None
     if not isinstance(data, dict) or (valid is not None and not valid(data)):
         raise FetchError("invalid_response")
@@ -145,8 +151,10 @@ def _finite(value: Any) -> float | None:
     return number if math.isfinite(number) else None
 
 
-def _load_state(path: Path) -> dict[str, dict[str, Any]]:
-    """Pausas validas do arquivo de estado; entradas corrompidas sao descartadas."""
+def _load_state(path: Path, now_ts: float) -> dict[str, dict[str, Any]]:
+    """Pausas validas do arquivo de estado; entradas corrompidas sao descartadas.
+
+    `paused_until` fica limitado a now + MAX_PAUSE_SECONDS (relogio recuado ou valor hostil)."""
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
@@ -155,10 +163,13 @@ def _load_state(path: Path) -> dict[str, dict[str, Any]]:
     state: dict[str, dict[str, Any]] = {}
     for key, entry in (creds.items() if isinstance(creds, dict) else []):
         paused_until = _finite(entry.get("paused_until")) if isinstance(entry, dict) else None
-        if paused_until is None:
+        if paused_until is None or paused_until < 0:
             continue
         failures = _finite(entry.get("failures"))
-        state[str(key)] = {"paused_until": paused_until, "failures": int(failures) if failures and failures > 0 else 0}
+        state[str(key)] = {
+            "paused_until": min(paused_until, now_ts + MAX_PAUSE_SECONDS),
+            "failures": min(int(failures), MAX_FAILURES) if failures and failures > 0 else 0,
+        }
     return state
 
 
@@ -168,7 +179,7 @@ class RefreshCycle:
     def __init__(self, state_path: Path, now: datetime) -> None:
         self.state_path = state_path
         self.now = now
-        self.state = _load_state(state_path)
+        self.state = _load_state(state_path, now.timestamp())
         self._memo: dict[str, tuple[dict[str, Any] | None, dict[str, Any]]] = {}
         self._pending: list[dict[str, Any]] = []
         self._account_key: str | None = None
@@ -210,7 +221,7 @@ class RefreshCycle:
         except FetchError as e:
             if e.kind != "rate_limited":
                 return None, {"kind": e.kind}
-            failures += 1
+            failures = min(failures + 1, MAX_FAILURES)
             backoff = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (failures - 1))
             paused_until = self.now.timestamp() + max(backoff, e.retry_after or 0)
             return None, {"kind": "rate_limited", "retry_at": paused_until, "failures": failures}
@@ -227,11 +238,20 @@ class RefreshCycle:
         save_secure_json({"version": 2, "credentials": creds}, self.state_path, prefix="refresh_")
 
 
+def forget_account(state_path: Path, provider: str, account_id: str) -> None:
+    """Remove a pausa da Conta (chamar sob status_lock)."""
+    cycle_ = RefreshCycle(state_path, utcnow())
+    if cycle_.state.pop(f"{provider}:{account_id}", None) is not None:
+        cycle_.save()
+
+
 @contextmanager
 def status_lock(state_path: Path) -> Iterator[None]:
     """Lock exclusivo (flock) que serializa quem regrava status.json e o estado de pausa."""
     ensure_secure_dir(state_path.parent)
-    with open(state_path.with_suffix(".lock"), "a") as lock:
+    fd = os.open(state_path.with_suffix(".lock"), os.O_WRONLY | os.O_CREAT | os.O_APPEND, 0o600)
+    with os.fdopen(fd, "a") as lock:
+        os.fchmod(lock.fileno(), 0o600)
         fcntl.flock(lock, fcntl.LOCK_EX)
         yield
 
@@ -248,9 +268,12 @@ def cycle(state_path: Path, now: datetime) -> Iterator[RefreshCycle]:
         _current = RefreshCycle(state_path, now)
         try:
             yield _current
-            _current.save()
         finally:
-            _current = None
+            # Grava tambem em excecao: a pausa aprendida num 429 nao pode se perder
+            try:
+                _current.save()
+            finally:
+                _current = None
 
 
 def fetch_json(
