@@ -176,7 +176,7 @@ def test_popup_renders_provider_blocks_and_cards(tmp_path):
     assert "Atenção" in out["words"] and "Crítico" in out["words"]
     assert any("Esgota em" in t for t in out["forecast"]) and any("Limites mudaram" in t for t in out["limit"])
     # sem dado nunca é 0%: Antiga e Gemini vazio mostram "—"
-    assert out["pct"].count("—") >= 4 and "0%" not in [p for p in out["pct"]]
+    assert out["pct"].count("—") >= 3 and "0%" not in [p for p in out["pct"]]
 
 
 def collector(args):
@@ -414,3 +414,14 @@ def test_popup_options_declared_with_safe_defaults_and_exposed():
         assert f"cfg_{name}" in cfg
     assert entries["popupOpacity"].find("{*}min").text == "50" and entries["popupOpacity"].find("{*}max").text == "100"
     assert "Accessible.name" in cfg.split('safeI18n("Popup:")')[1][:5000]
+
+
+def test_keyboard_focus_scrolls_the_list_to_the_focused_control(tmp_path):
+    drive = """
+    var last = buttons().filter(function (b) { return b.text.indexOf("Ativar no Sistema") >= 0 }).pop()
+    var flick = named('popupFlick')[0]; obs('before', flick.contentY)
+    last.forceActiveFocus(); wait(50)
+    var y = last.mapToItem(flick, 0, 0).y; obs('inView', y >= 0 && y + last.height <= flick.height + 1); obs('after', flick.contentY)
+    """
+    out = popup(tmp_path, "scroll", drive=drive, size=(460, 400))
+    assert out["before"] == 0 and out["after"] > 0 and out["inView"]

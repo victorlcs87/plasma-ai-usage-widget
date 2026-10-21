@@ -386,6 +386,7 @@ Rectangle {
         WindowRow {
             id: weeklyRow
             objectName: "weeklyRow"
+            visible: cardRoot.weeklyView.known || cardRoot.nativeView.known  // sem dado algum: uma só linha "Sem dados"
             Layout.fillWidth: true
             view: cardRoot.weeklyView
             remaining: cardRoot.prefs.remaining

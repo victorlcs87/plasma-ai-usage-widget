@@ -254,6 +254,7 @@ UI = Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui"
 def _qml_eval(tmp_path, expr):
     shutil.copy(UI / "NotchModel.js", tmp_path / "NotchModel.js")
     shutil.copy(UI / "Presets.js", tmp_path / "Presets.js")
+    shutil.copy(UI / "ViewPrefs.js", tmp_path / "ViewPrefs.js")
     (tmp_path / "t.qml").write_text(
         'import QtQuick\nimport "NotchModel.js" as N\nItem { Component.onCompleted: { '
         f'console.log("OUT " + JSON.stringify({expr})); Qt.quit() }} }}')

@@ -247,8 +247,8 @@ def test_plasmoid_config_has_per_provider_interval_with_minimum():
     assert "--refresh-interval" in main_qml and "--provider" in main_qml
     # Revisao: remocao enfileirada durante execucao e watchdog de 120 s para isRefreshing preso
     assert "pendingRemovals.push" in main_qml and "interval: 120000" in main_qml
-    card = (root / "ui" / "AccountCard.qml").read_text(encoding="utf-8")
-    assert "usage_percentage === null" in card and "dados desatualizados" in card
+    model = (root / "ui" / "NotchModel.js").read_text(encoding="utf-8")
+    assert "isNum(win.usage_percentage)" in model and "Dados desatualizados" in model
 
 
 # --- Revisao do ticket 23 -------------------------------------------------------
@@ -508,9 +508,9 @@ def test_remove_account_forgets_its_pause(env, tmp_path):
 
 
 def test_stale_card_hides_percentage_after_release_passed():
-    qml = (Path(__file__).parent.parent / "plasmoid/contents/ui/AccountCard.qml").read_text()
-    assert "staleExpired(cardRoot.accountData?.native_window?.release_time)" in qml
-    assert "staleExpired(cardRoot.accountData?.weekly_window?.cycle_reset_time)" in qml
+    qml = (Path(__file__).parent.parent / "plasmoid/contents/ui/NotchModel.js").read_text()  # o popup usa windowView -> windowPct
+    assert 'acc.stale === true && !isNaN(reset) && reset <= Date.now()' in qml
+    assert 'windowPct(acc, win, key)' in qml and 'cycle_reset_time' in qml and 'release_time' in qml
 
 
 def test_claude_validator_rejects_non_dict_window():
