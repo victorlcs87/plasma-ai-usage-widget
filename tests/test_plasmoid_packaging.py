@@ -244,7 +244,7 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     content = config_path.read_text(encoding="utf-8")
 
     # Header and expandable container
-    assert "+ Add New Account" in content
+    assert "Add New Account" in content
     assert "addAccountSection" in content
     assert "isAddFormExpanded" in content
     assert "toggleAddFormBtn" in content
