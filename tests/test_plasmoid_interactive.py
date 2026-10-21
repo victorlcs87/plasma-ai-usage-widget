@@ -388,28 +388,16 @@ def test_build_collector_command_resolution_in_shell():
 
 
 def test_account_card_weekly_meter_reactive_bindings():
-    """Verify AccountCard.qml contains reactive countdowns, token formatters and weekly bindings."""
-    card_path = UI_DIR / "AccountCard.qml"
-    content = card_path.read_text(encoding="utf-8")
+    """O card reage ao relógio do popup (contagem ao vivo) e as duas janelas vêm do mesmo modelo."""
+    content = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    prefs = (UI_DIR / "ViewPrefs.js").read_text(encoding="utf-8")
 
-    # Verification of progress bars and bindings to percentage / 100.0
-    assert "nativeProgressBar" in content
-    assert "weeklyProgressBar" in content
-    assert "/ 100.0" in content
-    assert "usage_percentage" in content
-
-    # Formatter functions for tokens, percentages and timestamps
-    assert "formatPercentage" in content
-    assert "formatNumber" in content
-    assert "formatCountdown" in content
-    assert "formatDateTime" in content
-    assert "getUsageColor" in content
-
-    # Symmetric layout elements
-    assert "activeWindowTitleLabel" in content
-    assert "activeWindowPercentageLabel" in content
-    assert "weeklyWindowTitleLabel" in content
-    assert "weeklyWindowPercentageLabel" in content
+    assert "nowMs" in content and "windowView" in content and "nativeView" in content and "weeklyView" in content
+    assert "usage_percentage" in model and "tokens_used" in model
+    assert "function countdown" in prefs and "function dateText" in prefs and "function shownPct" in prefs
+    assert "nativeRow" in content and "weeklyRow" in content
+    assert "countdownTimer" not in content  # o único relógio de 1 s é o do popup (FullRepresentation), só com ele aberto
 
 
 def test_simulated_gui_add_account_invocation(tmp_path: Path):

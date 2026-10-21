@@ -1,19 +1,34 @@
 import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
+import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
-import org.kde.plasma.core as PlasmaCore
-import org.kde.plasma.components as PlasmaComponents3
-import org.kde.plasma.extras as PlasmaExtras
+import "Presets.js" as Presets
+import "NotchModel.js" as NotchModel
+import "ViewPrefs.js" as ViewPrefs
 
-PlasmaExtras.Representation {
+// Popup: Notch escuro com um bloco por provedor (ordem e visibilidade configuráveis) e um card por Conta.
+// Ações de Conta no popup: Atualizar agora, Configurações (criar, renomear, remover, capturar, login e órfãos
+// ficam lá), Ativar no Sistema e Copiar Link (AccountCard), Ver release.
+Item {
     id: fullRoot
 
     property var plasmoidItem: null
 
-    collapseMarginsHint: true
+    // Preferências de exibição e o relógio de 1 s: só rodam com o popup aberto e o widget visível
+    readonly property var prefs: ViewPrefs.config(Plasmoid.configuration)
+    property double nowMs: Date.now()
+    readonly property bool isOpen: visible && Boolean(plasmoidItem) && plasmoidItem.idleHidden !== true
+        && (plasmoidItem.expanded === true || plasmoidItem.inPanel === false)
+    readonly property bool reducedMotion: Kirigami.Units.longDuration === 0  // animações desligadas no Plasma
+    readonly property color accent: plasmoidItem ? plasmoidItem.accentColor : Kirigami.Theme.highlightColor
+    readonly property var providers: NotchModel.popupProviders(plasmoidItem ? plasmoidItem.statusData : null, prefs)
+    readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
+    readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
+    readonly property bool spinning: refreshing && isOpen && !reducedMotion  // ícone girando: nunca com o widget oculto
 
+    activeFocusOnTab: true
     // Mouse sobre o popup: não fecha por hover enquanto estiver nele
     HoverHandler {
         onHoveredChanged: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.setPopupHovered(hovered)
@@ -21,6 +36,9 @@ PlasmaExtras.Representation {
     // Foco no popup ao abrir, para o Escape funcionar (precisa de verificação no Plasma real)
     onVisibleChanged: if (visible) fullRoot.forceActiveFocus()
     Keys.onEscapePressed: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup()
+
+    Accessible.role: Accessible.Pane
+    Accessible.name: fullRoot.safeI18n("Monitor de Uso de IA")
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 20
     Layout.preferredWidth: Kirigami.Units.gridUnit * 25
@@ -40,115 +58,117 @@ PlasmaExtras.Representation {
         return res;
     }
 
-    function getAccountsCount(providerKey) {
-        if (!fullRoot.plasmoidItem || !fullRoot.plasmoidItem.statusData || !fullRoot.plasmoidItem.statusData.agents) {
-            return 0;
-        }
-        var agents = fullRoot.plasmoidItem.statusData.agents;
-        if (!providerKey) {
-            var total = 0;
-            for (var k in agents) {
-                if (agents.hasOwnProperty(k) && agents[k].accounts) {
-                    total += agents[k].accounts.length;
-                }
-            }
-            return total;
-        }
-        return (agents[providerKey] && agents[providerKey].accounts) ? agents[providerKey].accounts.length : 0;
+    function countText(n) { return n === 1 ? safeI18n("1 conta") : safeI18n("%1 contas", n); }
+
+    // Preferência gravada na configuração do Plasmoid (vale em todo o widget); só valores conhecidos
+    function setPref(key, value) {
+        if (typeof Plasmoid !== "undefined" && Plasmoid.configuration) Plasmoid.configuration[key] = value;
     }
 
-    function getFilteredAccounts() {
-        if (!fullRoot.plasmoidItem || !fullRoot.plasmoidItem.statusData || !fullRoot.plasmoidItem.statusData.agents) {
-            return [];
-        }
-        var agents = fullRoot.plasmoidItem.statusData.agents;
-        var list = [];
-        var targetProvider = "";
-        if (tabBar.currentIndex === 1) targetProvider = "claude";
-        else if (tabBar.currentIndex === 2) targetProvider = "codex";
-        else if (tabBar.currentIndex === 3) targetProvider = "gemini";
-
-        for (var key in agents) {
-            if (!agents.hasOwnProperty(key)) continue;
-            if (targetProvider && key.toLowerCase() !== targetProvider) continue;
-            var ag = agents[key];
-            if (ag && ag.accounts && Array.isArray(ag.accounts)) {
-                for (var i = 0; i < ag.accounts.length; i++) {
-                    var acc = ag.accounts[i];
-                    if (!acc.provider) {
-                        acc.provider = key;
-                    }
-                    list.push(acc);
-                }
-            }
-        }
-        return list;
+    // Foco por teclado: rola a lista até o controle focado
+    function ensureVisible(it) {
+        if (!it) return;
+        var inside = false;
+        for (var p = it; p; p = p.parent) if (p === flick.contentItem) { inside = true; break; }
+        if (!inside) return;
+        var y = it.mapToItem(flick.contentItem, 0, 0).y, m = Kirigami.Units.smallSpacing;
+        var maxY = Math.max(0, flick.contentHeight - flick.height);
+        if (y < flick.contentY) flick.contentY = Math.max(0, y - m);
+        else if (y + it.height > flick.contentY + flick.height) flick.contentY = Math.min(maxY, y + it.height - flick.height + m);
     }
 
-    header: PlasmaExtras.PlasmoidHeading {
+    Connections {
+        target: fullRoot.Window.window
+        function onActiveFocusItemChanged() { fullRoot.ensureVisible(fullRoot.Window.window.activeFocusItem); }
+    }
+
+    Timer {
+        interval: 1000
+        repeat: true
+        running: fullRoot.isOpen
+        triggeredOnStart: true
+        onTriggered: fullRoot.nowMs = Date.now()
+    }
+
+    // Fundo sempre escuro; a opacidade é configurável (50 a 100%)
+    Rectangle {
+        objectName: "popupBackground"
+        anchors.fill: parent
+        radius: 10
+        color: Qt.rgba(0x15 / 255, 0x17 / 255, 0x1b / 255, fullRoot.prefs.opacity)
+        border.width: 1
+        border.color: Presets.ui.edge
+    }
+
+    ColumnLayout {
+        anchors.fill: parent
+        anchors.margins: Kirigami.Units.smallSpacing * 2
+        spacing: Kirigami.Units.smallSpacing
+
         RowLayout {
-            anchors.fill: parent
+            Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
-
-            Kirigami.Icon {
-                source: fullRoot.plasmoidItem?.Plasmoid?.icon || (typeof Plasmoid !== "undefined" ? Plasmoid.icon : "view-split-left-right")
-                implicitWidth: Kirigami.Units.iconSizes.smallMedium
-                implicitHeight: Kirigami.Units.iconSizes.smallMedium
-            }
 
             ColumnLayout {
                 Layout.fillWidth: true
                 spacing: 0
 
-                Kirigami.Heading {
-                    level: 3
+                QQC2.Label {
+                    Accessible.role: Accessible.Heading
                     text: fullRoot.safeI18n("Monitor de Uso de IA")
+                    textFormat: Text.PlainText
+                    font.bold: true
+                    font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
+                    color: Presets.ui.fg
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
 
                 QQC2.Label {
-                    text: fullRoot.plasmoidItem?.lastUpdatedFormatted || fullRoot.safeI18n("Atualização recente")
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.85
-                    color: Kirigami.Theme.disabledTextColor
+                    objectName: "updatedLabel"
+                    // Texto além da animação: a atualização em curso também é dita
+                    text: fullRoot.refreshing ? fullRoot.safeI18n("Atualizando métricas...")
+                        : (fullRoot.plasmoidItem?.lastUpdatedFormatted || fullRoot.safeI18n("Atualização recente"))
+                    textFormat: Text.PlainText
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Presets.ui.muted
                     elide: Text.ElideRight
                     Layout.fillWidth: true
                 }
             }
 
-            PlasmaComponents3.Button {
+            NotchButton {
                 id: refreshButton
                 icon.name: "view-refresh"
                 text: fullRoot.safeI18n("Atualizar agora")
                 display: QQC2.AbstractButton.IconOnly
-                enabled: !Boolean(fullRoot.plasmoidItem && fullRoot.plasmoidItem.isRefreshing)
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: (fullRoot.plasmoidItem && fullRoot.plasmoidItem.isRefreshing)
-                    ? fullRoot.safeI18n("Atualizando métricas...")
-                    : fullRoot.safeI18n("Atualizar agora")
-
+                accent: fullRoot.accent
+                enabled: !fullRoot.refreshing
+                hint: fullRoot.refreshing ? fullRoot.safeI18n("Atualizando métricas...") : fullRoot.safeI18n("Atualizar agora")
                 onClicked: {
                     if (fullRoot.plasmoidItem) {
                         fullRoot.plasmoidItem.refreshCollector();
                     }
                 }
 
-                RotationAnimator on rotation {
+                RotationAnimator {
+                    target: refreshButton.iconItem
                     from: 0
                     to: 360
                     duration: 1000
                     loops: Animation.Infinite
-                    running: Boolean(fullRoot.plasmoidItem && fullRoot.plasmoidItem.isRefreshing)
+                    running: fullRoot.spinning
+                    onRunningChanged: if (!running) refreshButton.iconItem.rotation = 0
                 }
             }
 
-            PlasmaComponents3.Button {
+            NotchButton {
                 id: configureButton
                 icon.name: "configure"
                 text: fullRoot.safeI18n("Configurações")
                 display: QQC2.AbstractButton.IconOnly
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: fullRoot.safeI18n("Gerenciar contas e configurações")
+                accent: fullRoot.accent
+                hint: fullRoot.safeI18n("Gerenciar contas e configurações")
                 visible: (typeof Plasmoid !== "undefined" && Plasmoid && typeof Plasmoid.internalAction === "function" && Boolean(Plasmoid.internalAction("configure")))
                 onClicked: {
                     if (typeof Plasmoid !== "undefined" && Plasmoid.internalAction) {
@@ -158,53 +178,49 @@ PlasmaExtras.Representation {
                 }
             }
         }
-    }
 
-    contentItem: ColumnLayout {
-        spacing: Kirigami.Units.smallSpacing
-
-        // Barra de progresso visual indeterminada durante atualização assíncrona
-        QQC2.ProgressBar {
-            id: refreshProgressBar
+        // Preferências de exibição (valem para o popup, a dica e o painel): usado/restante e contagem/data
+        Flow {
             Layout.fillWidth: true
-            Layout.preferredHeight: 3
-            indeterminate: true
-            visible: Boolean(fullRoot.plasmoidItem && (fullRoot.plasmoidItem.isRefreshing || fullRoot.plasmoidItem.isLoading))
+            spacing: Kirigami.Units.smallSpacing
+
+            Repeater {
+                model: [
+                    { pref: "usageDisplay", value: "used", text: fullRoot.safeI18n("Usado"), hint: fullRoot.safeI18n("Mostrar quanto da cota já foi usado") },
+                    { pref: "usageDisplay", value: "remaining", text: fullRoot.safeI18n("Restante"), hint: fullRoot.safeI18n("Mostrar quanto da cota ainda resta") },
+                    { pref: "resetDisplay", value: "countdown", text: fullRoot.safeI18n("Contagem"), hint: fullRoot.safeI18n("Mostrar o tempo até a liberação") },
+                    { pref: "resetDisplay", value: "date", text: fullRoot.safeI18n("Data"), hint: fullRoot.safeI18n("Mostrar a data e a hora da liberação") }
+                ]
+                delegate: NotchButton {
+                    required property var modelData
+                    objectName: "pref_" + modelData.value
+                    text: modelData.text
+                    hint: modelData.hint
+                    checkable: true
+                    accent: fullRoot.accent
+                    checked: modelData.pref === "usageDisplay" ? fullRoot.prefs.remaining === (modelData.value === "remaining")
+                                                               : fullRoot.prefs.date === (modelData.value === "date")
+                    onClicked: {
+                        fullRoot.setPref(modelData.pref, modelData.value);
+                        checked = Qt.binding(function () {
+                            return modelData.pref === "usageDisplay" ? fullRoot.prefs.remaining === (modelData.value === "remaining")
+                                                                     : fullRoot.prefs.date === (modelData.value === "date");
+                        });
+                    }
+                }
+            }
         }
 
-        // Abas para alternar provedores (Claude, Codex, Gemini) ou visão consolidada ("Todos")
-        PlasmaComponents3.TabBar {
-            id: tabBar
+        // Atualização em curso: barra indeterminada (parada com animações desligadas; o texto acima informa)
+        QQC2.ProgressBar {
+            id: refreshProgressBar
+            objectName: "refreshBar"
             Layout.fillWidth: true
-            currentIndex: 0
-
-            PlasmaComponents3.TabButton {
-                text: {
-                    var count = fullRoot.getAccountsCount("");
-                    return count > 0 ? fullRoot.safeI18n("Todos (%1)", count) : fullRoot.safeI18n("Todos");
-                }
-            }
-
-            PlasmaComponents3.TabButton {
-                text: {
-                    var count = fullRoot.getAccountsCount("claude");
-                    return count > 0 ? fullRoot.safeI18n("Claude (%1)", count) : "Claude";
-                }
-            }
-
-            PlasmaComponents3.TabButton {
-                text: {
-                    var count = fullRoot.getAccountsCount("codex");
-                    return count > 0 ? fullRoot.safeI18n("Codex (%1)", count) : "Codex";
-                }
-            }
-
-            PlasmaComponents3.TabButton {
-                text: {
-                    var count = fullRoot.getAccountsCount("gemini");
-                    return count > 0 ? fullRoot.safeI18n("Gemini (%1)", count) : "Gemini";
-                }
-            }
+            Layout.preferredHeight: 3
+            indeterminate: !fullRoot.reducedMotion && fullRoot.isOpen
+            value: 1
+            visible: Boolean(fullRoot.plasmoidItem && (fullRoot.plasmoidItem.isRefreshing || fullRoot.plasmoidItem.isLoading))
+            Accessible.ignored: true
         }
 
         // Novas versões (widget e CLIs); texto simples, o link só abre a página da release validada
@@ -215,14 +231,17 @@ PlasmaExtras.Representation {
                 Layout.fillWidth: true
                 QQC2.Label {
                     Layout.fillWidth: true
-                    text: modelData.text
+                    text: "↑ " + modelData.text
                     textFormat: Text.PlainText
                     elide: Text.ElideRight
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Presets.ui.fg
                 }
-                PlasmaComponents3.Button {
+                NotchButton {
                     visible: modelData.url !== ""
                     text: fullRoot.safeI18n("Ver release")
+                    hint: fullRoot.safeI18n("Abrir a página da release no navegador")
+                    accent: fullRoot.accent
                     onClicked: Qt.openUrlExternally(modelData.url)
                 }
             }
@@ -230,59 +249,140 @@ PlasmaExtras.Representation {
 
         // Mensagem de erro caso o status.json não tenha sido lido
         Rectangle {
+            objectName: "errorBox"
             visible: Boolean(fullRoot.plasmoidItem && fullRoot.plasmoidItem.lastError)
             Layout.fillWidth: true
             implicitHeight: errorLabel.implicitHeight + Kirigami.Units.smallSpacing * 2
-            radius: 4
-            color: Kirigami.ColorUtils.tintWithAlpha(Kirigami.Theme.backgroundColor, "#e74c3c", 0.2)
-            border.color: "#e74c3c"
+            radius: 6
+            color: Presets.ui.card
+            border.color: Presets.levelColor("critical", fullRoot.accent)
             border.width: 1
+            Accessible.role: Accessible.AlertMessage
+            Accessible.name: errorLabel.text
 
             QQC2.Label {
                 id: errorLabel
+                Accessible.ignored: true
                 anchors.fill: parent
                 anchors.margins: Kirigami.Units.smallSpacing
-                text: fullRoot.plasmoidItem ? (fullRoot.plasmoidItem.lastError || "") : ""
-                color: Kirigami.Theme.negativeTextColor
+                text: fullRoot.plasmoidItem ? ("⚠ " + (fullRoot.plasmoidItem.lastError || "")) : ""
+                textFormat: Text.PlainText
+                color: Presets.ui.fg
                 wrapMode: Text.Wrap
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
             }
         }
 
-        // Lista de Cards de Contas
-        PlasmaComponents3.ScrollView {
+        // Blocos por provedor e cards de Contas
+        Flickable {
+            id: flick
+            objectName: "popupFlick"
             Layout.fillWidth: true
             Layout.fillHeight: true
+            clip: true
+            contentWidth: width
+            contentHeight: list.implicitHeight
+            boundsBehavior: Flickable.StopAtBounds
+            QQC2.ScrollBar.vertical: QQC2.ScrollBar {}
 
-            QQC2.ScrollBar.horizontal.policy: QQC2.ScrollBar.AlwaysOff
+            ColumnLayout {
+                id: list
+                width: flick.width - Kirigami.Units.smallSpacing * 2
+                spacing: Kirigami.Units.smallSpacing * 1.5
 
-            contentItem: ListView {
-                id: accountsListView
-                spacing: Kirigami.Units.smallSpacing
-                clip: true
-                boundsBehavior: Flickable.StopAtBounds
+                Repeater {
+                    model: fullRoot.providers
+                    delegate: ColumnLayout {
+                        id: block
+                        required property var modelData
+                        objectName: "provider_" + modelData.key
+                        Layout.fillWidth: true
+                        spacing: Kirigami.Units.smallSpacing
 
-                model: fullRoot.getFilteredAccounts()
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+                            Accessible.role: Accessible.Heading
+                            Accessible.name: block.modelData.name + (block.modelData.accounts.length > 0
+                                ? ", " + fullRoot.countText(block.modelData.accounts.length) : "")
 
-                delegate: AccountCard {
-                    width: accountsListView.width
-                    accountData: modelData
-                    plasmoidItem: fullRoot.plasmoidItem
-                    onAccountSwitched: {
-                        if (fullRoot.plasmoidItem && typeof fullRoot.plasmoidItem.loadStatus === "function") {
-                            fullRoot.plasmoidItem.loadStatus();
+                            Rectangle {  // inicial do provedor: identifica sem depender de cor
+                                Accessible.ignored: true
+                                implicitWidth: Kirigami.Units.gridUnit * 1.3
+                                implicitHeight: implicitWidth
+                                radius: width / 2
+                                color: Presets.ui.chip
+                                QQC2.Label {
+                                    Accessible.ignored: true
+                                    anchors.centerIn: parent
+                                    text: block.modelData.letter
+                                    textFormat: Text.PlainText
+                                    font.bold: true
+                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                    color: Presets.ui.fg
+                                }
+                            }
+                            QQC2.Label {
+                                Accessible.ignored: true
+                                text: block.modelData.name
+                                textFormat: Text.PlainText
+                                font.bold: true
+                                color: Presets.ui.fg
+                            }
+                            QQC2.Label {
+                                Accessible.ignored: true
+                                Layout.fillWidth: true
+                                // Conta Ativa no Sistema: sem nenhuma marcada, nunca outra conta no lugar
+                                text: block.modelData.accounts.length === 0 ? fullRoot.safeI18n("sem contas")
+                                    : block.modelData.hasActive ? fullRoot.countText(block.modelData.accounts.length)
+                                    : "○ " + fullRoot.safeI18n("sem conta ativa no sistema")
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                color: Presets.ui.muted
+                            }
+                        }
+
+                        Repeater {
+                            model: block.modelData.accounts
+                            delegate: AccountCard {
+                                required property var modelData
+                                Layout.fillWidth: true
+                                accountData: modelData
+                                plasmoidItem: fullRoot.plasmoidItem
+                                nowMs: fullRoot.nowMs
+                                prefs: fullRoot.prefs
+                                accent: fullRoot.accent
+                                animate: fullRoot.isOpen
+                                reducedMotion: fullRoot.reducedMotion
+                                sessionState: (modelData.isActive === true || modelData.is_active === true) && fullRoot.plasmoidItem
+                                    ? NotchModel.sessionState(block.modelData.key, modelData, {
+                                        showSession: Plasmoid.configuration.sessionState === true,
+                                        sessionOverlay: fullRoot.plasmoidItem.sessionOverlay }) : ""
+                                onAccountSwitched: {
+                                    if (fullRoot.plasmoidItem && typeof fullRoot.plasmoidItem.loadStatus === "function") {
+                                        fullRoot.plasmoidItem.loadStatus();
+                                    }
+                                }
+                            }
                         }
                     }
                 }
 
-                // Placeholder quando não houver contas
-                PlasmaExtras.PlaceholderMessage {
-                    anchors.centerIn: parent
-                    width: parent.width - Kirigami.Units.gridUnit * 2
-                    visible: accountsListView.count === 0
-                    iconName: "preferences-system-network"
-                    text: fullRoot.safeI18n("Nenhuma conta encontrada")
-                    explanation: fullRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
+                // Estados vazios
+                QQC2.Label {
+                    objectName: "emptyMessage"
+                    Layout.fillWidth: true
+                    Layout.topMargin: Kirigami.Units.gridUnit
+                    visible: fullRoot.providers.length === 0 || fullRoot.accountCount === 0
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.WordWrap
+                    textFormat: Text.PlainText
+                    color: Presets.ui.muted
+                    text: fullRoot.providers.length === 0
+                        ? fullRoot.safeI18n("Nenhum provedor visível no popup. Escolha os provedores em Configurações.")
+                        : fullRoot.safeI18n("Nenhuma conta encontrada") + "\n"
+                          + fullRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
                 }
             }
         }

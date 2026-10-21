@@ -1,0 +1,416 @@
+"""Popup Notch (ticket 33) rodando de verdade em qml6 offscreen, com stubs do Plasma (opcional).
+
+Nenhum comando é executado: o stub de DataSource só registra o que seria rodado. Dados só de fixtures.
+"""
+import json
+import os
+import shutil
+import subprocess
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+import pytest
+
+from ai_usage_collector.contract import build_agent_account_status
+
+UI_DIR = Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui"
+pytestmark = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary not available")
+
+STUBS = {
+    "org/kde/kirigami": ("module org.kde.kirigami\nsingleton Units 1.0 Units.qml\nsingleton Theme 1.0 Theme.qml\nIcon 1.0 Icon.qml\n", {
+        "Units.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var iconSizes: ({small:16, smallMedium:22, medium:32}); property int smallSpacing: 4;"
+                     " property int gridUnit: 18; property int longDuration: 200 }",
+        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property color highlightedTextColor: '#ffffff';"
+                     " property var smallFont: ({pointSize: 9}); property var defaultFont: ({pointSize: 10}) }",
+        "Icon.qml": "import QtQuick\nRectangle { property string source; property color color: 'white'; implicitWidth: 16; implicitHeight: 16; radius: 3; opacity: 0.6 }"}),
+    "org/kde/plasma/plasmoid": ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\n", {
+        "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int formFactor: 0; property var triggered: []\n"
+                        " function internalAction(n) { return { trigger: function () { triggered.push(n) } } }\n"
+                        " property var configuration: QtObject { property var usageDisplay: 'used'; property var resetDisplay: 'countdown'\n"
+                        "  property var popupOpacity: 100; property var popupProviderOrder: 'claude,codex,gemini'; property var popupHiddenProviders: ''\n"
+                        "  property var sessionState: false } }"}),
+    "org/kde/plasma/plasma5support": ("module org.kde.plasma.plasma5support\nDataSource 1.0 DataSource.qml\nsingleton Log 1.0 Log.qml\n", {
+        "Log.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var cmds: []; property var sources: [] }",
+        "DataSource.qml": "import QtQuick\nQtObject { property string engine; property var connectedSources: []\n"
+                          " signal newData(string s, var d); function connectSource(s) { Log.cmds.push(s) } function disconnectSource(s) {}\n"
+                          " Component.onCompleted: Log.sources.push(this) }"}),
+}
+
+FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "UsageDetails.qml", "TokenHistory.qml",
+         "DualRing.qml", "SessionMark.qml", "Presets.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
+
+HARNESS = """
+import QtQuick
+import QtQuick.Window
+import QtTest
+import org.kde.plasma.plasmoid
+import org.kde.plasma.plasma5support
+import org.kde.kirigami as Kirigami
+import "NotchModel.js" as NotchModel
+Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "#303236"
+  Item { id: logic
+    property var statusData: %(data)s
+    property bool expanded: %(expanded)s
+    property bool idleHidden: %(idle)s
+    property bool inPanel: true
+    property bool isRefreshing: %(refreshing)s
+    property bool isLoading: false
+    property string lastError: %(error)s
+    property string lastUpdatedFormatted: "Atualizado às 10:00"
+    property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
+    property color accentColor: "#3daee9"
+    property var sessionOverlay: %(overlay)s
+    property var calls: []
+    function setPopupHovered(h) { calls.push("popupHover:" + h) }
+    function closePopup() { calls.push("close") }
+    function refreshCollector() { calls.push("refresh") }
+    function loadStatus() { calls.push("load") }
+    function safeI18n(t, a, b) { var r = t; if (a !== undefined) r = r.replace("%%1", a); if (b !== undefined) r = r.replace("%%2", b); return r }
+  }
+  FullRepresentation { id: f; plasmoidItem: logic; anchors.fill: parent }
+  TestCase { id: tc; when: false; name: "t" }
+  function all(it, out) { out = out || []; for (var i = 0; i < it.children.length; i++) { out.push(it.children[i]); all(it.children[i], out) } return out }
+  function named(n) { return all(f).filter(function (k) { return k.objectName === n }) }
+  function vis(n) { return named(n).filter(function (k) { return k.visible }) }
+  function txt(n) { return vis(n).map(function (k) { return k.text }) }
+  function buttons() { return all(f).filter(function (k) { return k.hint !== undefined && k.activeFocusOnTab === true && k.visible }) }
+  function btn(text) { return buttons().filter(function (b) { return b.text === text || b.Accessible.name === text })[0] }
+  function focusName() { var a = win.activeFocusItem; return a ? (a.text || a.objectName || "?") : null }
+  property var result: ({})
+  function done() {
+    result.calls = logic.calls; result.cmds = Log.cmds; result.triggered = Plasmoid.triggered; result.nowMs = f.nowMs
+    result.isOpen = f.isOpen; result.prefs = f.prefs
+    result.size = [f.width, f.height]
+    console.log("RESULT " + JSON.stringify(result)); Qt.quit() }
+  Component.onCompleted: { var c = %(pcfg)s; for (var k in c) Plasmoid.configuration[k] = c[k]; Kirigami.Units.longDuration = %(dur)d; f.forceActiveFocus() }
+  Timer { interval: %(delay)d; running: true; onTriggered: {
+    var obs = function (k, v) { result[k] = v }
+    var wait = function (ms) { tc.wait(ms) }
+    %(drive)s
+    if ("%(png)s") f.grabToImage(function (r) { r.saveToFile("%(png)s"); done() }); else done()
+  } }
+}
+"""
+
+
+def iso(delta):
+    return (datetime.now(timezone.utc) + delta).isoformat()
+
+
+def acct(provider, aid, label, active=False, native=None, weekly=None, health="valid", **extra):
+    a = build_agent_account_status(provider=provider, account_id=aid, label=label, source="auto", health={"status": health},
+                                   is_active=active, native_window=native, weekly_window=weekly,
+                                   usage_details=extra.pop("usage_details", None), manual_invite_url=extra.pop("invite_url", None),
+                                   manual_invite_count=extra.pop("invites", None))
+    a.update(extra)
+    return a
+
+
+def hist():
+    days = [{"date": f"2026-10-{d:02d}", "tokens": (d * 7919) % 90000} for d in range(1, 31)]
+    return {"today": 12400, "week": 410000, "month": 1900000, "estimated": False, "daily_30d": days,
+            "weekly_3m": [{"week_start": f"w{i}", "tokens": i * 200000} for i in range(1, 13)],
+            "monthly_12m": [{"month": f"m{i}", "tokens": i * 900000} for i in range(1, 13)]}
+
+
+def fixture():
+    nat = lambda pct, level, h=1, m=20, fc=None: {"usage_percentage": pct, "release_time": iso(timedelta(hours=h, minutes=m, seconds=7)),
+                                                  "window_seconds": 18000, "alert_level": level, "tokens_used": 120000, **({"forecast": fc} if fc else {})}
+    wk = lambda pct, level: {"usage_percentage": pct, "cycle_reset_time": iso(timedelta(days=3, hours=5, minutes=30)),
+                             "window_seconds": 604800, "alert_level": level}
+    soon = {"exhausts_at": iso(timedelta(minutes=45)), "before_release": True}
+    claude = [
+        acct("claude", "work", "Trabalho", True, nat(82.0, "warning", fc=soon), wk(45.0, "normal"), token_history=hist(),
+             usage_details={"tokens_by_model": [{"model": "opus", "tokens": 300000}], "current_model": "opus"},
+             invites=2, invite_url="https://claude.ai/invite/abc", limit_changes=[{"window": "native", "kind": "duration"}]),
+        acct("claude", "personal", "Pessoal", False, nat(12.0, "normal", 3, 5), None),
+        acct("claude", "old", "Antiga", False, health="session_expired"),
+    ]
+    codex = [acct("codex", "cx", "Codex Pro", True, nat(95.0, "critical", 0, 25, {"exhausts_at": None}), wk(60.0, "normal"))]
+    gemini = [acct("gemini", "g1", "Gemini velho", False, nat(30.0, "normal"), wk(20.0, "normal"), stale=True),
+              acct("gemini", "g2", "Gemini vazio", False, no_data=True)]
+    return {"agents": {"claude": {"name": "Claude", "accounts": claude}, "codex": {"name": "Codex", "accounts": codex},
+                       "gemini": {"name": "Gemini", "accounts": gemini}},
+            "updates": {"enabled": True, "items": {"widget": {"latest": "9.0.0", "available": True,
+                        "url": "https://github.com/victorlcs87/plasma-ai-usage-widget/releases/tag/v9.0.0"}, "codex": {"latest": "2.0", "available": True}}}}
+
+
+def popup(tmp_path, name, data=None, drive="", cfg=None, size=(460, 560), expanded=True, idle=False, refreshing=False, error="",
+          overlay=None, reduced=False, delay=700):
+    imp = tmp_path / "imp"
+    for rel, (qmldir, files) in STUBS.items():
+        d = imp / rel
+        d.mkdir(parents=True)
+        (d / "qmldir").write_text(qmldir)
+        for f, body in files.items():
+            (d / f).write_text(body)
+    run = tmp_path / "run"
+    run.mkdir()
+    for f in FILES:
+        shutil.copy(UI_DIR / f, run / f)
+    png_dir = os.environ.get("AIU_PNG_DIR", "")
+    (run / "h.qml").write_text(HARNESS % {
+        "w": size[0], "h": size[1], "data": json.dumps(data if data is not None else fixture()), "expanded": str(expanded).lower(),
+        "idle": str(idle).lower(), "refreshing": str(refreshing).lower(), "error": json.dumps(error), "overlay": json.dumps(overlay or {}),
+        "pcfg": json.dumps(cfg or {}), "dur": 0 if reduced else 200, "delay": delay, "drive": drive,
+        "png": f"{png_dir}/{name}.png" if png_dir else ""})
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
+    res = subprocess.run(["qml6", "-I", str(imp), str(run / "h.qml")], env=env, capture_output=True, text=True, timeout=90)
+    out = res.stdout + res.stderr
+    line = next((l for l in out.splitlines() if "RESULT " in l), None)
+    assert line, out
+    bad = [l for l in res.stderr.splitlines() if "TypeError" in l or "ReferenceError" in l or "Unable to assign" in l]
+    assert not bad, bad[:3]
+    return json.loads(line.split("RESULT ", 1)[1])
+
+
+def test_popup_renders_provider_blocks_and_cards(tmp_path):
+    drive = """
+    obs('providers', all(f).filter(function (k) { return k.objectName.indexOf('provider_') === 0 }).map(function (k) { return k.objectName }))
+    obs('names', txt('accountName')); obs('pct', txt('pct')); obs('resets', txt('reset')); obs('words', txt('levelWord'))
+    obs('forecast', txt('forecast')); obs('limit', txt('limitNote')); obs('session', txt('sessionWord'))
+    """
+    out = popup(tmp_path, "render", drive=drive, size=(460, 1400))
+    assert out["providers"] == ["provider_claude", "provider_codex", "provider_gemini"]
+    assert out["names"] == ["Trabalho", "Pessoal", "Antiga", "Codex Pro", "Gemini velho", "Gemini vazio"]
+    assert "Atenção" in out["words"] and "Crítico" in out["words"]
+    assert any("Esgota em" in t for t in out["forecast"]) and any("Limites mudaram" in t for t in out["limit"])
+    # sem dado nunca é 0%: Antiga e Gemini vazio mostram "—"
+    assert out["pct"].count("—") >= 4 and "0%" not in [p for p in out["pct"]]
+
+
+def collector(args):
+    return ("bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; "
+            "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; "
+            "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; "
+            "else python3 -m ai_usage_collector \"$@\"; fi' _ " + args)
+
+
+def test_popup_account_actions_call_the_same_commands(tmp_path):
+    """Ações do popup: atualizar agora, configurar, ativar no sistema (shellQuote em tudo), copiar link, ver release."""
+    data = fixture()
+    data["agents"]["claude"]["accounts"][1]["id"] = "x'; touch /tmp/pwn; '"  # id hostil: tem de ir entre aspas
+    drive = """
+    btn("Atualizar agora").click(); btn("Configurações").click()
+    var sw = buttons().filter(function (b) { return b.text.indexOf("Ativar no Sistema") >= 0 })[0]
+    obs('switchAccount', sw.visible); sw.click(); obs('busy', sw.enabled)
+    btn("Copiar Link").click()
+    obs('release', btn("Ver release") !== undefined)
+    """
+    out = popup(tmp_path, "actions", data=data, drive=drive, size=(460, 1400))
+    assert "refresh" in out["calls"] and out["triggered"] == ["configure"]
+    assert out["switchAccount"] and out["busy"] is False
+    evil = "'x'\\''; touch /tmp/pwn; '\\'''"
+    assert collector(f"'--switch-account' 'claude' {evil} '--status'") in out["cmds"]
+    copy = next(c for c in out["cmds"] if "wl-copy" in c)
+    assert copy.endswith(" _ 'https://claude.ai/invite/abc'") and "printf" in copy
+    assert out["release"]
+
+
+def test_switch_result_reloads_status_and_error_surfaces(tmp_path):
+    drive = """
+    var sw = buttons().filter(function (b) { return b.text.indexOf("Ativar no Sistema") >= 0 })[0]
+    sw.click()
+    for (var i = 0; i < Log.sources.length; i++) Log.sources[i].newData(Log.cmds[0], {"exit code": 1, stdout: "", stderr: "boom"})
+    obs('err', logic.lastError)
+    """
+    out = popup(tmp_path, "switcherr", drive=drive, size=(460, 1400))
+    assert out["err"] == "Erro ao alternar conta: boom"
+
+
+def test_account_management_actions_stay_in_config_with_quoted_args():
+    """Criar, renomear, remover, capturar, login interativo, convites e órfãos seguem na configuração, via shellQuote."""
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    for flag in ("--add-account", "--capture-current", "--interactive-login", "--rename-account", "--remove-account",
+                 "--reimport-orphan", "--delete-orphan"):
+        assert f'shellQuote("{flag}")' in cfg or f"shellQuote(flag)" in cfg and flag in cfg, flag
+    assert 'shellQuote("--remove-account")' in main and 'shellQuote("--refresh")' in main
+    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    assert 'shellQuote("--switch-account")' in card and "copyToClipboard" in card
+    full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
+    assert 'internalAction("configure")' in full and "refreshCollector()" in full  # caminho para a gestão de contas
+
+
+def test_countdown_ticks_each_second_only_while_popup_is_open(tmp_path):
+    drive = """
+    var a = txt('reset')[0]; var n0 = f.nowMs; wait(1300)
+    obs('a', a); obs('b', txt('reset')[0]); obs('moved', f.nowMs - n0)
+    logic.expanded = false; var n1 = f.nowMs; wait(1300); obs('frozen', f.nowMs === n1)
+    logic.expanded = true; wait(1300); obs('resumed', f.nowMs > n1)
+    logic.idleHidden = true; var n2 = f.nowMs; wait(1300); obs('idleFrozen', f.nowMs === n2); obs('idleOpen', f.isOpen)
+    """
+    out = popup(tmp_path, "tick", drive=drive)
+    assert out["a"] != out["b"] and 1000 <= out["moved"] < 2500
+    assert out["frozen"] and out["resumed"] and out["idleFrozen"] and out["idleOpen"] is False
+
+
+def test_remaining_and_date_preferences_change_the_popup(tmp_path):
+    drive = """
+    obs('pct', txt('pct').slice(0, 2)); obs('reset', txt('reset')[0]); obs('rings', named('accountRing').map(function (r) { return [r.innerPct, r.outerPct] }).slice(0, 1))
+    obs('marks', txt('levelMark').slice(0, 1))
+    """
+    base = popup(tmp_path / "a", "pref_used", drive=drive)
+    rem = popup(tmp_path / "b", "pref_remaining", drive=drive, cfg={"usageDisplay": "remaining", "resetDisplay": "date"}, size=(460, 700))
+    assert base["pct"] == ["82%", "45%"] and rem["pct"] == ["18%", "55%"]
+    assert base["reset"].startswith("120.000 tokens • libera em ") and "libera em" not in rem["reset"] and " • libera " in rem["reset"]
+    assert base["rings"] == [[82, 45]] and rem["rings"] == [[18, 55]]  # o arco mostra o que sobra
+    assert base["marks"] == rem["marks"] == ["▲"]                  # o nível não muda com a preferência
+
+
+def test_toggle_buttons_write_the_preference_and_reflect_the_current_one(tmp_path):
+    drive = """
+    btn("Restante").click(); btn("Data").click(); wait(50)
+    obs('pct', txt('pct')[0]); obs('checked', [btn("Restante").checked, btn("Usado").checked, btn("Data").checked, btn("Contagem").checked])
+    obs('stored', [Plasmoid.configuration.usageDisplay, Plasmoid.configuration.resetDisplay])
+    """
+    out = popup(tmp_path, "toggle", drive=drive)
+    assert out["pct"] == "18%" and out["checked"] == [True, False, True, False] and out["stored"] == ["remaining", "date"]
+
+
+def test_invalid_config_falls_back_to_defaults(tmp_path):
+    bad = {"usageDisplay": 5, "resetDisplay": "weird", "popupOpacity": "x", "popupProviderOrder": "zzz,codex", "popupHiddenProviders": 7}
+    out = popup(tmp_path, "badcfg", cfg=bad, drive="obs('provs', all(f).filter(function (k) { return k.objectName.indexOf('provider_') === 0 }).map(function (k) { return k.objectName }))")
+    assert out["prefs"]["remaining"] is False and out["prefs"]["date"] is False and out["prefs"]["opacity"] == 1
+    assert out["provs"] == ["provider_codex", "provider_claude", "provider_gemini"]  # desconhecido sai, faltantes entram no fim
+    low = popup(tmp_path / "x", "lowop", cfg={"popupOpacity": 10})
+    assert low["prefs"]["opacity"] == 1
+    assert popup(tmp_path / "y", "op70", cfg={"popupOpacity": 70})["prefs"]["opacity"] == 0.7
+
+
+def test_order_and_visibility_of_provider_cards(tmp_path):
+    drive = "obs('provs', all(f).filter(function (k) { return k.objectName.indexOf('provider_') === 0 }).map(function (k) { return k.objectName })); obs('empty', txt('emptyMessage'))"
+    out = popup(tmp_path, "order", cfg={"popupProviderOrder": "gemini,claude,codex", "popupHiddenProviders": "codex"}, drive=drive)
+    assert out["provs"] == ["provider_gemini", "provider_claude"]
+    none = popup(tmp_path / "n", "allhidden", cfg={"popupHiddenProviders": "claude,codex,gemini"}, drive=drive)
+    assert none["provs"] == [] and "Nenhum provedor visível" in none["empty"][0]
+    empty = popup(tmp_path / "e", "noaccounts", data={"agents": {}}, drive=drive)
+    assert "Nenhuma conta encontrada" in empty["empty"][0]
+
+
+def test_never_a_false_zero_and_no_active_account(tmp_path):
+    drive = """
+    obs('gem', all(f).filter(function (k) { return k.objectName === 'provider_gemini' })[0].children[0].Accessible.name)
+    var rows = named('nativeRow'); obs('summ', rows.map(function (r) { return r.summary }))
+    """
+    out = popup(tmp_path, "zero", drive=drive, size=(460, 1400))
+    assert any("sem dados" in s for s in out["summ"])
+    stale = [s for s in out["summ"] if s.startswith("Janela Diária: 30%")]
+    assert stale and "normal" not in stale[0]  # obsoleto: sem nível, só o percentual esmaecido
+
+
+def test_session_state_shows_word_for_the_active_account_only(tmp_path):
+    drive = "obs('words', txt('sessionWord'))"
+    cfg = {"sessionState": True}
+    out = popup(tmp_path, "session", cfg=cfg, overlay={"claude/work": "busy", "claude/personal": "waiting", "codex/cx": "waiting"}, drive=drive)
+    assert out["words"] == ["sessão ocupada", "aguardando você"]  # Claude/Trabalho e Codex; a Conta inativa não mostra
+    assert popup(tmp_path / "o", "sessionoff", overlay={"claude/work": "busy"}, drive=drive)["words"] == []
+
+
+def test_keyboard_focus_enter_and_escape(tmp_path):
+    drive = """
+    var all0 = buttons(); obs('count', all0.length)
+    var seen = {}
+    f.forceActiveFocus()
+    for (var i = 0; i < all0.length + 6; i++) { tc.keyClick(Qt.Key_Tab); var a = win.activeFocusItem; if (a && a.hint !== undefined) seen[a.text || a.Accessible.name] = true }
+    obs('reached', Object.keys(seen).length)
+    var r = btn("Atualizar agora"); r.forceActiveFocus(); tc.keyClick(Qt.Key_Return); obs('enter', logic.calls.indexOf('refresh') >= 0)
+    r.forceActiveFocus(); tc.keyClick(Qt.Key_Escape)
+    """
+    out = popup(tmp_path, "keys", drive=drive, size=(460, 1400))
+    assert out["count"] >= 14 and out["reached"] >= out["count"] - 2  # tudo é alcançável por Tab (ocultos fora)
+    assert out["enter"] and "close" in out["calls"]
+
+
+def test_popup_texts_are_plain_text_and_hostile_values_stay_inert(tmp_path):
+    data = fixture()
+    data["agents"]["claude"]["accounts"][0]["name"] = "<b>x</b><img src=x>"
+    data["agents"]["claude"]["accounts"][0]["fetch_error"] = {"message": "<i>falhou</i>"}
+    drive = """
+    var bad = all(f).filter(function (k) { return k.visible && typeof k.text === "string" && k.textFormat !== undefined && k.textFormat !== Text.PlainText && k.text !== "" })
+    obs('bad', bad.map(function (k) { return k.text.slice(0, 30) }))
+    """
+    out = popup(tmp_path, "plain", data=data, drive=drive, size=(460, 1400), error="<b>erro</b>")
+    assert out["bad"] == []
+
+
+def test_reduced_motion_and_refreshing_state(tmp_path):
+    drive = """
+    obs('rot', f.spinning); obs('bar', named('refreshBar')[0].indeterminate)
+    obs('label', txt('updatedLabel'))
+    """
+    run = popup(tmp_path / "a", "refreshing", drive=drive, refreshing=True)
+    still = popup(tmp_path / "b", "refreshing_reduced", drive=drive, refreshing=True, reduced=True)
+    assert run["rot"] is True and run["bar"] is True and run["label"] == ["Atualizando métricas..."]
+    assert still["rot"] is False and still["bar"] is False and still["label"] == ["Atualizando métricas..."]
+
+
+def test_idle_hidden_widget_does_not_animate_popup(tmp_path):
+    out = popup(tmp_path, "idle", idle=True, drive="obs('anim', named('accountRing').map(function (r) { return r.shown }))", overlay={"claude/work": "busy"}, cfg={"sessionState": True})
+    assert out["isOpen"] is False and not any(out["anim"])
+
+
+def test_error_banner_and_background_opacity_render(tmp_path):
+    out = popup(tmp_path, "error", error="Cache de status não encontrado. Execute o coletor.", cfg={"popupOpacity": 60}, drive="obs('bg', String(named('popupBackground')[0].color)); obs('err', named('errorBox')[0].visible)", size=(460, 300))
+    assert out["err"] is True and out["bg"].startswith("#99")  # alfa 0,6
+
+
+def js(tmp_path, expr):
+    """Executa JS puro dos módulos (ViewPrefs/NotchModel) no qml6."""
+    for f in ("ViewPrefs.js", "NotchModel.js", "Presets.js", "PanelStyle.js"):
+        (tmp_path / f).write_text((UI_DIR / f).read_text())
+    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nItem { Timer { interval: 50; running: true; onTriggered: { '
+                                    'var tr = function (t, a, b) { var r = t; if (a !== undefined) r = r.replace("%1", a); if (b !== undefined) r = r.replace("%2", b); return r }; '
+                                    'console.log("RESULT " + JSON.stringify(EXPR)); Qt.quit() } } }'.replace("EXPR", expr))
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
+    res = subprocess.run(["qml6", str(tmp_path / "t.qml")], env=env, capture_output=True, text=True, timeout=60)
+    line = next(l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l)
+    return json.loads(line.split("RESULT ", 1)[1])
+
+
+def test_view_prefs_pure_functions(tmp_path):
+    got = js(tmp_path, '[VP.shownPct(30, false), VP.shownPct(30, true), VP.shownPct(-1, true), VP.shownPct(0, true), VP.pctText(-1, true), VP.pctText(99.6, true),'
+                       ' VP.countdown(9), VP.countdown(723), VP.countdown(7509), VP.countdown(300720), VP.countdown(-5),'
+                       ' VP.config(null), VP.config({usageDisplay: "remaining", popupOpacity: 49}).opacity, VP.config({popupOpacity: 49.5}).opacity]')
+    assert got[:11] == [30, 70, -1, 100, "\u2014", "0%", "9s", "12m 03s", "2h 05m 09s", "3d 11h 32m", "0s"]
+    assert got[11] == {"remaining": False, "date": False, "opacity": 1, "order": ["claude", "codex", "gemini"]}
+    assert got[12] == 1 and got[13] == 1  # fora da faixa 50..100: padrão, nunca clamp
+
+
+def test_tooltip_and_description_follow_the_preferences(tmp_path):
+    agents = {"claude": {"name": "Claude", "accounts": [acct("claude", "a", "A", True,
+              {"usage_percentage": 40.0, "release_time": "2099-01-01T12:00:00+00:00", "window_seconds": 18000}, None)]}}
+    expr = ('[NM.tooltipText(%(d)s, {}, tr, Date.parse("2098-12-31T12:00:00Z")), NM.tooltipText(%(d)s, {remaining: true, date: true}, tr, Date.parse("2098-12-31T12:00:00Z")),'
+            ' NM.buildModel(%(d)s, {remaining: true}, tr, 0)[0].description]') % {"d": json.dumps({"agents": agents})}
+    plain, pref, desc = js(tmp_path, expr)
+    assert "Janela nativa: 40% — libera em 1d 0h" in plain
+    assert "Janela nativa: 60% restante — libera " in pref and "libera em" not in pref
+    assert "Semanal: —" in pref and "Semanal: —" in plain  # sem dado: nunca 0%
+    assert "Janela nativa 60% restante" in desc and "semanal -" in desc
+
+
+def test_compact_panel_percent_follows_remaining_preference(tmp_path):
+    from test_plasmoid_notch_render import render
+    agents = {"claude": {"name": "Claude", "accounts": [acct("claude", "a", "A", True,
+              {"usage_percentage": 40.0, "release_time": "2099-01-01T00:00:00+00:00", "window_seconds": 18000, "alert_level": "normal"},
+              {"usage_percentage": 10.0, "cycle_reset_time": "2099-01-01T00:00:00+00:00", "window_seconds": 604800, "alert_level": "normal"})]}}
+    base = render(tmp_path / "a", "rem_a", agents, panel={"panelStyle": "text", "panelMode": "pct"})
+    rem = render(tmp_path / "b", "rem_b", agents, panel={"panelStyle": "text", "panelMode": "pct", "usageDisplay": "remaining"}, extra_cfg={"remaining": True})
+    assert base["items"][0]["pct"] == "40%" and rem["items"][0]["pct"] == "60%"
+    assert "60% restante" in rem["model"][0]["description"]
+    unknown = render(tmp_path / "c", "rem_c", {"claude": {"name": "Claude", "accounts": []}}, panel={"panelStyle": "text", "panelMode": "pct", "usageDisplay": "remaining"})
+    assert unknown["items"][0]["pct"] == "\u2014"  # sem dado continua "—", nunca 100%
+
+
+def test_popup_options_declared_with_safe_defaults_and_exposed():
+    import xml.etree.ElementTree as ET
+    root = ET.parse(UI_DIR.parent / "config" / "main.xml").getroot()
+    entries = {e.attrib["name"]: e for e in root.iter() if e.tag.endswith("entry")}
+    want = {"usageDisplay": ("String", "used"), "resetDisplay": ("String", "countdown"), "popupOpacity": ("Int", "100"),
+            "popupProviderOrder": ("String", "claude,codex,gemini"), "popupHiddenProviders": ("String", None)}
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for name, (typ, default) in want.items():
+        assert entries[name].attrib["type"] == typ and (entries[name].find("{*}default").text or None) == default
+        assert f"cfg_{name}" in cfg
+    assert entries["popupOpacity"].find("{*}min").text == "50" and entries["popupOpacity"].find("{*}max").text == "100"
+    assert "Accessible.name" in cfg.split('safeI18n("Popup:")')[1][:5000]

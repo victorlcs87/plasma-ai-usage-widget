@@ -205,41 +205,27 @@ def test_qml_contract_keys_compatibility():
 
 
 def test_account_card_qml_symmetric_meters_and_clean_capacity():
-    """Verify AccountCard.qml implements symmetric meters without raw message counts."""
+    """O card mostra as duas janelas simétricas (via NotchModel.windowView), sem contagem crua de mensagens."""
     card_path = UI_DIR / "AccountCard.qml"
     assert card_path.is_file()
     content = card_path.read_text(encoding="utf-8")
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
 
     # 1. Raw message counters removed from primary capacity display
     assert "Capacidade:" not in content
     assert "msgs" not in content
 
-    # 2. Symmetric Active Window Meter
-    assert "Janela Ativa (5h)" in content
-    assert "Janela Ativa (3h)" not in content  # duracao vem do provedor via %1
-    assert "Janela Ativa (%1)" in content
-    assert "Janela Diária" in content
-    # Marca de tempo decorrido nas duas barras
-    assert "elapsed_fraction" in content
-    assert "nativeElapsedMarker" in content
-    assert "weeklyElapsedMarker" in content
-    assert "nativeProgressBar" in content
-    assert "liveSecondsRemaining" in content
+    # 2. Janela Ativa/Semanal simétricas, com marca de tempo decorrido ao vivo e o relógio do popup
+    assert "Janela Ativa (5h)" in model and "Janela Ativa (3h)" not in model  # duracao vem do provedor via %1
+    assert "Janela Ativa (%1)" in model and "Janela Diária" in model and "Janela Semanal (7 dias)" in model
+    assert "elapsed_fraction" in model and "cycle_reset_time" in model and "release_time" in model
+    assert "nativeRow" in content and "weeklyRow" in content and "nowMs" in content and "weekly_window" in content
 
-    # 3. Symmetric Weekly Window Meter
-    assert "Janela Semanal (7 dias)" in content
-    assert "weeklyProgressBar" in content
-    assert "weekly_window" in content
-    assert "liveWeeklySecondsRemaining" in content
-    assert "cycle_reset_time" in content
+    # 3. Cor SÓ pelo nível do contrato: nada de limiares fixos 70/90 nem cores do tema por percentual
+    assert "getUsageColor" not in content and "< 70" not in content and "<= 90" not in content
+    assert "Kirigami.Theme.positiveTextColor" not in content and "Presets.levelColor" in content
 
-    # 4. Unified dynamic color thresholds (< 70%, 70-90%, > 90%)
-    assert "Kirigami.Theme.positiveTextColor" in content
-    assert "Kirigami.Theme.neutralTextColor" in content
-    assert "Kirigami.Theme.negativeTextColor" in content
-    assert "70" in content and "90" in content
-
-    # 5. Free trial invite preservation
+    # 4. Free trial invite preservation
     assert "free_trial_invites" in content
     assert "copyToClipboard" in content
     assert "shellQuote" in content
@@ -297,12 +283,16 @@ def test_account_card_shows_optional_token_history():
     assert "visible: Boolean(history)" in comp
 
 
-def test_cards_show_forecast_and_level_with_text_and_theme_colors():
+def test_cards_show_forecast_and_level_with_text_and_shapes():
     card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
-    for needle in ("alert_level", "forecast", "forecastText", "levelText", "levelIcon", "Text.PlainText"):
-        assert needle in card
-    level_fn = card[card.index("function levelColor"):card.index("function levelText")]
-    assert "#" not in level_fn and "Kirigami.Theme." in level_fn  # cores do tema, nunca hex fixo
+    row = (UI_DIR / "WindowRow.qml").read_text(encoding="utf-8")
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    for needle in ("alert_level", "forecast", "Esgota em"):
+        assert needle in model
+    for needle in ("Text.PlainText", "levelWord", "levelMark", "forecast"):
+        assert needle in row  # nível por palavra e forma, além da cor
+    assert "Presets.levelColor" in row and "#" not in row.split("levelColor")[1].split("\n")[0]  # cor vem do nível, nunca hex fixo
+    assert "forecast" in card.lower() or "windowView" in card
 
 
 def test_config_general_exposes_alert_mode_and_thresholds():
@@ -312,8 +302,9 @@ def test_config_general_exposes_alert_mode_and_thresholds():
 
 
 def test_forecast_text_follows_the_clock_and_alert_row_wraps():
-    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
-    assert "nowMs" in card and "fc.exhausts_at" in card and "fc.seconds_until" not in card
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    fn = model[model.index("function forecast("):model.index("function windowView")]
+    assert "nowMs" in fn and "fc.exhausts_at" in fn and "fc.seconds_until" not in fn  # exhausts_at - agora, nunca seconds_until
     cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
     assert "Flow {" in cfg and "alertsDirty" in cfg
 

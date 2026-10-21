@@ -2,36 +2,58 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
-import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasma5support as Plasma5Support
+import "Presets.js" as Presets
+import "NotchModel.js" as NotchModel
+import "ViewPrefs.js" as ViewPrefs
 
-Kirigami.AbstractCard {
+// Card de uma Conta no Notch escuro: Anel Duplo, nível, % (usado ou restante), liberação (contagem ou data),
+// previsão, nota de limites, Estado da Sessão, detalhamentos, histórico e convites. Ações: ativar no sistema e
+// copiar link de convite. Tudo derivado de `accountData` (contrato) e do relógio `nowMs` do popup.
+Rectangle {
     id: cardRoot
 
     property var accountData: ({})
     property var plasmoidItem: null
-    property int liveSecondsRemaining: 0
-    property double nowMs: Date.now()  // atualizado pelo countdownTimer: faz a previsão andar com o relógio
-    property int liveWeeklySecondsRemaining: 0
+    property double nowMs: Date.now()        // relógio do popup (1 s, só com o popup aberto)
+    property var prefs: ViewPrefs.config({})  // preferências de exibição (ViewPrefs.config)
+    property string sessionState: ""          // Estado da Sessão da Conta Ativa ("" = sem indicador)
+    property color accent: Kirigami.Theme.highlightColor
+    property bool animate: true               // false com o widget oculto (Passivo): nenhuma animação
+    property bool reducedMotion: false
     property bool copiedFeedback: false
     property bool isSwitching: false
     property string switchError: ""
+    property bool detailsOpen: false
 
     readonly property bool isActive: Boolean(cardRoot.accountData && (cardRoot.accountData.isActive === true || cardRoot.accountData.is_active === true))
     // ADR-0007: dados desatualizados (servidos do cache) ou ausentes (sem cache nem histórico local)
     readonly property bool isStale: cardRoot.accountData?.stale === true
     readonly property bool hasNoData: cardRoot.accountData?.no_data === true
-    // Dado desatualizado cuja liberacao ja passou: o percentual antigo nao vale mais
-    function staleExpired(iso) {
-        var t = iso ? Date.parse(iso) : NaN;
-        return cardRoot.isStale && !isNaN(t) && t <= Date.now();
-    }
-    readonly property bool nativeUnknown: cardRoot.hasNoData || cardRoot.accountData?.native_window?.usage_percentage === null
-        || cardRoot.staleExpired(cardRoot.accountData?.native_window?.release_time)
-    readonly property bool weeklyUnknown: cardRoot.hasNoData || cardRoot.accountData?.weekly_window?.usage_percentage === null
-        || cardRoot.staleExpired(cardRoot.accountData?.weekly_window?.cycle_reset_time)
+    readonly property var nativeView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.native_window, "native", cardRoot.prefs, cardRoot.nowMs, cardRoot.safeI18n)
+    readonly property var weeklyView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.weekly_window, "weekly", cardRoot.prefs, cardRoot.nowMs, cardRoot.safeI18n)
+    readonly property bool hasDetails: Boolean(cardRoot.accountData?.token_history || cardRoot.accountData?.usage_details)
+    readonly property string healthStatus: cardRoot.accountData?.health?.status || "unknown"
+    readonly property string accountName: cardRoot.accountData?.name || cardRoot.accountData?.label || cardRoot.safeI18n("Conta")
 
     signal accountSwitched()
+
+    implicitHeight: body.implicitHeight + Kirigami.Units.smallSpacing * 3
+    radius: 8
+    color: Presets.ui.card
+    border.width: cardRoot.isActive ? 2 : 1
+    border.color: cardRoot.isActive ? cardRoot.accent : Presets.ui.edge
+
+    Accessible.role: Accessible.Grouping
+    Accessible.name: cardRoot.safeI18n("%1, conta %2", Presets.providerInfo(cardRoot.accountData?.provider).name, cardRoot.accountName)
+    Accessible.description: [
+        cardRoot.isActive ? cardRoot.safeI18n("Ativa no sistema") : "",
+        NotchModel.viewSummary(cardRoot.nativeView, cardRoot.prefs.remaining, cardRoot.safeI18n),
+        NotchModel.viewSummary(cardRoot.weeklyView, cardRoot.prefs.remaining, cardRoot.safeI18n),
+        NotchModel.sessionWord(cardRoot.sessionState, cardRoot.safeI18n)
+    ].filter(function (x) { return x; }).join(". ")
+
+    Component.onCompleted: cardRoot.detailsOpen = cardRoot.isActive && cardRoot.hasDetails
 
     Plasma5Support.DataSource {
         id: switchDataSource
@@ -178,779 +200,268 @@ Kirigami.AbstractCard {
         return res;
     }
 
-    // Compute live countdowns for both active window and weekly cycle
-    function updateCountdown() {
-        nowMs = Date.now();
-        if (!accountData) {
-            liveSecondsRemaining = 0;
-            liveWeeklySecondsRemaining = 0;
-            return;
-        }
-
-        // 1. Janela Ativa/Horária
-        var nw = accountData.native_window;
-        if (nw) {
-            var releaseIso = nw.release_time || nw.resets_at;
-            if (releaseIso) {
-                var targetMs = new Date(releaseIso).getTime();
-                if (!isNaN(targetMs)) {
-                    var diffSec = Math.floor((targetMs - Date.now()) / 1000);
-                    liveSecondsRemaining = Math.max(0, diffSec);
-                } else {
-                    liveSecondsRemaining = (nw.seconds_remaining !== undefined && nw.seconds_remaining !== null)
-                        ? Math.max(0, nw.seconds_remaining)
-                        : 0;
-                }
-            } else if (nw.seconds_remaining !== undefined && nw.seconds_remaining !== null) {
-                liveSecondsRemaining = Math.max(0, nw.seconds_remaining);
-            } else {
-                liveSecondsRemaining = 0;
-            }
-        } else {
-            liveSecondsRemaining = 0;
-        }
-
-        // 2. Janela Semanal (7 dias)
-        var ww = accountData.weekly_window;
-        if (ww) {
-            var weeklyResetIso = ww.resets_at || ww.cycle_reset_time;
-            if (weeklyResetIso) {
-                var weeklyTargetMs = new Date(weeklyResetIso).getTime();
-                if (!isNaN(weeklyTargetMs)) {
-                    var weeklyDiffSec = Math.floor((weeklyTargetMs - Date.now()) / 1000);
-                    liveWeeklySecondsRemaining = Math.max(0, weeklyDiffSec);
-                } else {
-                    liveWeeklySecondsRemaining = (ww.seconds_remaining !== undefined && ww.seconds_remaining !== null)
-                        ? Math.max(0, ww.seconds_remaining)
-                        : 0;
-                }
-            } else if (ww.seconds_remaining !== undefined && ww.seconds_remaining !== null) {
-                liveWeeklySecondsRemaining = Math.max(0, ww.seconds_remaining);
-            } else {
-                liveWeeklySecondsRemaining = 0;
-            }
-        } else {
-            liveWeeklySecondsRemaining = 0;
-        }
+    // Saúde: palavra + forma (a cor sozinha nunca informa)
+    function healthText() {
+        var st = cardRoot.healthStatus;
+        if (st === "valid") return cardRoot.safeI18n("Ativa");
+        if (st === "session_expired") return cardRoot.safeI18n("Expirada");
+        if (st === "not_configured") return cardRoot.safeI18n("Não config.");
+        return cardRoot.safeI18n("Erro");
     }
 
-    Timer {
-        id: countdownTimer
-        interval: 1000
-        running: true
-        repeat: true
-        onTriggered: cardRoot.updateCountdown()
+    function healthMark() {
+        var st = cardRoot.healthStatus;
+        return st === "valid" ? "✓" : st === "session_expired" ? "▲" : st === "not_configured" ? "○" : "■";
     }
 
-    onAccountDataChanged: {
-        updateCountdown();
+    // Situação da consulta: erro (login, limite de requisições, rede), hora dos dados e próxima consulta
+    function statusLine() {
+        var acc = cardRoot.accountData || {};
+        var parts = [];
+        if (acc.fetch_error && acc.fetch_error.message) parts.push("⚠ " + acc.fetch_error.message);
+        if (cardRoot.hasNoData) parts.push(cardRoot.safeI18n("Sem dados do provedor"));
+        else if (cardRoot.isStale && acc.fetched_at && !isNaN(Date.parse(acc.fetched_at)))
+            parts.push(cardRoot.safeI18n("Dados de %1", ViewPrefs.dateText(Date.parse(acc.fetched_at), cardRoot.nowMs)));
+        if (acc.next_check_at && !isNaN(Date.parse(acc.next_check_at)))
+            parts.push(cardRoot.safeI18n("Próxima consulta às %1", ViewPrefs.dateText(Date.parse(acc.next_check_at), cardRoot.nowMs)));
+        return parts.join(" • ");
     }
 
-    Component.onCompleted: {
-        updateCountdown();
-    }
-
-    // Fraction of the window already elapsed (live), or -1 when the contract has no duration/release
-    function elapsedFraction(win, liveRemaining) {
-        if (!win || !(win.window_seconds > 0) || win.elapsed_fraction === null || win.elapsed_fraction === undefined) {
-            return -1;
-        }
-        return Math.min(1, Math.max(0, 1 - liveRemaining / win.window_seconds));
-    }
-
-    function formatCountdown(sec) {
-        if (sec <= 0) {
-            return safeI18n("Liberada");
-        }
-        var hours = Math.floor(sec / 3600);
-        var minutes = Math.floor((sec % 3600) / 60);
-        var seconds = Math.floor(sec % 60);
-
-        if (hours >= 24) {
-            var days = Math.floor(hours / 24);
-            var remH = hours % 24;
-            return safeI18n("%1d %2h restantes", days, remH);
-        } else if (hours > 0) {
-            var mStr = (minutes < 10 ? "0" : "") + minutes;
-            return safeI18n("%1h %2m restantes", hours, mStr);
-        } else if (minutes > 0) {
-            var sStr = (seconds < 10 ? "0" : "") + seconds;
-            return safeI18n("%1m %2s restantes", minutes, sStr);
-        } else {
-            return safeI18n("%1s restantes", seconds);
-        }
-    }
-
-    function formatTime(isoStr) {
-        if (!isoStr) return "";
-        try {
-            var d = new Date(isoStr);
-            if (isNaN(d.getTime())) return "";
-            var h = d.getHours();
-            var m = d.getMinutes();
-            return (h < 10 ? "0" : "") + h + ":" + (m < 10 ? "0" : "") + m;
-        } catch (e) {
-            return "";
-        }
-    }
-
-    function formatDateTime(isoStr) {
-        if (!isoStr) return "";
-        try {
-            var d = new Date(isoStr);
-            if (isNaN(d.getTime())) return "";
-            var day = ("0" + d.getDate()).slice(-2);
-            var month = ("0" + (d.getMonth() + 1)).slice(-2);
-            var h = ("0" + d.getHours()).slice(-2);
-            var m = ("0" + d.getMinutes()).slice(-2);
-            return day + "/" + month + " " + h + ":" + m;
-        } catch (e) {
-            return "";
-        }
-    }
-
-    function formatNumber(num) {
-        if (num === null || num === undefined) return "0";
-        return num.toLocaleString();
-    }
-
-    function formatPercentage(percentage) {
-        if (percentage === null || percentage === undefined || isNaN(percentage)) return "0%";
-        return Math.round(Number(percentage)) + "%";
-    }
-
-    function getUsageColor(percentage) {
-        var val = (percentage === null || percentage === undefined || isNaN(percentage)) ? 0 : Number(percentage);
-        if (val < 70) {
-            return Kirigami.Theme.positiveTextColor;
-        } else if (val <= 90) {
-            return Kirigami.Theme.neutralTextColor;
-        } else {
-            return Kirigami.Theme.negativeTextColor;
-        }
-    }
-
-    // Nível de alerta calculado pelo coletor (normal/warning/critical); sem nível, cai nos limiares fixos
-    function levelColor(level, percentage) {
-        if (level === "critical") return Kirigami.Theme.negativeTextColor;
-        if (level === "warning") return Kirigami.Theme.neutralTextColor;
-        if (level === "normal") return Kirigami.Theme.positiveTextColor;
-        return getUsageColor(percentage);
-    }
-
-    // Texto e ícone do nível: o alerta nunca depende só da cor
-    function levelText(level) {
-        if (level === "critical") return safeI18n("Crítico");
-        if (level === "warning") return safeI18n("Atenção");
-        return "";
-    }
-
-    function levelIcon(level) {
-        return level === "critical" ? "dialog-error" : "dialog-warning";
-    }
-
-    // Previsão de Esgotamento do coletor; vazio quando não há previsão confiável
-    function forecastText(win) {
-        var fc = win?.forecast;
-        if (cardRoot.isStale || cardRoot.hasNoData || !fc) return "";
-        if (!fc.exhausts_at) return safeI18n("Sem esgotamento previsto");
-        // exhausts_at - agora (seconds_until congela entre coletas)
-        if (isNaN(new Date(fc.exhausts_at).getTime())) return "";
-        var sec = Math.max(0, Math.round((new Date(fc.exhausts_at).getTime() - cardRoot.nowMs) / 1000));
-        var when = sec <= 0 ? safeI18n("agora")
-            : sec >= 86400 ? safeI18n("%1d %2h", Math.floor(sec / 86400), Math.floor((sec % 86400) / 3600))
-            : sec >= 3600 ? safeI18n("%1h %2min", Math.floor(sec / 3600), Math.floor((sec % 3600) / 60))
-            : safeI18n("%1 min", Math.max(1, Math.round(sec / 60)));
-        var at = formatTime(fc.exhausts_at);
-        var text = at.length > 0 && sec > 0 ? safeI18n("Esgota em %1 (%2)", when, at) : safeI18n("Esgota %1", when);
-        return fc.before_release ? text : safeI18n("%1, após a liberação", text);
-    }
-
-    function getProviderColor(provider) {
-        switch ((provider || "").toLowerCase()) {
-        case "claude":
-            return "#d97736"; // Coral Anthropic
-        case "codex":
-            return "#10a37f"; // Verde OpenAI
-        case "gemini":
-            return "#4285f4"; // Azul Google
-        default:
-            return Kirigami.Theme.highlightColor;
-        }
-    }
-
-    contentItem: ColumnLayout {
+    ColumnLayout {
+        id: body
+        anchors { left: parent.left; right: parent.right; top: parent.top; margins: Kirigami.Units.smallSpacing * 1.5 }
         spacing: Kirigami.Units.smallSpacing
 
-        // Linha 1: Provedor, Nome da Conta e Status de Saúde
         RowLayout {
             Layout.fillWidth: true
-            spacing: Kirigami.Units.smallSpacing
+            spacing: Kirigami.Units.smallSpacing * 1.5
 
-            Rectangle {
-                implicitWidth: providerLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
-                implicitHeight: providerLabel.implicitHeight + Kirigami.Units.smallSpacing
-                radius: 4
-                color: cardRoot.getProviderColor(cardRoot.accountData?.provider)
-
-                QQC2.Label {
-                    id: providerLabel
-                    anchors.centerIn: parent
-                    text: (cardRoot.accountData?.provider || "IA").toUpperCase()
-                    font.bold: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    color: "white"
-                }
+            // Anel Duplo da Conta: externo = semanal, interno = Janela Nativa. Restante: o arco mostra o que sobra
+            DualRing {
+                id: ring
+                objectName: "accountRing"
+                Accessible.ignored: true
+                Layout.preferredWidth: Kirigami.Units.gridUnit * 2.6
+                Layout.preferredHeight: Kirigami.Units.gridUnit * 2.6
+                Layout.alignment: Qt.AlignTop
+                outerPct: ViewPrefs.shownPct(cardRoot.weeklyView.pct, cardRoot.prefs.remaining)
+                innerPct: ViewPrefs.shownPct(cardRoot.nativeView.pct, cardRoot.prefs.remaining)
+                outerElapsed: cardRoot.weeklyView.elapsed
+                innerElapsed: cardRoot.nativeView.elapsed
+                outerLevel: cardRoot.weeklyView.level
+                innerLevel: cardRoot.nativeView.level
+                outerColor: Presets.levelColor(cardRoot.weeklyView.level, cardRoot.accent)
+                innerColor: Presets.levelColor(cardRoot.nativeView.level, cardRoot.accent)
+                letter: Presets.providerInfo(cardRoot.accountData?.provider).letter
+                sessionState: cardRoot.sessionState
+                active: cardRoot.animate
+                reducedMotion: cardRoot.reducedMotion
             }
 
-            QQC2.Label {
+            ColumnLayout {
                 Layout.fillWidth: true
-                text: cardRoot.accountData?.name || cardRoot.accountData?.label || cardRoot.safeI18n("Conta")
-                font.bold: true
-                elide: Text.ElideRight
-                color: Kirigami.Theme.textColor
-            }
+                spacing: Math.round(Kirigami.Units.smallSpacing / 2)
 
-            // Botão de Ativação Rápida no Sistema (apenas para contas inativas com saúde válida)
-            PlasmaComponents3.Button {
-                id: switchAccountButton
-                visible: !cardRoot.isActive && (cardRoot.accountData?.health?.status === "valid")
-                enabled: !cardRoot.isSwitching
-                text: cardRoot.isSwitching ? cardRoot.safeI18n("Ativando...") : cardRoot.safeI18n("⚡ Ativar no Sistema")
-                icon.name: cardRoot.isSwitching ? "view-refresh" : "system-run"
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-
-                QQC2.ToolTip.visible: hovered
-                QQC2.ToolTip.text: {
-                    if (cardRoot.isSwitching) return cardRoot.safeI18n("Ativando conta no sistema...");
-                    if (cardRoot.switchError && cardRoot.switchError.length > 0) return cardRoot.switchError;
-                    return cardRoot.safeI18n("Ativar esta conta como perfil padrão no CLI do sistema");
-                }
-
-                onClicked: {
-                    cardRoot.switchAccount();
-                }
-            }
-
-            // Badge de Conta Ativa no CLI
-            Rectangle {
-                id: activeCliBadge
-                visible: cardRoot.isActive
-                implicitWidth: activeCliLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
-                implicitHeight: activeCliLabel.implicitHeight + Kirigami.Units.smallSpacing
-                radius: 4
-                color: Kirigami.Theme.highlightColor
-
-                QQC2.Label {
-                    id: activeCliLabel
-                    anchors.centerIn: parent
-                    text: cardRoot.safeI18n("✓ Ativa no CLI")
-                    font.bold: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    color: Kirigami.Theme.highlightedTextColor || "white"
-                }
-
-                QQC2.ToolTip.text: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.")
-                QQC2.ToolTip.visible: activeCliMouseArea.containsMouse
-
-                MouseArea {
-                    id: activeCliMouseArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                }
-            }
-
-            Rectangle {
-                id: healthBadge
-                implicitWidth: healthText.implicitWidth + Kirigami.Units.smallSpacing * 2
-                implicitHeight: healthText.implicitHeight + Kirigami.Units.smallSpacing
-                radius: 4
-
-                property string healthStatus: cardRoot.accountData?.health?.status || "unknown"
-
-                color: {
-                    if (healthStatus === "valid") return "#27ae60";
-                    if (healthStatus === "session_expired") return "#f39c12";
-                    if (healthStatus === "not_configured") return "#7f8c8d";
-                    return "#e74c3c";
-                }
-
-                QQC2.Label {
-                    id: healthText
-                    anchors.centerIn: parent
-                    text: {
-                        var st = healthBadge.healthStatus;
-                        if (st === "valid") return cardRoot.safeI18n("Ativa");
-                        if (st === "session_expired") return cardRoot.safeI18n("Expirada");
-                        if (st === "not_configured") return cardRoot.safeI18n("Não config.");
-                        return cardRoot.safeI18n("Erro");
-                    }
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    font.bold: true
-                    color: "white"
-                }
-
-                QQC2.ToolTip.text: cardRoot.accountData?.health?.message || ""
-                QQC2.ToolTip.visible: healthMouseArea.containsMouse
-
-                MouseArea {
-                    id: healthMouseArea
-                    anchors.fill: parent
-                    hoverEnabled: true
-                }
-            }
-        }
-
-        // Situação da consulta: erro (login, limite de requisições, rede), hora dos dados e próxima consulta
-        QQC2.Label {
-            id: refreshStatusLabel
-            Layout.fillWidth: true
-            visible: text.length > 0
-            wrapMode: Text.WordWrap
-            font.pointSize: Kirigami.Theme.smallFont.pointSize
-            color: cardRoot.accountData?.fetch_error ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.disabledTextColor
-            text: {
-                var acc = cardRoot.accountData || {};
-                var parts = [];
-                if (acc.fetch_error && acc.fetch_error.message) parts.push(acc.fetch_error.message);
-                if (cardRoot.hasNoData) parts.push(cardRoot.safeI18n("Sem dados do provedor"));
-                else if (cardRoot.isStale && acc.fetched_at) parts.push(cardRoot.safeI18n("Dados de %1", cardRoot.formatDateTime(acc.fetched_at)));
-                if (acc.next_check_at) parts.push(cardRoot.safeI18n("Próxima consulta às %1", cardRoot.formatTime(acc.next_check_at)));
-                return parts.join(" • ");
-            }
-        }
-
-        // ==========================================
-        // Medidor 1: Janela Ativa/Horária
-        // ==========================================
-        ColumnLayout {
-            Layout.fillWidth: true
-            spacing: Math.round(Kirigami.Units.smallSpacing / 2)
-            opacity: (cardRoot.isStale || cardRoot.hasNoData) ? 0.5 : 1.0
-
-            // Cabeçalho: Título da Janela e Porcentagem em Destaque
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                QQC2.Label {
-                    id: activeWindowTitleLabel
-                    text: {
-                        var winType = cardRoot.accountData?.native_window?.type || "";
-                        if (winType === "5h") return cardRoot.safeI18n("Janela Ativa (5h)");
-                        if (winType === "daily") return cardRoot.safeI18n("Janela Diária");
-                        if (winType) return cardRoot.safeI18n("Janela Ativa (%1)", winType);
-                        return cardRoot.safeI18n("Janela Ativa");
-                    }
-                    font.weight: Font.DemiBold
-                    color: Kirigami.Theme.textColor
-                }
-
-                Item { Layout.fillWidth: true }
-
-                // Nível de alerta em texto e ícone (além da cor)
                 RowLayout {
-                    id: nativeLevelIndicator
-                    readonly property string level: cardRoot.accountData?.native_window?.alert_level || ""
-                    visible: !cardRoot.nativeUnknown && !cardRoot.isStale && (level === "warning" || level === "critical")
-                    spacing: Math.round(Kirigami.Units.smallSpacing / 2)
-                    Accessible.role: Accessible.StaticText
-                    Accessible.name: cardRoot.levelText(level)
-
-                    Kirigami.Icon {
-                        source: cardRoot.levelIcon(nativeLevelIndicator.level)
-                        implicitWidth: Kirigami.Units.iconSizes.small
-                        implicitHeight: Kirigami.Units.iconSizes.small
-                        color: cardRoot.levelColor(nativeLevelIndicator.level, 0)
-                    }
-                    QQC2.Label {
-                        text: cardRoot.levelText(nativeLevelIndicator.level)
-                        textFormat: Text.PlainText
-                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        color: cardRoot.levelColor(nativeLevelIndicator.level, 0)
-                    }
-                }
-
-                QQC2.Label {
-                    id: activeWindowPercentageLabel
-                    property double pct: cardRoot.accountData?.native_window?.usage_percentage || 0.0
-                    text: cardRoot.nativeUnknown ? "—" : cardRoot.formatPercentage(pct)
-                    font.bold: true
-                    font.pointSize: Kirigami.Theme.defaultFont.pointSize
-                    color: cardRoot.levelColor(cardRoot.accountData?.native_window?.alert_level, pct)
-
-                    QQC2.ToolTip.visible: activePctMouseArea.containsMouse
-                    QQC2.ToolTip.text: cardRoot.safeI18n("%1% consumido da cota horária/ativa", pct.toFixed(1))
-
-                    MouseArea {
-                        id: activePctMouseArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                    }
-                }
-            }
-
-            // Barra de Progresso Proporcional da Janela Ativa
-            QQC2.ProgressBar {
-                id: nativeProgressBar
-                Layout.fillWidth: true
-                Layout.preferredHeight: 6
-                from: 0.0
-                to: 1.0
-                value: (cardRoot.accountData?.native_window ? cardRoot.accountData.native_window.usage_percentage : 0.0) / 100.0
-
-                background: Rectangle {
-                    implicitHeight: 6
-                    radius: 3
-                    color: Kirigami.Theme.alternateBackgroundColor
-                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.15)
-                    border.width: 1
-                }
-
-                contentItem: Item {
-                    implicitHeight: 6
-                    Rectangle {
-                        width: Math.min(parent.width, Math.max(0, nativeProgressBar.visualPosition * parent.width))
-                        height: parent.height
-                        radius: 3
-                        color: cardRoot.levelColor(cardRoot.accountData?.native_window?.alert_level, cardRoot.accountData?.native_window?.usage_percentage || 0.0)
-                    }
-                    // Marca de tempo decorrido da Janela Nativa
-                    Rectangle {
-                        id: nativeElapsedMarker
-                        property double frac: cardRoot.elapsedFraction(cardRoot.accountData?.native_window, cardRoot.liveSecondsRemaining)
-                        visible: frac >= 0
-                        x: Math.round(Math.max(0, frac) * (parent.width - width))
-                        y: -2
-                        width: 2
-                        height: parent.height + 4
-                        color: Kirigami.Theme.textColor
-                        opacity: 0.7
-                    }
-                }
-            }
-
-            // Detalhes Complementares: Tokens Consumidos e Contagem Regressiva de Liberação
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                Kirigami.Icon {
-                    source: "appointment-soon"
-                    implicitWidth: Kirigami.Units.iconSizes.small
-                    implicitHeight: Kirigami.Units.iconSizes.small
-                    color: cardRoot.liveSecondsRemaining > 0 ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.positiveTextColor
-                }
-
-                QQC2.Label {
-                    id: activeWindowDetailsLabel
                     Layout.fillWidth: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    color: Kirigami.Theme.disabledTextColor
-                    elide: Text.ElideRight
-                    text: {
-                        var nw = cardRoot.accountData?.native_window;
-                        if (cardRoot.nativeUnknown) return cardRoot.safeI18n("Sem dados");
-                        if (cardRoot.isStale) {
-                            var staleRelease = cardRoot.formatTime(nw ? (nw.release_time || nw.resets_at) : null);
-                            return staleRelease.length > 0
-                                ? cardRoot.safeI18n("Liberação prevista às %1 (dados desatualizados)", staleRelease)
-                                : cardRoot.safeI18n("Dados desatualizados");
+                    spacing: Kirigami.Units.smallSpacing
+
+                    QQC2.Label {
+                        objectName: "accountName"
+                        Accessible.ignored: true
+                        Layout.fillWidth: true
+                        text: cardRoot.accountName
+                        textFormat: Text.PlainText
+                        font.bold: true
+                        elide: Text.ElideRight
+                        color: Presets.ui.fg
+                    }
+
+                    // Botão de Ativação Rápida no Sistema (apenas para contas inativas com saúde válida)
+                    NotchButton {
+                        id: switchAccountButton
+                        visible: !cardRoot.isActive && (cardRoot.accountData?.health?.status === "valid")
+                        enabled: !cardRoot.isSwitching
+                        text: cardRoot.isSwitching ? cardRoot.safeI18n("Ativando...") : cardRoot.safeI18n("⚡ Ativar no Sistema")
+                        accent: cardRoot.accent
+                        hint: cardRoot.switchError.length > 0 ? cardRoot.switchError
+                            : cardRoot.isSwitching ? cardRoot.safeI18n("Ativando conta no sistema...")
+                            : cardRoot.safeI18n("Ativar esta conta como perfil padrão no CLI do sistema")
+                        onClicked: cardRoot.switchAccount()
+                    }
+
+                    // Badge de Conta Ativa no CLI
+                    Rectangle {
+                        id: activeCliBadge
+                        visible: cardRoot.isActive
+                        implicitWidth: activeCliLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                        implicitHeight: activeCliLabel.implicitHeight + Kirigami.Units.smallSpacing
+                        radius: 4
+                        color: Presets.ui.chip
+                        border.width: 1
+                        border.color: Kirigami.Theme.highlightColor
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.")
+
+                        QQC2.Label {
+                            id: activeCliLabel
+                            Accessible.ignored: true
+                            anchors.centerIn: parent
+                            text: cardRoot.safeI18n("✓ Ativa no CLI")
+                            textFormat: Text.PlainText
+                            font.bold: true
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            color: Presets.ui.fg
                         }
-                        var parts = [];
-                        if (nw && nw.tokens_used !== null && nw.tokens_used !== undefined && nw.tokens_used > 0) {
-                            parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(nw.tokens_used)));
+                        HoverHandler { id: activeHover }
+                        QQC2.ToolTip.visible: activeHover.hovered
+                        QQC2.ToolTip.text: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.")
+                    }
+
+                    Rectangle {
+                        id: healthBadge
+                        visible: cardRoot.healthStatus !== "valid"  // saúde normal não ocupa espaço; o problema sim
+                        implicitWidth: healthLabel.implicitWidth + Kirigami.Units.smallSpacing * 2
+                        implicitHeight: healthLabel.implicitHeight + Kirigami.Units.smallSpacing
+                        radius: 4
+                        color: Presets.ui.chip
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: cardRoot.safeI18n("Saúde da conta: %1", cardRoot.healthText())
+                        Accessible.description: cardRoot.accountData?.health?.message || ""
+
+                        QQC2.Label {
+                            id: healthLabel
+                            Accessible.ignored: true
+                            anchors.centerIn: parent
+                            text: cardRoot.healthMark() + " " + cardRoot.healthText()
+                            textFormat: Text.PlainText
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            font.bold: true
+                            color: Presets.ui.fg
                         }
-                        var countdownStr = cardRoot.formatCountdown(cardRoot.liveSecondsRemaining);
-                        var releaseIso = nw ? (nw.release_time || nw.resets_at) : null;
-                        var timeStr = cardRoot.formatTime(releaseIso);
-                        if (cardRoot.liveSecondsRemaining > 0 && timeStr.length > 0) {
-                            parts.push(cardRoot.safeI18n("Liberação: %1 (%2)", countdownStr, timeStr));
-                        } else if (cardRoot.liveSecondsRemaining > 0) {
-                            parts.push(cardRoot.safeI18n("Liberação: %1", countdownStr));
-                        } else {
-                            parts.push(cardRoot.safeI18n("Cota liberada"));
-                        }
-                        return parts.join(" • ");
+                        HoverHandler { id: healthHover }
+                        QQC2.ToolTip.visible: healthHover.hovered && Boolean(cardRoot.accountData?.health?.message)
+                        QQC2.ToolTip.text: cardRoot.accountData?.health?.message || ""
                     }
                 }
-            }
 
-            // Previsão de Esgotamento (somente com amostras confiáveis)
-            QQC2.Label {
-                id: nativeForecastLabel
-                Layout.fillWidth: true
-                visible: text.length > 0
-                text: cardRoot.forecastText(cardRoot.accountData?.native_window)
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                color: cardRoot.accountData?.native_window?.forecast?.before_release ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.disabledTextColor
+                QQC2.Label {
+                    id: refreshStatusLabel
+                    Accessible.ignored: true
+                    Layout.fillWidth: true
+                    visible: text.length > 0
+                    text: cardRoot.statusLine()
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: cardRoot.accountData?.fetch_error ? Presets.ui.fg : Presets.ui.muted
+                }
+
+                QQC2.Label {
+                    objectName: "sessionWord"
+                    Accessible.ignored: true
+                    Layout.fillWidth: true
+                    visible: cardRoot.sessionState !== ""
+                    text: NotchModel.sessionWord(cardRoot.sessionState, cardRoot.safeI18n)
+                    textFormat: Text.PlainText
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    font.bold: true
+                    color: Presets.ui.fg
+                }
             }
         }
 
-        // ==========================================
+        // Medidor 1: Janela Ativa/Horária (título "Janela Ativa (5h)" / "Janela Diária" / "Janela Ativa (%1)")
+        WindowRow {
+            id: nativeRow
+            objectName: "nativeRow"
+            Layout.fillWidth: true
+            view: cardRoot.nativeView
+            remaining: cardRoot.prefs.remaining
+            accent: cardRoot.accent
+            summary: NotchModel.viewSummary(cardRoot.nativeView, cardRoot.prefs.remaining, cardRoot.safeI18n)
+        }
+
         // Medidor 2: Janela Semanal (7 dias)
-        // ==========================================
-        ColumnLayout {
+        WindowRow {
+            id: weeklyRow
+            objectName: "weeklyRow"
             Layout.fillWidth: true
-            spacing: Math.round(Kirigami.Units.smallSpacing / 2)
-            opacity: (cardRoot.isStale || cardRoot.hasNoData) ? 0.5 : 1.0
-
-            // Cabeçalho: Título da Janela Semanal e Porcentagem em Destaque
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                QQC2.Label {
-                    id: weeklyWindowTitleLabel
-                    text: cardRoot.safeI18n("Janela Semanal (7 dias)")
-                    font.weight: Font.DemiBold
-                    color: Kirigami.Theme.textColor
-                }
-
-                Item { Layout.fillWidth: true }
-
-                // Nível de alerta em texto e ícone (além da cor)
-                RowLayout {
-                    id: weeklyLevelIndicator
-                    readonly property string level: cardRoot.accountData?.weekly_window?.alert_level || ""
-                    visible: !cardRoot.weeklyUnknown && !cardRoot.isStale && (level === "warning" || level === "critical")
-                    spacing: Math.round(Kirigami.Units.smallSpacing / 2)
-                    Accessible.role: Accessible.StaticText
-                    Accessible.name: cardRoot.levelText(level)
-
-                    Kirigami.Icon {
-                        source: cardRoot.levelIcon(weeklyLevelIndicator.level)
-                        implicitWidth: Kirigami.Units.iconSizes.small
-                        implicitHeight: Kirigami.Units.iconSizes.small
-                        color: cardRoot.levelColor(weeklyLevelIndicator.level, 0)
-                    }
-                    QQC2.Label {
-                        text: cardRoot.levelText(weeklyLevelIndicator.level)
-                        textFormat: Text.PlainText
-                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        color: cardRoot.levelColor(weeklyLevelIndicator.level, 0)
-                    }
-                }
-
-                QQC2.Label {
-                    id: weeklyWindowPercentageLabel
-                    property double weeklyPct: (cardRoot.accountData?.weekly_window?.usage_percentage !== undefined && cardRoot.accountData?.weekly_window?.usage_percentage !== null)
-                        ? cardRoot.accountData.weekly_window.usage_percentage
-                        : 0.0
-                    text: cardRoot.weeklyUnknown ? "—" : cardRoot.formatPercentage(weeklyPct)
-                    font.bold: true
-                    font.pointSize: Kirigami.Theme.defaultFont.pointSize
-                    color: cardRoot.levelColor(cardRoot.accountData?.weekly_window?.alert_level, weeklyPct)
-
-                    QQC2.ToolTip.visible: weeklyPctMouseArea.containsMouse
-                    QQC2.ToolTip.text: cardRoot.safeI18n("%1% consumido da cota semanal", weeklyPct.toFixed(1))
-
-                    MouseArea {
-                        id: weeklyPctMouseArea
-                        anchors.fill: parent
-                        hoverEnabled: true
-                    }
-                }
-            }
-
-            // Barra de Progresso Proporcional da Janela Semanal
-            QQC2.ProgressBar {
-                id: weeklyProgressBar
-                Layout.fillWidth: true
-                Layout.preferredHeight: 6
-                from: 0.0
-                to: 1.0
-                value: (cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0) / 100.0
-
-                background: Rectangle {
-                    implicitHeight: 6
-                    radius: 3
-                    color: Kirigami.Theme.alternateBackgroundColor
-                    border.color: Kirigami.ColorUtils.linearInterpolation(Kirigami.Theme.backgroundColor, Kirigami.Theme.textColor, 0.15)
-                    border.width: 1
-                }
-
-                contentItem: Item {
-                    implicitHeight: 6
-                    Rectangle {
-                        width: Math.min(parent.width, Math.max(0, weeklyProgressBar.visualPosition * parent.width))
-                        height: parent.height
-                        radius: 3
-                        color: cardRoot.levelColor(cardRoot.accountData?.weekly_window?.alert_level, cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0)
-                    }
-                    // Marca de tempo decorrido da Janela Semanal
-                    Rectangle {
-                        id: weeklyElapsedMarker
-                        property double frac: cardRoot.elapsedFraction(cardRoot.accountData?.weekly_window, cardRoot.liveWeeklySecondsRemaining)
-                        visible: frac >= 0
-                        x: Math.round(Math.max(0, frac) * (parent.width - width))
-                        y: -2
-                        width: 2
-                        height: parent.height + 4
-                        color: Kirigami.Theme.textColor
-                        opacity: 0.7
-                    }
-                }
-            }
-
-            // Detalhes Complementares: Tokens Acumulados na Semana e Data/Hora de Virada do Ciclo
-            RowLayout {
-                Layout.fillWidth: true
-                spacing: Kirigami.Units.smallSpacing
-
-                Kirigami.Icon {
-                    source: "view-calendar-timeline"
-                    implicitWidth: Kirigami.Units.iconSizes.small
-                    implicitHeight: Kirigami.Units.iconSizes.small
-                    color: Kirigami.Theme.disabledTextColor
-                }
-
-                QQC2.Label {
-                    id: weeklyWindowDetailsLabel
-                    Layout.fillWidth: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize
-                    color: Kirigami.Theme.disabledTextColor
-                    elide: Text.ElideRight
-                    text: {
-                        var ww = cardRoot.accountData?.weekly_window;
-                        if (cardRoot.weeklyUnknown) return cardRoot.safeI18n("Sem dados");
-                        if (!ww) return cardRoot.safeI18n("Ciclo semanal regular");
-                        var parts = [];
-                        if (ww.tokens_used !== null && ww.tokens_used !== undefined && ww.tokens_used > 0) {
-                            parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(ww.tokens_used)));
-                        }
-                        var resetIso = ww.resets_at || ww.cycle_reset_time;
-                        var dateStr = cardRoot.formatDateTime(resetIso);
-                        if (cardRoot.isStale) {
-                            return dateStr.length > 0
-                                ? cardRoot.safeI18n("Virada prevista: %1 (dados desatualizados)", dateStr)
-                                : cardRoot.safeI18n("Dados desatualizados");
-                        }
-                        var countdownStr = cardRoot.formatCountdown(cardRoot.liveWeeklySecondsRemaining);
-                        if (cardRoot.liveWeeklySecondsRemaining > 0 && dateStr.length > 0) {
-                            parts.push(cardRoot.safeI18n("Virada: %1 (%2)", dateStr, countdownStr));
-                        } else if (dateStr.length > 0) {
-                            parts.push(cardRoot.safeI18n("Virada: %1", dateStr));
-                        } else if (cardRoot.liveWeeklySecondsRemaining > 0) {
-                            parts.push(cardRoot.safeI18n("Virada: %1", countdownStr));
-                        } else {
-                            parts.push(cardRoot.safeI18n("Ciclo regular"));
-                        }
-                        return parts.join(" • ");
-                    }
-                }
-            }
-
-            // Previsão de Esgotamento (somente com amostras confiáveis)
-            QQC2.Label {
-                id: weeklyForecastLabel
-                Layout.fillWidth: true
-                visible: text.length > 0
-                text: cardRoot.forecastText(cardRoot.accountData?.weekly_window)
-                textFormat: Text.PlainText
-                elide: Text.ElideRight
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
-                color: cardRoot.accountData?.weekly_window?.forecast?.before_release ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.disabledTextColor
-            }
+            view: cardRoot.weeklyView
+            remaining: cardRoot.prefs.remaining
+            accent: cardRoot.accent
+            summary: NotchModel.viewSummary(cardRoot.weeklyView, cardRoot.prefs.remaining, cardRoot.safeI18n)
         }
 
-        // Nota de mudanca de limites (campo opcional "limit_changes", valida por 3 dias)
+        // Nota de mudança de limites (campo opcional "limit_changes", válida por 3 dias)
         QQC2.Label {
+            objectName: "limitNote"
             Layout.fillWidth: true
             visible: text.length > 0
             text: cardRoot.limitChangeText(cardRoot.accountData?.limit_changes)
             wrapMode: Text.WordWrap
             textFormat: Text.PlainText
-            color: Kirigami.Theme.neutralTextColor
+            color: Presets.ui.fg
             font.pointSize: Kirigami.Theme.smallFont.pointSize
+        }
+
+        NotchButton {
+            id: detailsToggle
+            visible: cardRoot.hasDetails
+            text: (cardRoot.detailsOpen ? "▾ " : "▸ ") + cardRoot.safeI18n("Histórico e detalhes")
+            Accessible.name: cardRoot.safeI18n("Histórico e detalhes")
+            Accessible.expanded: cardRoot.detailsOpen
+            accent: cardRoot.accent
+            onClicked: cardRoot.detailsOpen = !cardRoot.detailsOpen
         }
 
         UsageDetails {
             Layout.fillWidth: true
+            visible: cardRoot.detailsOpen && (lines.length > 0 || models.length > 0)
             details: cardRoot.accountData?.usage_details ?? null
         }
 
-        // Historico de Tokens (campo opcional do contrato v2)
+        // Histórico de Tokens (campo opcional do contrato v2)
         TokenHistory {
             Layout.fillWidth: true
+            visible: cardRoot.detailsOpen && Boolean(history)
             history: cardRoot.accountData?.token_history ?? null
-            barColor: cardRoot.getProviderColor(cardRoot.accountData?.provider)
+            barColor: cardRoot.accent
         }
 
-        // ==========================================
-        // Medidor 3: Badge de Convites de Teste Gratuito
-        // ==========================================
+        // Convites de Teste Gratuito
         RowLayout {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
-            visible: {
-                var invites = cardRoot.accountData?.free_trial_invites;
-                return Boolean(invites && invites.available_count > 0);
+            visible: Boolean((cardRoot.accountData?.free_trial_invites?.available_count || 0) > 0)
+
+            QQC2.Label {
+                Accessible.ignored: false
+                Layout.fillWidth: true
+                wrapMode: Text.WordWrap
+                textFormat: Text.PlainText
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                color: Presets.ui.fg
+                text: {
+                    var count = cardRoot.accountData?.free_trial_invites?.available_count || 0;
+                    return "✉ " + (count === 1
+                        ? cardRoot.safeI18n("1 convite de teste gratuito disponível")
+                        : cardRoot.safeI18n("%1 convites de teste gratuito disponíveis", count));
+                }
             }
 
-            Rectangle {
-                Layout.fillWidth: true
-                implicitHeight: inviteRow.implicitHeight + Kirigami.Units.smallSpacing * 2
-                radius: 4
-                color: Kirigami.ColorUtils.tintWithAlpha(Kirigami.Theme.highlightColor, "#f1c40f", 0.25)
-                border.color: "#f39c12"
-                border.width: 1
-
-                RowLayout {
-                    id: inviteRow
-                    anchors.fill: parent
-                    anchors.margins: Kirigami.Units.smallSpacing
-                    spacing: Kirigami.Units.smallSpacing
-
-                    Kirigami.Icon {
-                        source: "mail-message-new"
-                        implicitWidth: Kirigami.Units.iconSizes.small
-                        implicitHeight: Kirigami.Units.iconSizes.small
-                        color: "#d35400"
-                    }
-
-                    QQC2.Label {
-                        Layout.fillWidth: true
-                        font.bold: true
-                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        color: Kirigami.Theme.textColor
-                        text: {
-                            var count = cardRoot.accountData?.free_trial_invites?.available_count || 0;
-                            return count === 1
-                                ? cardRoot.safeI18n("1 convite de teste gratuito disponível")
-                                : cardRoot.safeI18n("%1 convites de teste gratuito disponíveis", count);
-                        }
-                    }
-
-                    QQC2.Button {
-                        id: copyInviteButton
-                        visible: Boolean(cardRoot.accountData?.free_trial_invites?.invite_url)
-                        text: cardRoot.copiedFeedback ? cardRoot.safeI18n("Copiado!") : cardRoot.safeI18n("Copiar Link")
-                        icon.name: cardRoot.copiedFeedback ? "emblem-ok-symbolic" : "edit-copy"
-                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        highlighted: cardRoot.copiedFeedback
-
-                        QQC2.ToolTip.visible: hovered || cardRoot.copiedFeedback
-                        QQC2.ToolTip.text: cardRoot.copiedFeedback
-                            ? cardRoot.safeI18n("Link copiado para a Área de Transferência!")
-                            : cardRoot.safeI18n("Copiar link de convite para a Área de Transferência")
-
-                        onClicked: {
-                            var url = cardRoot.accountData?.free_trial_invites?.invite_url;
-                            if (url) {
-                                cardRoot.copyToClipboard(url);
-                            }
-                        }
-                    }
-
-                    QQC2.Label {
-                        visible: cardRoot.copiedFeedback
-                        text: cardRoot.safeI18n("Copiado!")
-                        font.bold: true
-                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                        color: Kirigami.Theme.positiveTextColor
+            NotchButton {
+                id: copyInviteButton
+                visible: Boolean(cardRoot.accountData?.free_trial_invites?.invite_url)
+                text: cardRoot.copiedFeedback ? cardRoot.safeI18n("Copiado!") : cardRoot.safeI18n("Copiar Link")
+                accent: cardRoot.accent
+                hint: cardRoot.copiedFeedback
+                    ? cardRoot.safeI18n("Link copiado para a Área de Transferência!")
+                    : cardRoot.safeI18n("Copiar link de convite para a Área de Transferência")
+                onClicked: {
+                    var url = cardRoot.accountData?.free_trial_invites?.invite_url;
+                    if (url) {
+                        cardRoot.copyToClipboard(url);
                     }
                 }
             }

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import "Presets.js" as Presets
 
 // Historico de Tokens de uma Conta: totais de hoje/semana/mes e grafico de barras.
 // Apenas apresenta o campo opcional `token_history` do contrato (calculado no coletor).
@@ -40,6 +41,8 @@ ColumnLayout {
         return String(n);
     }
 
+    readonly property var periodNames: [tr("30 dias"), tr("3 meses"), tr("12 meses")]
+
     function pointLabel(p) {
         return p.date || p.week_start || p.month || "";
     }
@@ -52,14 +55,15 @@ ColumnLayout {
             source: "office-chart-bar"
             implicitWidth: Kirigami.Units.iconSizes.small
             implicitHeight: Kirigami.Units.iconSizes.small
-            color: Kirigami.Theme.disabledTextColor
+            color: Presets.ui.muted
         }
 
         QQC2.Label {
             Layout.fillWidth: true
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            color: Kirigami.Theme.disabledTextColor
+            color: Presets.ui.muted
             elide: Text.ElideRight
+            textFormat: Text.PlainText
             text: root.history
                 ? root.tr("Hoje %1", root.compact(root.history.today))
                   + " • " + root.tr("Semana %1", root.compact(root.history.week))
@@ -70,13 +74,14 @@ ColumnLayout {
 
         Repeater {
             model: [root.tr("30d"), root.tr("3m"), root.tr("12m")]
-            delegate: QQC2.ToolButton {
+            delegate: NotchButton {
                 required property int index
                 required property string modelData
                 text: modelData
+                hint: root.periodNames[index]
                 checkable: true
                 checked: root.period === index
-                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                accent: root.barColor
                 onClicked: root.period = index
             }
         }
@@ -84,6 +89,10 @@ ColumnLayout {
 
     Item {
         id: chart
+        // Resumo para tecnologias assistivas: as barras são só visuais
+        Accessible.role: Accessible.Chart
+        Accessible.name: root.tr("Histórico de tokens, %1", root.periodNames[root.period])
+        Accessible.description: root.series.length === 0 ? root.tr("Sem dados") : root.tr("Maior valor: %1", root.compact(root.maxTokens))
         Layout.fillWidth: true
         implicitHeight: Kirigami.Units.gridUnit * 2
 
@@ -103,7 +112,7 @@ ColumnLayout {
                         width: parent.width
                         radius: 1
                         height: root.maxTokens > 0 ? Math.max(1, parent.height * (modelData.tokens || 0) / root.maxTokens) : 1
-                        color: (modelData.tokens || 0) > 0 ? root.barColor : Kirigami.Theme.disabledTextColor
+                        color: (modelData.tokens || 0) > 0 ? root.barColor : Presets.ui.muted
                         opacity: (modelData.tokens || 0) > 0 ? 0.85 : 0.25
                     }
 

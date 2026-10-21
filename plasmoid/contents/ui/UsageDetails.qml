@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
+import "Presets.js" as Presets
 
 // Exibicao minima do campo opcional "usage_details" do contrato (v2).
 // Linhas sem dado nao aparecem; sem usage_details o componente fica oculto.
@@ -82,12 +83,14 @@ ColumnLayout {
             radius: 3
             color: Kirigami.Theme.highlightColor
             opacity: toggle.visualFocus ? 0.35 : (toggle.hovered ? 0.18 : 0)
+            border.width: toggle.visualFocus ? 2 : 0
+            border.color: Kirigami.Theme.highlightColor
         }
         contentItem: QQC2.Label {
             text: (detailsRoot.modelsExpanded ? "▾ " : "▸ ") + toggle.text
             textFormat: Text.PlainText
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            opacity: 0.8
+            color: Presets.ui.muted
             elide: Text.ElideRight
         }
     }
@@ -105,13 +108,13 @@ ColumnLayout {
                 textFormat: Text.PlainText
                 elide: Text.ElideRight
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
-                opacity: 0.8
+                color: Presets.ui.muted
             }
             QQC2.Label {
                 text: detailsRoot.modelPct(modelData.usage_percentage) + detailsRoot.modelReset(modelData.reset_time)
                 textFormat: Text.PlainText
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
-                opacity: 0.8
+                color: Presets.ui.muted
             }
         }
     }
@@ -125,7 +128,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             elide: Text.ElideRight
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            opacity: 0.8
+            color: Presets.ui.muted
         }
     }
 }
