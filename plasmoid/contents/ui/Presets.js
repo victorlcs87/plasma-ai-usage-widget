@@ -68,12 +68,20 @@ function _hex(rgb) {
     return "#" + rgb.map(function (v) { var h = Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16); return h.length < 2 ? "0" + h : h; }).join("");
 }
 // r,g,b em 0..1 (Qt color); devolve "#rrggbb" com >= min (padrão 4,5; 3 para formas como o acento) sobre a pílula
-function onPill(r, g, b, min) {
+function onPill(r, g, b, min) { return onBg(r, g, b, min, PILL_RGB); }
+function onBg(r, g, b, min, bg) {
     var c = [r, g, b];
     min = min || 4.5;
-    for (var i = 0; i < 30 && contrast(c, PILL_RGB) < min; i++)
+    for (var i = 0; i < 30 && contrast(c, bg) < min; i++)
         c = c.map(function (v) { return v + (1 - v) * 0.1; });
     return _hex(c);
+}
+
+// Texto do nível: o "normal" usa o acento (já >= 3:1 como forma), mas como texto precisa de 4,5:1 sobre o cartão
+// (o fundo mais claro do Notch, então vale também sobre a pílula).
+var CARD_RGB = [0x1d / 255, 0x20 / 255, 0x26 / 255];
+function levelTextColor(level, accent) {
+    return level === "normal" ? onBg(accent.r, accent.g, accent.b, 4.5, CARD_RGB) : levelColor(level, accent);
 }
 
 // Paleta fixa do Notch (sempre escuro, independente do tema): fundo, cartão, borda, texto, texto secundário

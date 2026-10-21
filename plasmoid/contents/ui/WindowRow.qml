@@ -17,7 +17,7 @@ ColumnLayout {
     property string summary: ""
 
     // Sem nível (obsoleto, sem dado): cor secundária legível, nunca o cinza neutro esmaecido
-    readonly property color levelColor: view.level ? Presets.levelColor(view.level, accent) : Presets.ui.muted
+    readonly property color levelColor: view.level ? Presets.levelTextColor(view.level, accent) : Presets.ui.muted
     readonly property bool flagged: view.level === "warning" || view.level === "critical"
 
     spacing: 1

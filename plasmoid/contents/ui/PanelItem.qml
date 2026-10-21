@@ -24,7 +24,7 @@ Item {
 
     readonly property var head: PanelStyle.headline(m)
     readonly property var parts: PanelStyle.parts(panelStyle, mode)
-    readonly property color levelColor: Presets.levelColor(head.level, accent)
+    readonly property color levelColor: Presets.levelTextColor(head.level, accent)
     readonly property bool known: head.pct >= 0
     // Sem nível com dado = obsoleto: esmaecido
     readonly property bool dim: known && head.level === ""
