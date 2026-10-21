@@ -24,6 +24,18 @@
       <default>300</default>
       <min>60</min>
     </entry>
+    <entry name="providerOrder" type="String">
+      <label>Ordem dos provedores no Notch compacto</label>
+      <default>claude,codex,gemini</default>
+    </entry>
+    <entry name="hiddenProviders" type="String">
+      <label>Provedores ocultos no Notch compacto (separados por vírgula)</label>
+      <default></default>
+    </entry>
+    <entry name="accentPreset" type="String">
+      <label>Cor de destaque do Notch (plasma = cor de realce do Plasma)</label>
+      <default>plasma</default>
+    </entry>
   </group>
 
 </kcfg>

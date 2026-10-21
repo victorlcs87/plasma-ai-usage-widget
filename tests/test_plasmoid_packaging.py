@@ -112,6 +112,7 @@ def test_qml_components_syntax_validity():
         "UsageDetails.qml",
         "TokenHistory.qml",
         "CompactRepresentation.qml",
+        "DualRing.qml",
         "FullRepresentation.qml",
         "configGeneral.qml",
     ]
@@ -312,3 +313,25 @@ def test_forecast_text_follows_the_clock_and_alert_row_wraps():
     assert "nowMs" in card and "fc.exhausts_at" in card and "fc.seconds_until" not in card
     cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
     assert "Flow {" in cfg and "alertsDirty" in cfg
+
+
+def test_compact_notch_uses_contract_level_not_fixed_thresholds():
+    compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    ring = (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")
+    presets = (UI_DIR / "Presets.js").read_text(encoding="utf-8")
+    for src in (compact, main):
+        assert "< 70" not in src and "<= 90" not in src and "maxUsagePercent" not in src
+    assert "alert_level" in main and "elapsed_fraction" in main and "isActive" in main
+    assert "levelColor" in presets and 'return neutral' in presets  # sem nivel = neutro
+    assert "Plasmoid.formFactor" in compact and "Accessible.description" in compact
+    assert "free_trial_invites" in main and "inviteBadge" in compact and "healthDot" in compact
+    assert "Canvas" in ring and "outerPct" in ring and "innerPct" in ring
+
+
+def test_notch_config_entries_declared_and_exposed():
+    xml = (PLASMOID_DIR / "contents" / "config" / "main.xml").read_text(encoding="utf-8")
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for name in ("providerOrder", "hiddenProviders", "accentPreset"):
+        assert f'name="{name}"' in xml and f"cfg_{name}" in cfg
+    assert "highlightColor" in (UI_DIR / "main.qml").read_text(encoding="utf-8")

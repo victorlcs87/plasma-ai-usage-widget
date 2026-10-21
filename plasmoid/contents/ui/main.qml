@@ -7,6 +7,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.kirigami as Kirigami
+import "Presets.js" as Presets
 
 PlasmoidItem {
     id: root
@@ -30,7 +31,10 @@ PlasmoidItem {
     property bool isRefreshing: false
     property string lastUpdatedFormatted: formatLastUpdated(statusData?.last_updated)
     property int totalInvites: calculateTotalInvites()
-    property double maxUsagePercent: calculateMaxUsage()
+    // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
+    property var compactModel: buildCompactModel()
+    property string worstHealthStatus: worstHealth()
+    readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
     function safeI18n(text, arg1, arg2) {
         if (!text) return "";
@@ -75,45 +79,110 @@ PlasmoidItem {
         return total;
     }
 
-    function calculateMaxUsage() {
-        if (!statusData || !statusData.agents) return 0.0;
-        var maxPct = 0.0;
-        for (var agentKey in statusData.agents) {
-            if (!statusData.agents.hasOwnProperty(agentKey)) continue;
-            var accounts = statusData.agents[agentKey].accounts || [];
-            for (var i = 0; i < accounts.length; i++) {
-                var nw = accounts[i].native_window;
-                if (nw && nw.usage_percentage !== undefined && nw.usage_percentage !== null) {
-                    if (nw.usage_percentage > maxPct) {
-                        maxPct = nw.usage_percentage;
-                    }
-                }
-            }
+    function visibleProviders() {
+        var hidden = String(Plasmoid.configuration.hiddenProviders || "").split(",");
+        return Presets.normalizeOrder(Plasmoid.configuration.providerOrder).filter(function (k) {
+            return hidden.indexOf(k) === -1;
+        });
+    }
+
+    // Conta Ativa no Sistema; sem nenhuma marcada, a primeira do provedor
+    function activeAccount(agent) {
+        var accs = (agent && agent.accounts) || [];
+        for (var i = 0; i < accs.length; i++) {
+            if (accs[i].isActive === true || accs[i].is_active === true) return accs[i];
         }
-        return maxPct;
+        return accs.length > 0 ? accs[0] : null;
+    }
+
+    // Percentual da janela, ou -1 (desconhecido): sem dado, nulo ou obsoleto com liberação já passada
+    function windowPct(acc, win, resetKey) {
+        if (!acc || !win || acc.no_data === true) return -1;
+        var p = win.usage_percentage;
+        if (p === undefined || p === null) return -1;
+        var t = win[resetKey] ? Date.parse(win[resetKey]) : NaN;
+        if (acc.stale === true && !isNaN(t) && t <= Date.now()) return -1;
+        return p;
+    }
+
+    // Nível do contrato; ausente, obsoleto ou sem dado = "" (cor neutra)
+    function windowLevel(acc, win, pct) {
+        if (!acc || !win || pct < 0 || acc.stale === true || acc.no_data === true) return "";
+        return win.alert_level || "";
+    }
+
+    function windowElapsed(acc, win, pct) {
+        if (pct < 0 || acc.stale === true || !(win.window_seconds > 0)) return -1;
+        var e = win.elapsed_fraction;
+        return (e === undefined || e === null) ? -1 : e;
+    }
+
+    function levelWord(level) {
+        if (level === "critical") return safeI18n("crítico");
+        if (level === "warning") return safeI18n("atenção");
+        if (level === "normal") return safeI18n("normal");
+        return safeI18n("sem nível");
+    }
+
+    function pctWord(pct) {
+        return pct < 0 ? "-" : Math.round(pct) + "%";
+    }
+
+    function buildCompactModel() {
+        var agents = (statusData && statusData.agents) || {};
+        return visibleProviders().map(function (key) {
+            var info = Presets.providerInfo(key);
+            var ag = agents[key];
+            var acc = activeAccount(ag);
+            var nw = acc ? acc.native_window : null;
+            var ww = acc ? acc.weekly_window : null;
+            var inner = windowPct(acc, nw, "release_time");
+            var outer = windowPct(acc, ww, "cycle_reset_time");
+            var il = windowLevel(acc, nw, inner);
+            var ol = windowLevel(acc, ww, outer);
+            var tail = !acc ? safeI18n("sem dados") : (acc.stale === true ? safeI18n("dados desatualizados") : "");
+            if (acc && acc.limit_changes && acc.limit_changes.length > 0) {
+                tail += (tail ? ", " : "") + safeI18n("limites mudaram");
+            }
+            return {
+                provider: key,
+                name: (ag && ag.name) || info.name,
+                letter: info.letter,
+                innerPct: inner,
+                outerPct: outer,
+                innerLevel: il,
+                outerLevel: ol,
+                innerElapsed: acc ? windowElapsed(acc, nw, inner) : -1,
+                outerElapsed: acc ? windowElapsed(acc, ww, outer) : -1,
+                description: safeI18n("Janela nativa %1 (%2)", pctWord(inner), levelWord(il))
+                    + ", " + safeI18n("semanal %1 (%2)", pctWord(outer), levelWord(ol))
+                    + (tail ? ", " + tail : "")
+            };
+        });
+    }
+
+    // Saúde da pior Conta Ativa visível: "" quando tudo válido ou sem dados
+    function worstHealth() {
+        var agents = (statusData && statusData.agents) || {};
+        var worst = "";
+        visibleProviders().forEach(function (key) {
+            var acc = activeAccount(agents[key]);
+            var st = acc && acc.health ? acc.health.status : "";
+            if (!st || st === "valid") return;
+            if (st === "session_expired" || worst === "") worst = st;
+        });
+        return worst;
     }
 
     function getSummaryToolTip() {
         if (!statusData || !statusData.agents) {
             return safeI18n("Nenhum dado coletado ainda.");
         }
-        var lines = [];
-        var agents = statusData.agents;
-        for (var key in agents) {
-            if (!agents.hasOwnProperty(key)) continue;
-            var ag = agents[key];
-            var accs = ag.accounts || [];
-            if (accs.length > 0) {
-                var firstAcc = accs[0];
-                var pct = firstAcc.native_window?.usage_percentage;
-                var pctStr = (pct !== undefined && pct !== null && !firstAcc.no_data) ? pct.toFixed(0) + "%" : "-";
-                lines.push(ag.name + ": " + pctStr + (accs.some(function (a) { return a.limit_changes && a.limit_changes.length > 0; }) ? " (" + safeI18n("limites mudaram") + ")" : ""));
-            }
-        }
+        var lines = compactModel.map(function (m) { return m.name + ": " + m.description; });
         if (totalInvites > 0) {
             lines.push(safeI18n("%1 convites disponíveis", totalInvites));
         }
-        return lines.join(" • ");
+        return lines.join("\n");
     }
 
     function shellQuote(str) {

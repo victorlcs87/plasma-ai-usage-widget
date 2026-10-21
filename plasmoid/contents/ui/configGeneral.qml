@@ -8,6 +8,7 @@ import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.plasma.extras as PlasmaExtras
+import "Presets.js" as Presets
 
 Item {
     id: configRoot
@@ -19,6 +20,26 @@ Item {
     property int cfg_refreshIntervalClaude: 300
     property int cfg_refreshIntervalCodex: 300
     property int cfg_refreshIntervalGemini: 300
+
+    // Notch compacto (KConfigXT): ordem, provedores ocultos e cor de destaque
+    property string cfg_providerOrder: "claude,codex,gemini"
+    property string cfg_hiddenProviders: ""
+    property string cfg_accentPreset: "plasma"
+    readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
+
+    function moveProvider(index, delta) {
+        var list = providerOrderList.slice();
+        var to = index + delta;
+        if (to < 0 || to >= list.length) return;
+        var tmp = list[index]; list[index] = list[to]; list[to] = tmp;
+        cfg_providerOrder = list.join(",");
+    }
+
+    function setProviderHidden(key, hidden) {
+        var list = cfg_hiddenProviders.split(",").filter(function (k) { return k && k !== key; });
+        if (hidden) list.push(key);
+        cfg_hiddenProviders = list.join(",");
+    }
 
     // Alertas (config.json do coletor, lidos do status.json): modo "pace" ou "threshold" e limiares
     property string alertMode: "pace"
@@ -585,6 +606,57 @@ Item {
             repeat: false
             onTriggered: {
                 configRoot.statusMessage = "";
+            }
+        }
+
+        // Notch compacto: cor de destaque, visibilidade e ordem dos provedores
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Cor de destaque:")
+            }
+
+            QQC2.ComboBox {
+                id: accentCombo
+                textRole: "name"
+                valueRole: "key"
+                model: Presets.accents
+                currentIndex: Math.max(0, indexOfValue(configRoot.cfg_accentPreset))
+                onActivated: configRoot.cfg_accentPreset = currentValue
+                Accessible.name: configRoot.safeI18n("Cor de destaque do Notch")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Provedores no painel:")
+            }
+
+            Repeater {
+                model: configRoot.providerOrderList
+                delegate: RowLayout {
+                    required property string modelData
+                    required property int index
+                    spacing: 0
+
+                    QQC2.CheckBox {
+                        text: Presets.providerInfo(modelData).name
+                        checked: configRoot.cfg_hiddenProviders.split(",").indexOf(modelData) === -1
+                        onToggled: configRoot.setProviderHidden(modelData, !checked)
+                    }
+                    QQC2.ToolButton {
+                        icon.name: "go-previous"
+                        enabled: index > 0
+                        onClicked: configRoot.moveProvider(index, -1)
+                        Accessible.name: configRoot.safeI18n("Mover %1 para antes", Presets.providerInfo(modelData).name)
+                    }
+                    QQC2.ToolButton {
+                        icon.name: "go-next"
+                        enabled: index < configRoot.providerOrderList.length - 1
+                        onClicked: configRoot.moveProvider(index, 1)
+                        Accessible.name: configRoot.safeI18n("Mover %1 para depois", Presets.providerInfo(modelData).name)
+                    }
+                }
             }
         }
 
