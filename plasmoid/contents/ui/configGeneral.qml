@@ -1046,7 +1046,7 @@ Item {
                         }
 
                         // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
-                        QQC2.CheckBox {
+                        WrapCheckBox {
                             id: updateCheckBox
                             text: I18n.tr("Check for new versions once a day")
                             checked: configRoot.updateCheck
@@ -1166,7 +1166,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
 
-                            QQC2.CheckBox {
+                            WrapCheckBox {
                                 objectName: "floatingToggle"
                                 text: I18n.tr("Floating Notch (own window on a screen edge)")
                                 checked: configRoot.floatNow.enabled
@@ -1400,7 +1400,7 @@ Item {
                     width: tabPopupScroll.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
-                        QQC2.CheckBox {
+                        WrapCheckBox {
                             text: I18n.tr("Open the popup on mouse hover (off: click only)")
                             checked: configRoot.cfg_hoverOpen
                             onToggled: configRoot.cfg_hoverOpen = checked
@@ -1521,7 +1521,7 @@ Item {
 
                             QQC2.Label {
                                 textFormat: Text.PlainText
-                                text: I18n.tr("+ Add New Account")
+                                text: I18n.tr("Add New Account")
                                 font.bold: true
                                 font.pointSize: Kirigami.Theme.defaultFont.pointSize
                                 Layout.fillWidth: true
@@ -1998,7 +1998,7 @@ Item {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.largeSpacing  // separa "Silenciar:" do checkbox anterior
 
-                            QQC2.CheckBox {
+                            WrapCheckBox {
                                 text: I18n.tr("Show the session state (Claude and Codex)")
                                 checked: configRoot.cfg_sessionState
                                 onToggled: configRoot.cfg_sessionState = checked
@@ -2006,13 +2006,13 @@ Item {
                                 QQC2.ToolTip.text: I18n.tr("Claude: ai-usage-collector --install-hooks (isolated profile: run it with each profile's CLAUDE_CONFIG_DIR). Codex: busy comes from the session logs without installing anything; ai-usage-collector --install-hooks codex (optional) ends the busy state at the end of each turn and is what enables the sound/Notch on Codex (without it Codex only shows the state). If the state does not update, reinstall the package: pip install -e .")
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
-                            QQC2.CheckBox {
+                            WrapCheckBox {
                                 text: I18n.tr("Open the Notch for 5 s when the session finishes or asks for something")
                                 enabled: configRoot.cfg_sessionState
                                 checked: configRoot.cfg_sessionAutoOpen
                                 onToggled: configRoot.cfg_sessionAutoOpen = checked
                             }
-                            QQC2.CheckBox {
+                            WrapCheckBox {
                                 text: I18n.tr("Play a sound at those moments")
                                 enabled: configRoot.cfg_sessionState
                                 checked: configRoot.cfg_sessionSound
@@ -2053,7 +2053,7 @@ Item {
                                 Accessible.name: I18n.tr("Notify urgently when this usage percentage is reached")
                             }
 
-                            QQC2.CheckBox {
+                            WrapCheckBox {
                                 text: I18n.tr("Warn before running out")
                                 checked: configRoot.notifyEarly
                                 onToggled: { configRoot.notifyEarly = checked; configRoot.notifyDirty = true; }
@@ -2062,7 +2062,7 @@ Item {
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
 
-                            QQC2.CheckBox {
+                            WrapCheckBox {
                                 text: I18n.tr("Notify when the limit is released")
                                 checked: configRoot.notifyReset
                                 onToggled: { configRoot.notifyReset = checked; configRoot.notifyDirty = true; }
@@ -2074,6 +2074,7 @@ Item {
                             QQC2.Label {
                                 text: I18n.tr("Mute:")
                                 textFormat: Text.PlainText
+                                leftPadding: Kirigami.Units.gridUnit
                             }
 
                             Repeater {

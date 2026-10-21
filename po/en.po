@@ -773,7 +773,7 @@ msgstr "Critical threshold in percent"
 msgid "Apply alerts"
 msgstr "Apply alerts"
 
-#: contents/ui/configGeneral.qml:995 contents/ui/configGeneral.qml:1036 contents/ui/configGeneral.qml:2105
+#: contents/ui/configGeneral.qml:995 contents/ui/configGeneral.qml:1036 contents/ui/configGeneral.qml:2106
 msgid "Not applied yet"
 msgstr "Not applied yet"
 
@@ -1153,11 +1153,7 @@ msgstr "Move %1 later in the popup"
 msgid "View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly."
 msgstr "View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly."
 
-#: contents/ui/configGeneral.qml:1524
-msgid "+ Add New Account"
-msgstr "+ Add New Account"
-
-#: contents/ui/configGeneral.qml:1532
+#: contents/ui/configGeneral.qml:1524 contents/ui/configGeneral.qml:1532
 msgid "Add New Account"
 msgstr "Add New Account"
 
@@ -1341,55 +1337,55 @@ msgstr "Only for limits that already triggered a warning"
 msgid "Mute:"
 msgstr "Mute:"
 
-#: contents/ui/configGeneral.qml:2090
+#: contents/ui/configGeneral.qml:2091
 msgid "Mute %1 notifications"
 msgstr "Mute %1 notifications"
 
-#: contents/ui/configGeneral.qml:2095
+#: contents/ui/configGeneral.qml:2096
 msgid "Apply notifications"
 msgstr "Apply notifications"
 
-#: contents/ui/configGeneral.qml:2116
+#: contents/ui/configGeneral.qml:2117
 msgid "Delete Orphan Profile"
 msgstr "Delete Orphan Profile"
 
-#: contents/ui/configGeneral.qml:2125
+#: contents/ui/configGeneral.qml:2126
 msgid "Permanently delete the profile '%1' from disk? Its credentials will be erased."
 msgstr "Permanently delete the profile '%1' from disk? Its credentials will be erased."
 
-#: contents/ui/configGeneral.qml:2138 contents/ui/configGeneral.qml:2194 contents/ui/configGeneral.qml:2264
+#: contents/ui/configGeneral.qml:2139 contents/ui/configGeneral.qml:2195 contents/ui/configGeneral.qml:2265
 msgid "Cancel"
 msgstr "Cancel"
 
-#: contents/ui/configGeneral.qml:2143
+#: contents/ui/configGeneral.qml:2144
 msgid "Delete Profile"
 msgstr "Delete Profile"
 
-#: contents/ui/configGeneral.qml:2159
+#: contents/ui/configGeneral.qml:2160
 msgid "Confirm Account Removal"
 msgstr "Confirm Account Removal"
 
-#: contents/ui/configGeneral.qml:2171
+#: contents/ui/configGeneral.qml:2172
 msgid "Do you really want to remove the account '%1' (ID: %2) from the provider %3?\n\nThis removes the account from the configuration file and updates the widget immediately."
 msgstr "Do you really want to remove the account '%1' (ID: %2) from the provider %3?\n\nThis removes the account from the configuration file and updates the widget immediately."
 
-#: contents/ui/configGeneral.qml:2200
+#: contents/ui/configGeneral.qml:2201
 msgid "Remove Account"
 msgstr "Remove Account"
 
-#: contents/ui/configGeneral.qml:2216
+#: contents/ui/configGeneral.qml:2217
 msgid "Rename Account"
 msgstr "Rename Account"
 
-#: contents/ui/configGeneral.qml:2228
+#: contents/ui/configGeneral.qml:2229
 msgid "Enter the new name for the account '%1' (ID: %2) of the provider %3:"
 msgstr "Enter the new name for the account '%1' (ID: %2) of the provider %3:"
 
-#: contents/ui/configGeneral.qml:2243 contents/ui/configGeneral.qml:2244
+#: contents/ui/configGeneral.qml:2244 contents/ui/configGeneral.qml:2245
 msgid "New account name"
 msgstr "New account name"
 
-#: contents/ui/configGeneral.qml:2270
+#: contents/ui/configGeneral.qml:2271
 msgid "Save"
 msgstr "Save"
 
