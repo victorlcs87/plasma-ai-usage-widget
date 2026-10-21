@@ -43,6 +43,7 @@ from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.limit_changes import apply_limit_changes
 from ai_usage_collector.notifications import apply_notifications, deliver, notify_settings
 from ai_usage_collector.pace import alert_settings, apply_pace, reapply_levels
+from ai_usage_collector.session_state import apply_session_state, state_dir_for
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -256,6 +257,11 @@ def _collect(
         apply_pace(status_payload, config, cache_file, now_dt, {a for a in agents_to_collect if not providers or a in providers})
     except Exception as e:  # ritmo e previsao sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Ritmo de Uso e previsao nao atualizados: {e}\n")
+
+    try:
+        apply_session_state(status_payload, config, state_dir_for(cache_file), now_dt.timestamp())
+    except Exception as e:  # Estado da Sessao e opcional; nunca impede o status
+        sys.stderr.write(f"Aviso: Estado da Sessao nao atualizado: {e}\n")
 
     try:
         apply_notifications(status_payload, config, cache_file, now_dt, {a for a in agents_to_collect if not providers or a in providers}, outbox)

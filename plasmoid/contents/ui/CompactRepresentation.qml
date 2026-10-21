@@ -86,6 +86,8 @@ Item {
                     outerColor: Presets.levelColor(modelData.outerLevel, compactRoot.accent)
                     innerColor: Presets.levelColor(modelData.innerLevel, compactRoot.accent)
                     letter: modelData.letter
+                    sessionState: modelData.sessionState
+                    reducedMotion: Kirigami.Units.longDuration === 0  // animações desligadas no Plasma
                     Accessible.role: Accessible.StaticText
                     Accessible.name: modelData.name
                     Accessible.description: modelData.description

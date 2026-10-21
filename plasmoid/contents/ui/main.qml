@@ -33,7 +33,9 @@ PlasmoidItem {
     property string lastUpdatedFormatted: formatLastUpdated(statusData?.last_updated)
     property int totalInvites: calculateTotalInvites()
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
-    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n)
+    // Estado da Sessão ao vivo (--session-state), por id de Conta Claude; vence o campo do contrato
+    property var sessionOverlay: ({})
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
@@ -245,6 +247,78 @@ PlasmoidItem {
         }
     }
 
+    // Estado da Sessão (ADR-0009): só consulta com a opção ligada; nada toca em hooks aqui
+    property bool sessionPolling: false
+    property bool autoOpened: false
+
+    function applySessionStates(map) {
+        var prev = root.sessionOverlay || {};
+        var next = map || {};
+        var fired = false;
+        for (var id in next) {
+            // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa
+            var was = prev[id];
+            if (was !== undefined && was !== next[id]
+                    && (next[id] === "waiting" || (next[id] === "idle" && was === "busy"))) fired = true;
+        }
+        root.sessionOverlay = next;
+        if (fired) root.sessionAttention();
+    }
+
+    // Abre o Notch por 5 s (se estava fechado) e toca o som, só se o usuário ligou cada opção
+    function sessionAttention() {
+        if (Plasmoid.configuration.sessionAutoOpen !== false && !root.expanded) {
+            root.autoOpened = true;
+            root.expanded = true;
+            sessionCloseTimer.restart();
+        }
+        if (Plasmoid.configuration.sessionSound === true) {
+            soundDataSource.connectSource("sh -c 'command -v canberra-gtk-play >/dev/null 2>&1 && canberra-gtk-play -i complete || paplay /usr/share/sounds/freedesktop/stereo/complete.oga' 2>/dev/null; true");
+        }
+    }
+
+    Timer {
+        id: sessionCloseTimer
+        interval: 5000
+        onTriggered: {
+            var close = root.autoOpened;  // fechado antes pelo usuário: nada a fechar
+            root.autoOpened = false;
+            if (close) root.expanded = false;
+        }
+    }
+
+    Plasma5Support.DataSource {
+        id: soundDataSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => disconnectSource(sourceName)
+    }
+
+    Plasma5Support.DataSource {
+        id: sessionDataSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            root.sessionPolling = false;
+            try {
+                if (data["exit code"] === 0) root.applySessionStates(JSON.parse(data["stdout"]).claude);
+            } catch (e) { /* leitura inválida: mantém o último estado */ }
+            disconnectSource(sourceName);
+        }
+    }
+
+    Timer {
+        interval: 3000
+        repeat: true
+        running: Plasmoid.configuration.sessionState === true
+        triggeredOnStart: true
+        onTriggered: {
+            if (root.sessionPolling) return;
+            root.sessionPolling = true;
+            sessionDataSource.connectSource(root.buildCollectorCommand(root.shellQuote("--session-state")));
+        }
+    }
+
     function loadStatus() {
         root.isLoading = true;
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
@@ -255,6 +329,7 @@ PlasmoidItem {
     }
 
     onExpandedChanged: {
+        if (!root.expanded) root.autoOpened = false;
         if (root.expanded && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }

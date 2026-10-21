@@ -52,6 +52,21 @@ function levelWord(level, tr) {
 
 function pctWord(pct) { return pct < 0 ? "-" : Math.round(pct) + "%"; }
 
+// Estado da Sessão (busy/waiting/idle) da Conta Ativa: o overlay ao vivo (cfg.sessionOverlay, por id
+// de Conta) vence o campo do contrato; desligado ou desconhecido = "" (sem indicador)
+function sessionState(acc, cfg) {
+    if (!cfg.showSession) return "";
+    var s = (cfg.sessionOverlay && cfg.sessionOverlay[acc.id]) || acc.session_state;
+    return (s === "busy" || s === "waiting" || s === "idle") ? s : "";
+}
+
+function sessionWord(state, tr) {
+    if (state === "busy") return tr("sessão ocupada");
+    if (state === "waiting") return tr("aguardando você");
+    if (state === "idle") return tr("sessão ociosa");
+    return "";
+}
+
 function buildModel(statusData, cfg, tr) {
     var agents = (statusData && statusData.agents) || {};
     return visibleProviders(cfg).map(function (key) {
@@ -61,7 +76,7 @@ function buildModel(statusData, cfg, tr) {
         var m = {
             provider: key, name: (ag && ag.name) || info.name, letter: info.letter,
             innerPct: -1, outerPct: -1, innerLevel: "", outerLevel: "", innerElapsed: -1, outerElapsed: -1,
-            health: ""
+            health: "", sessionState: ""
         };
         if (!acc) {
             var hasAccounts = ag && ag.accounts && ag.accounts.length > 0;
@@ -77,8 +92,10 @@ function buildModel(statusData, cfg, tr) {
         m.outerElapsed = windowElapsed(acc, ww, m.outerPct);
         var st = acc.health ? acc.health.status : "";
         m.health = (st && st !== "valid") ? st : "";
+        m.sessionState = sessionState(acc, cfg);
         var tail = acc.stale === true ? tr("dados desatualizados") : "";
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
+        if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);
         m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct), levelWord(m.innerLevel, tr))
             + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct), levelWord(m.outerLevel, tr))
             + (tail ? ", " + tail : "");

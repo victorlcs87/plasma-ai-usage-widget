@@ -8,6 +8,8 @@ import sys
 from typing import Sequence
 
 from ai_usage_collector import __version__
+from ai_usage_collector.claude_hooks import HooksError, install_hooks, uninstall_hooks
+from ai_usage_collector.session_state import session_states, state_dir_for
 from ai_usage_collector.collector import (
     add_account_entry,
     capture_current_account,
@@ -60,6 +62,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--waybar",
         action="store_true",
         help="Imprime o status em JSON de uma linha para o modulo custom do Waybar (le o cache; nao coleta)",
+    )
+    parser.add_argument(
+        "--install-hooks",
+        action="store_true",
+        help="Registra no settings.json do Claude Code (CLAUDE_CONFIG_DIR ou ~/.claude) os hooks do Estado da Sessão; idempotente",
+    )
+    parser.add_argument(
+        "--uninstall-hooks",
+        action="store_true",
+        help="Remove só os hooks do Estado da Sessão do widget, preservando os demais hooks e configurações",
+    )
+    parser.add_argument(
+        "--session-state",
+        action="store_true",
+        help="Imprime em JSON o Estado da Sessão por Conta Claude (le o cache e os hooks; nao coleta)",
     )
     parser.add_argument(
         "--switch-account",
@@ -239,6 +256,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.export_history:
             sys.stdout.write(export_history(cache_path, args.export_history, load_config(config_path)))
             sys.stdout.flush()
+            return 0
+
+        if args.install_hooks or args.uninstall_hooks:
+            if args.install_hooks and args.uninstall_hooks:
+                sys.stderr.write("Erro: use --install-hooks ou --uninstall-hooks, não os dois.\n")
+                return 2
+            try:
+                sys.stdout.write(
+                    (install_hooks(state_dir_for(cache_path)) if args.install_hooks else uninstall_hooks()) + "\n"
+                )
+            except HooksError as e:
+                sys.stderr.write(f"Erro: {e}\n")
+                return 1
+            return 0
+
+        if args.session_state:
+            status = load_status_cache(cache_path) or {}
+            sys.stdout.write(json.dumps({"claude": session_states(status, load_config(config_path), state_dir_for(cache_path))}) + "\n")
             return 0
 
         if args.list_orphans:

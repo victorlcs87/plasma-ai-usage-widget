@@ -24,6 +24,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     "alerts" {mode, warning, critical} (ticket 24)
 #     Top-level "notifications" {warning, critical, early, reset, muted} (ticket 25) is a new optional
 #     key read by the settings screen: no version bump
+#     Per-account "session_state" ("busy"|"waiting"|"idle"|"unknown"; Claude only, present once the
+#     opt-in session hooks have written state; ticket 35) is a new optional key: no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
@@ -244,6 +246,8 @@ def validate_status_contract(data: Any) -> bool:
                     return False
 
             if "isActive" in acc and not isinstance(acc["isActive"], bool):
+                return False
+            if acc.get("session_state") not in (None, "busy", "waiting", "idle", "unknown"):
                 return False
             if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False

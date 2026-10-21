@@ -49,7 +49,7 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
 """
 
 
-def render(tmp_path, name, agents, vertical=False, invites=0, hidden=""):
+def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", extra_cfg=None):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -62,7 +62,7 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden=""):
     for f in ("CompactRepresentation.qml", "DualRing.qml", "Presets.js", "NotchModel.js"):
         shutil.copy(UI_DIR / f, run / f)
     png_dir = os.environ.get("AIU_PNG_DIR", "")
-    cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": hidden}
+    cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": hidden, **(extra_cfg or {})}
     (run / "h.qml").write_text(HARNESS % {
         "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents}),
         "cfg": json.dumps(cfg), "invites": invites, "ff": 3 if vertical else 2,
@@ -96,3 +96,16 @@ def test_no_active_account_shows_neutral_provider_without_health_badge(tmp_path)
     assert claude["innerPct"] == -1 and claude["outerPct"] == -1
     assert "sem conta ativa" in claude["description"]
     assert out["health"] == ""
+
+
+def test_session_state_in_model_and_rings_render(tmp_path):
+    for n in ("busy", "waiting", "off", "bad"):
+        (tmp_path / n).mkdir()
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    for state, word in (("busy", "ocupada"), ("waiting", "aguardando")):
+        out = render(tmp_path / state, f"s_{state}", agents, extra_cfg={"showSession": True, "sessionOverlay": {"a": state}})
+        assert out["model"][0]["sessionState"] == state and word in out["model"][0]["description"]
+    off = render(tmp_path / "off", "s_off", agents, extra_cfg={"sessionOverlay": {"a": "busy"}})  # desligado: sem indicador
+    assert off["model"][0]["sessionState"] == ""
+    bogus = render(tmp_path / "bad", "s_bad", agents, extra_cfg={"showSession": True, "sessionOverlay": {"a": "<b>x</b>"}})
+    assert bogus["model"][0]["sessionState"] == ""

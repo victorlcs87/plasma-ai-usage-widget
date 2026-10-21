@@ -25,6 +25,10 @@ Item {
     property string cfg_providerOrder: "claude,codex,gemini"
     property string cfg_hiddenProviders: ""
     property string cfg_accentPreset: "plasma"
+    // Estado da Sessão (KConfigXT): os hooks só existem após `ai-usage-collector --install-hooks`
+    property bool cfg_sessionState: false
+    property bool cfg_sessionAutoOpen: true
+    property bool cfg_sessionSound: false
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
 
     function moveProvider(index, delta) {
@@ -719,6 +723,33 @@ Item {
                         Accessible.name: configRoot.safeI18n("Mover %1 para depois", Presets.providerInfo(modelData).name)
                     }
                 }
+            }
+        }
+
+        // Estado da Sessão do Claude Code (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Mostrar o estado da sessão do Claude")
+                checked: configRoot.cfg_sessionState
+                onToggled: configRoot.cfg_sessionState = checked
+                Accessible.description: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks")
+                QQC2.ToolTip.text: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks")
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Abrir o Notch por 5 s quando a sessão terminar ou pedir algo")
+                enabled: configRoot.cfg_sessionState
+                checked: configRoot.cfg_sessionAutoOpen
+                onToggled: configRoot.cfg_sessionAutoOpen = checked
+            }
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Tocar um som nesses momentos")
+                enabled: configRoot.cfg_sessionState
+                checked: configRoot.cfg_sessionSound
+                onToggled: configRoot.cfg_sessionSound = checked
             }
         }
 
