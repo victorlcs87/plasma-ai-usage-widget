@@ -739,3 +739,34 @@ def test_collector_gemini_status_json_reflects_ok_with_expired_file_but_active_k
     disk_data = json.loads(cache_path.read_text(encoding="utf-8"))
     assert disk_data["agents"]["gemini"]["status"] == "ok"
     assert disk_data["agents"]["gemini"]["accounts"][0]["health"]["status"] == "valid"
+
+
+def _gemini_sources(tmp_path, api_response):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir(exist_ok=True)
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps({"access_token": "ya29.fallback"}))
+    account = {"id": "g", "provider": "gemini", "gemini_dir": str(gemini_dir)}
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value="ya29.keyring"), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=api_response):
+        res = extract_gemini_status(account, now=now)
+    return res["native_window"], res["weekly_window"]
+
+
+def test_gemini_source_markers_only_claim_what_was_read(tmp_path):
+    full = {"gemini-5h": {"bucketId": "gemini-5h", "remainingFraction": 0.5, "resetTime": "2026-10-20T18:00:00Z"},
+            "gemini-weekly": {"bucketId": "gemini-weekly", "remainingFraction": 0.5, "resetTime": "2026-10-25T12:00:00Z"}}
+    nw, ww = _gemini_sources(tmp_path, full)
+    assert (nw["source"], nw["api_fields"], ww["source"]) == ("api", ["duration", "release"], "api")
+
+    # Sem resetTime nem duracao no bucket: duracao e release sao assumidos, nao lidos
+    nw, _ = _gemini_sources(tmp_path, {"gemini-5h": {"remainingFraction": 0.5}})
+    assert nw["source"] == "api" and nw["api_fields"] == []
+
+    # Resposta sem bucket reconhecivel ou sem remainingFraction: nada e "removido"
+    for junk in ({"unrelated": 1}, {"gemini-5h": {}}, {"gemini-5h": {"resetTime": "2026-10-20T18:00:00Z"}}):
+        nw, ww = _gemini_sources(tmp_path, junk)
+        assert (nw["source"], ww["source"]) == ("local", "local")
+
+    nw, ww = _gemini_sources(tmp_path, {"gemini-5h": full["gemini-5h"]})
+    assert (nw["source"], ww["source"]) == ("api", "api_missing")

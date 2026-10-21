@@ -20,7 +20,8 @@ def _parse(value: Any) -> datetime | None:
 
 def _detect(name: str, old: dict[str, Any], new: dict[str, Any], now: datetime) -> str | None:
     """Compara so leituras de origem confiavel: `source` e "api" (bucket informado pelo provedor),
-    "api_missing" (a API respondeu sem o bucket) ou "local" (calculo local/padrao assumido, ignorado)."""
+    "api_missing" (a API respondeu com outras janelas, mas sem esta) ou "local" (calculo local, ignorado).
+    Duracao e reset so contam se `api_fields` diz que foram lidos da API, nao assumidos por padrao."""
     was, is_ = old.get("source"), new.get("source")
     if was == "api" and is_ == "api_missing":
         return "removed"
@@ -29,11 +30,12 @@ def _detect(name: str, old: dict[str, Any], new: dict[str, Any], now: datetime) 
     if was != "api" or is_ != "api":
         return None
     old_s, new_s = old.get("window_seconds"), new.get("window_seconds")
-    if old_s is not None and new_s is not None and old_s != new_s:
+    both = set(old.get("api_fields") or []) & set(new.get("api_fields") or [])
+    if "duration" in both and old_s is not None and new_s is not None and old_s != new_s:
         return "duration"
     key = _RELEASE_KEY[name]
     old_r, new_r = _parse(old.get(key)), _parse(new.get(key))
-    if old_r and new_r and old_r > now and new_r < old_r - EARLY_RESET_TOLERANCE:
+    if "release" in both and old_r and new_r and old_r > now and new_r < old_r - EARLY_RESET_TOLERANCE:
         return "early_reset"
     return None
 
@@ -48,6 +50,8 @@ def _account_changes(old: Any, acc: dict[str, Any], now: datetime) -> list[dict[
     if (old.get("health") or {}).get("status") == "valid" and acc["health"].get("status") == "valid":
         for name, field in (("native", "native_window"), ("weekly", "weekly_window")):
             if kind := _detect(name, old.get(field) or {}, acc[field], now):
+                # Uma nota por (janela, tipo): a repeticao renova a validade em vez de duplicar
+                changes = [c for c in changes if (c.get("window"), c.get("kind")) != (name, kind)]
                 changes.append({
                     "window": name, "kind": kind,
                     "detected_at": now.isoformat(), "expires_at": (now + NOTE_TTL).isoformat(),

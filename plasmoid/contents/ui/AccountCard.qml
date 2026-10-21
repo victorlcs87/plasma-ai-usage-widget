@@ -134,7 +134,11 @@ Kirigami.AbstractCard {
     }
 
     function limitChangeText(changes) {
-        if (!changes || changes.length === 0) return "";
+        var now = Date.now();
+        changes = (changes || []).filter(function (c) {
+            return c && c.window && c.kind && !(c.expires_at && Date.parse(c.expires_at) <= now);
+        });
+        if (changes.length === 0) return "";
         var names = { native: cardRoot.safeI18n("janela ativa"), weekly: cardRoot.safeI18n("janela semanal") };
         var kinds = {
             added: cardRoot.safeI18n("nova"),

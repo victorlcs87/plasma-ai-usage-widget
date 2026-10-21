@@ -696,3 +696,29 @@ def test_codex_windows_carry_source_marker(tmp_path):
     with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=None):
         res = extract_codex_status(account, now=now)
     assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("local", "local")
+
+
+def _codex_windows(tmp_path, api):
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir(exist_ok=True)
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=api):
+        res = extract_codex_status({"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}, now=now)
+    return res["native_window"], res["weekly_window"]
+
+
+def test_codex_partial_api_responses_do_not_claim_unread_facts(tmp_path):
+    # Janela sem limit_window_seconds nem reset: duracao padrao (3h) e release nao foram lidos
+    nw, _ = _codex_windows(tmp_path, {"rate_limit": {"primary_window": {"used_percent": 5.0}}})
+    assert nw["source"] == "api" and nw["api_fields"] == []
+
+    nw, _ = _codex_windows(tmp_path, {"rate_limit": {"primary_window": {
+        "used_percent": 5.0, "limit_window_seconds": 18000, "reset_after_seconds": 60}}})
+    assert nw["api_fields"] == ["duration", "release"]
+
+    # Resposta vazia / janelas nulas: nenhuma janela reconhecida, nada foi "removido"
+    for empty in ({"rate_limit": {}}, {"rate_limit": {"primary_window": None, "secondary_window": None}},
+                  {"primary_window": None}):
+        nw, ww = _codex_windows(tmp_path, empty)
+        assert (nw["source"], ww["source"]) == ("local", "local")

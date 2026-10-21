@@ -471,6 +471,8 @@ def extract_codex_status(
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
     native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+    native_api_fields: list[str] = []  # fatos realmente lidos da API: "duration", "release"
+    weekly_api_fields: list[str] = []
 
     # Attempt primary official API usage route
     api_data = None
@@ -484,8 +486,13 @@ def extract_codex_status(
         if not secondary and codex_window_seconds(primary) == CODEX_7D_SECONDS:
             # A single 7-day window is the weekly limit, not a Native Window
             primary, secondary = {}, primary
-        native_source = "api" if primary else "api_missing"
-        weekly_source = "api" if secondary else "api_missing"
+        if primary or secondary:  # resposta sem nenhuma janela reconhecivel nao diz que o limite sumiu
+            native_source = "api" if primary else "api_missing"
+            weekly_source = "api" if secondary else "api_missing"
+        if codex_window_seconds(primary) is not None:
+            native_api_fields.append("duration")
+        if codex_window_seconds(secondary) is not None:
+            weekly_api_fields.append("duration")
         native_window_seconds = codex_window_seconds(primary) or native_window_seconds
         weekly_window_seconds = codex_window_seconds(secondary) or weekly_window_seconds
 
@@ -503,6 +510,7 @@ def extract_codex_status(
 
         r_sec = codex_reset_sec(primary, now_sec)
         if r_sec is not None:
+            native_api_fields.append("release")
             release_sec = r_sec
             seconds_remaining = max(0, int(release_sec - now_sec))
             release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
@@ -524,6 +532,7 @@ def extract_codex_status(
 
         w_sec = codex_reset_sec(secondary, now_sec)
         if w_sec is not None:
+            weekly_api_fields.append("release")
             cycle_reset_sec = w_sec
             weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
             cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
@@ -552,6 +561,7 @@ def extract_codex_status(
     native_window = {
         "type": window_type_from_seconds(native_window_seconds),
         "source": native_source,
+        "api_fields": native_api_fields,
         "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
         "used_capacity": used_3h,
@@ -572,6 +582,7 @@ def extract_codex_status(
         "messages_used": used_7d,
         "tokens_used": 0,
         "source": weekly_source,
+        "api_fields": weekly_api_fields,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
         "window_seconds": weekly_window_seconds,

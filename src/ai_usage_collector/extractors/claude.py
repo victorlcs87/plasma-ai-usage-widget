@@ -513,6 +513,8 @@ def extract_claude_status(
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
     native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+    native_api_fields: list[str] = []  # fatos realmente lidos da API: "duration", "release"
+    weekly_api_fields: list[str] = []
 
     # Attempt primary official API usage route
     api_data = None
@@ -522,8 +524,14 @@ def extract_claude_status(
     if api_data and (isinstance(api_data.get("five_hour"), dict) or isinstance(api_data.get("seven_day"), dict)):
         five_hour_info = api_data.get("five_hour") or {}
         seven_day_info = api_data.get("seven_day") or {}
-        native_source = "api" if five_hour_info else "api_missing"
-        weekly_source = "api" if seven_day_info else "api_missing"
+        # five_hour nulo pode ser so ociosidade: a janela de 5h nunca vira "api_missing" (nem removida/nova);
+        # a semanal sumir com a de 5h presente nao e explicavel por ociosidade.
+        if five_hour_info:
+            native_source = "api"
+        if seven_day_info:
+            weekly_source = "api"
+        elif five_hour_info:
+            weekly_source = "api_missing"
 
         # 5h window from official API
         util_5h = five_hour_info.get("utilization")
@@ -539,6 +547,7 @@ def extract_claude_status(
                 release_sec = r_sec
                 seconds_remaining = max(0, int(release_sec - now_sec))
                 release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+                native_api_fields.append("release")
 
         # Weekly window from official API
         util_7d = seven_day_info.get("utilization")
@@ -558,6 +567,7 @@ def extract_claude_status(
                 cycle_reset_sec = w_sec
                 weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
                 cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+                weekly_api_fields.append("release")
     else:
         # Fallback to local calculation
         weekly_usage_percentage = min(100.0, round((total_weekly_messages / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
@@ -567,6 +577,7 @@ def extract_claude_status(
     native_window = {
         "type": "5h",
         "source": native_source,
+        "api_fields": native_api_fields,
         # The usage API has no duration field: it is deduced from the five_hour/seven_day bucket names
         "window_seconds": CLAUDE_5H_SECONDS,
         "total_capacity": total_capacity,
@@ -581,6 +592,7 @@ def extract_claude_status(
 
     weekly_window = {
         "source": weekly_source,
+        "api_fields": weekly_api_fields,
         "total_tokens_or_turns": None,
         "total_capacity": weekly_total_capacity,
         "used_capacity": weekly_used_capacity,

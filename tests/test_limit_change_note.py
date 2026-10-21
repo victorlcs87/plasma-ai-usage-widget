@@ -13,12 +13,12 @@ from ai_usage_collector.contract import validate_status_contract
 T0 = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
 
 
-def _native(seconds=18000, release=T0 + timedelta(hours=2), source="api"):
-    return {"window_seconds": seconds, "release_time": release.isoformat(), "seconds_remaining": 7200, "source": source}
+def _native(seconds=18000, release=T0 + timedelta(hours=2), source="api", fields=("duration", "release")):
+    return {"window_seconds": seconds, "release_time": release.isoformat(), "seconds_remaining": 7200, "source": source, "api_fields": list(fields)}
 
 
-def _weekly(seconds=604800, source="api"):
-    return {"window_seconds": seconds, "cycle_reset_time": (T0 + timedelta(days=3)).isoformat(), "source": source}
+def _weekly(seconds=604800, source="api", fields=("duration", "release")):
+    return {"window_seconds": seconds, "cycle_reset_time": (T0 + timedelta(days=3)).isoformat(), "source": source, "api_fields": list(fields)}
 
 
 @pytest.fixture
@@ -149,3 +149,20 @@ def test_contract_validates_limit_changes(env):
     assert validate_status_contract(data) is False
     data["agents"]["claude"]["accounts"][0]["limit_changes"] = "x"
     assert validate_status_contract(data) is False
+
+
+@pytest.mark.parametrize("changes", [
+    {"native": _native(10800, fields=("release",))},  # duracao assumida no padrao, nao lida da API
+    {"weekly": _weekly(86400, fields=())},
+    {"native": _native(release=T0 + timedelta(minutes=30), fields=("duration",))},  # reset nao lido da API
+])
+def test_unread_duration_or_release_never_counts(env, changes):
+    assert "limit_changes" not in env(now=T0 + timedelta(minutes=5), **changes)
+
+
+def test_repeated_change_is_deduplicated(env):
+    t = T0 + timedelta(minutes=5)
+    env(now=t, native=_native(10800))
+    env(now=t + timedelta(minutes=1), native=_native(18000))
+    acc = env(now=t + timedelta(minutes=2), native=_native(10800))
+    assert [(c["window"], c["kind"]) for c in acc["limit_changes"]].count(("native", "duration")) == 1
