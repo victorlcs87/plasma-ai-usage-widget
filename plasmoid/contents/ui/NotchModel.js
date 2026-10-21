@@ -3,7 +3,8 @@
 .import "ViewPrefs.js" as ViewPrefs
 
 // Modelo do Notch compacto: função pura sobre status.json + config (testável sem Plasma).
-// `tr` = safeI18n do chamador.
+// `tr` = I18n.tr do chamador (injetado para testar sem Plasma). Frases saem de textos inteiros com %N;
+// só valores completos (palavra de nível, duração) entram como argumento, nunca pedaços de frase.
 
 function visibleProviders(cfg) {
     var hidden = String(cfg.hiddenProviders || "").split(",");
@@ -81,15 +82,22 @@ function windowElapsed(acc, win, pct) {
 }
 
 function levelWord(level, tr) {
-    if (level === "critical") return tr("crítico");
-    if (level === "warning") return tr("atenção");
+    if (level === "critical") return tr("critical");
+    if (level === "warning") return tr("warning");
     if (level === "normal") return tr("normal");
-    return tr("sem nível");
+    return tr("no level");
 }
 
 // Usado (padrão) ou restante (preferência do usuário); desconhecido = "-"
 function pctWord(pct, remaining, tr) {
-    return pct < 0 ? "-" : ViewPrefs.shownPct(pct, remaining) + "%" + (remaining ? " " + (tr ? tr("restante") : "restante") : "");
+    if (pct < 0) return "-";
+    var p = ViewPrefs.shownPct(pct, remaining);
+    return remaining ? tr("%1% remaining", p) : p + "%";
+}
+
+// Junta itens com o separador traduzível (a ordem e a pontuação variam por idioma)
+function joined(parts, tr) {
+    return parts.reduce(function (acc, p) { return acc ? tr("%1, %2", acc, p) : p; }, "");
 }
 
 // Estado da Sessão (busy/waiting/idle) da Conta Ativa (Claude ou Codex): o overlay ao vivo
@@ -102,9 +110,9 @@ function sessionState(provider, acc, cfg) {
 }
 
 function sessionWord(state, tr) {
-    if (state === "busy") return tr("sessão ocupada");
-    if (state === "waiting") return tr("aguardando você");
-    if (state === "idle") return tr("sessão ociosa");
+    if (state === "busy") return tr("session busy");
+    if (state === "waiting") return tr("waiting for you");
+    if (state === "idle") return tr("session idle");
     return "";
 }
 
@@ -129,12 +137,12 @@ function updateItem(statusData, key) {
 function updateSummary(statusData, tr) {
     var widget = updateItem(statusData, "widget");
     var clis = [], lines = [];
-    if (widget) lines.push({ text: tr("Nova versão do widget: %1", widget.latest), url: widget.url });
+    if (widget) lines.push({ text: tr("New widget version: %1", widget.latest), url: widget.url });
     ["claude", "codex", "gemini"].forEach(function (k) {
         var it = updateItem(statusData, k);
         if (!it) return;
         clis.push(k);
-        lines.push({ text: tr("Nova versão do %1: %2", CLI_NAMES[k], it.latest), url: "" });
+        lines.push({ text: tr("New %1 version: %2", CLI_NAMES[k], it.latest), url: "" });
     });
     return { widget: widget, clis: clis, lines: lines };
 }
@@ -156,7 +164,7 @@ function buildModel(statusData, cfg, tr, nowMs) {
         };
         if (!acc) {
             var hasAccounts = ag && ag.accounts && ag.accounts.length > 0;
-            m.description = hasAccounts ? tr("sem conta ativa no sistema") : tr("sem dados");
+            m.description = hasAccounts ? tr("no account active on the system") : tr("no data");
             return m;
         }
         var nw = acc.native_window, ww = acc.weekly_window;
@@ -169,13 +177,13 @@ function buildModel(statusData, cfg, tr, nowMs) {
         var st = acc.health ? acc.health.status : "";
         m.health = (st && st !== "valid") ? st : "";
         m.sessionState = sessionState(key, acc, cfg);
-        var tail = acc.stale === true ? tr("dados desatualizados") : "";
-        if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
-        if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);
-        if (m.update) tail += (tail ? ", " : "") + tr("nova versão %1", m.update.latest);
-        m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct, cfg.remaining, tr), levelWord(m.innerLevel, tr))
-            + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct, cfg.remaining, tr), levelWord(m.outerLevel, tr))
-            + (tail ? ", " + tail : "");
+        var parts = [tr("Native window %1 (%2)", pctWord(m.innerPct, cfg.remaining, tr), levelWord(m.innerLevel, tr)),
+                     tr("weekly %1 (%2)", pctWord(m.outerPct, cfg.remaining, tr), levelWord(m.outerLevel, tr))];
+        if (acc.stale === true) parts.push(tr("stale data"));
+        if (acc.limit_changes && acc.limit_changes.length > 0) parts.push(tr("limits changed"));
+        if (m.sessionState) parts.push(sessionWord(m.sessionState, tr));
+        if (m.update) parts.push(tr("new version %1", m.update.latest));
+        m.description = joined(parts, tr);
         return m;
     });
 }
@@ -191,25 +199,26 @@ function worstHealth(model) {
 
 // Tempo restante legível ("2h 15min"); vencido (<= 0) = "já liberado"
 function formatRemaining(ms, tr) {
-    if (ms <= 0) return tr("já liberado");
+    if (ms <= 0) return tr("already released");
     var min = Math.floor(ms / 60000);
-    if (min < 1) return tr("menos de 1 min");
-    if (min < 60) return min + "min";
+    if (min < 1) return tr("less than 1 min");
+    if (min < 60) return tr("%1min", min);
     var h = Math.floor(min / 60);
-    if (h < 24) return h + "h " + (min % 60) + "min";
-    return Math.floor(h / 24) + "d " + (h % 24) + "h";
+    if (h < 24) return tr("%1h %2min", h, min % 60);
+    return tr("%1d %2h", Math.floor(h / 24), h % 24);
 }
 
 // Uma linha por janela: "Janela nativa: 40% — libera em 2h 15min"; sem dado = "—", nunca 0%
 function windowLine(acc, win, resetKey, label, now, tr, cfg) {
     cfg = cfg || {};
     var pct = windowPct(acc, win, resetKey);
-    if (pct < 0) return label + ": —";
+    if (pct < 0) return tr("%1: —", label);
     var reset = parseIso(win[resetKey]);
-    if (!isNaN(reset) && reset <= now) return label + ": " + formatRemaining(0, tr);  // sem % antigo ambíguo
-    var line = label + ": " + pctWord(pct, cfg.remaining, tr);
-    if (!isNaN(reset)) line += " — " + (cfg.date ? tr("libera %1", ViewPrefs.dateText(reset, now)) : tr("libera em %1", formatRemaining(reset - now, tr)));
-    return line;
+    if (!isNaN(reset) && reset <= now) return tr("%1: %2", label, formatRemaining(0, tr));  // sem % antigo ambíguo
+    var p = pctWord(pct, cfg.remaining, tr);
+    if (isNaN(reset)) return tr("%1: %2", label, p);
+    return cfg.date ? tr("%1: %2 — releases %3", label, p, ViewPrefs.dateText(reset, now))
+                    : tr("%1: %2 — releases in %3", label, p, formatRemaining(reset - now, tr));
 }
 
 // Texto da dica (texto puro): todos os limites dos provedores visíveis, Conta Ativa no Sistema
@@ -219,16 +228,16 @@ function tooltipText(statusData, cfg, tr, now) {
         var ag = agents[key];
         var name = (ag && ag.name) || Presets.providerInfo(key).name;
         var acc = activeAccount(ag);
-        if (!acc) return name + ": " + tr("sem conta ativa no sistema");
+        if (!acc) return tr("%1: no account active on the system", name);
         var notes = [], st = acc.health ? acc.health.status : "";
-        if (st === "session_expired") notes.push(tr("Sessão expirada"));
-        else if (st === "not_configured") notes.push(tr("Conta não configurada"));
-        else if (st && st !== "valid") notes.push(tr("Erro na conta"));
-        if (acc.stale === true) notes.push(tr("dados desatualizados"));
-        if (acc.limit_changes && acc.limit_changes.length > 0) notes.push(tr("limites mudaram"));
-        return name + "\n  " + windowLine(acc, acc.native_window, "release_time", tr("Janela nativa"), now, tr, cfg)
-            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Semanal"), now, tr, cfg)
-            + (notes.length ? "\n  " + notes.join(", ") : "");
+        if (st === "session_expired") notes.push(tr("Session expired"));
+        else if (st === "not_configured") notes.push(tr("Account not set up"));
+        else if (st && st !== "valid") notes.push(tr("Account error"));
+        if (acc.stale === true) notes.push(tr("stale data"));
+        if (acc.limit_changes && acc.limit_changes.length > 0) notes.push(tr("limits changed"));
+        return name + "\n  " + windowLine(acc, acc.native_window, "release_time", tr("Native window"), now, tr, cfg)
+            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Weekly"), now, tr, cfg)
+            + (notes.length ? "\n  " + joined(notes, tr) : "");
     });
     return blocks.join("\n");
 }
@@ -260,25 +269,28 @@ function popupProviders(statusData, prefs) {
 }
 
 function windowTitle(kind, win, tr) {
-    if (kind === "weekly") return tr("Janela Semanal (7 dias)");
+    if (kind === "weekly") return tr("Weekly Window (7 days)");
     var t = (win && win.type) || "";
-    return t === "5h" ? tr("Janela Ativa (5h)") : t === "daily" ? tr("Janela Diária") : t ? tr("Janela Ativa (%1)", t) : tr("Janela Ativa");
+    return t === "5h" ? tr("Active Window (5h)") : t === "daily" ? tr("Daily Window") : t ? tr("Active Window (%1)", t) : tr("Active Window");
 }
 
 // Previsão de Esgotamento: vazia sem previsão confiável (obsoleto, sem dado); `warn` = esgota antes da liberação
 function forecast(acc, win, nowMs, tr) {
     var fc = win && win.forecast;
     if (!fc || acc.stale === true || acc.no_data === true) return { text: "", warn: false };
-    if (!fc.exhausts_at) return { text: tr("Sem esgotamento previsto"), warn: false };
+    if (!fc.exhausts_at) return { text: tr("No exhaustion expected"), warn: false };
     var at = parseIso(fc.exhausts_at);
     if (isNaN(at)) return { text: "", warn: false };
     var sec = Math.max(0, Math.round((at - nowMs) / 1000));
-    var when = sec <= 0 ? tr("agora")
+    var when = sec <= 0 ? tr("now")
         : sec >= 86400 ? tr("%1d %2h", Math.floor(sec / 86400), Math.floor((sec % 86400) / 3600))
         : sec >= 3600 ? tr("%1h %2min", Math.floor(sec / 3600), Math.floor((sec % 3600) / 60))
-        : tr("%1 min", Math.max(1, Math.round(sec / 60)));
-    var text = sec > 0 ? tr("Esgota em %1 (%2)", when, ViewPrefs.dateText(at, nowMs).slice(-5)) : tr("Esgota %1", when);
-    return { text: fc.before_release ? text : tr("%1, após a liberação", text), warn: fc.before_release === true };
+        : tr("%1min", Math.max(1, Math.round(sec / 60)));
+    var hm = ViewPrefs.dateText(at, nowMs).slice(-5);
+    var after = fc.before_release !== true;
+    var text = sec > 0 ? (after ? tr("Runs out in %1 (%2), after the release", when, hm) : tr("Runs out in %1 (%2)", when, hm))
+                       : (after ? tr("Runs out %1, after the release", when) : tr("Runs out %1", when));
+    return { text: text, warn: !after };
 }
 
 // Tudo que o popup mostra de uma janela. `prefs` = ViewPrefs.config; sem dado: "—", esmaecido, sem nível/previsão
@@ -291,15 +303,15 @@ function windowView(acc, win, kind, prefs, nowMs, tr) {
     var resetMs = win ? parseIso(win[key] || win.resets_at) : NaN;
     if (v.elapsed >= 0 && !isNaN(resetMs))  // marca de tempo decorrido ao vivo, em passos de 0,5%
         v.elapsed = Math.round(Math.min(1, Math.max(0, 1 - (resetMs - nowMs) / (win.window_seconds * 1000))) * 200) / 200;
-    if (pct < 0) v.reset = v.resetFull = tr("Sem dados");
-    else if (stale) v.reset = v.resetFull = tr("Dados desatualizados") + (isNaN(resetMs) ? "" : " · " + tr("liberação prevista %1", ViewPrefs.dateText(resetMs, nowMs)));
+    if (pct < 0) v.reset = v.resetFull = tr("No data");
+    else if (stale) v.reset = v.resetFull = isNaN(resetMs) ? tr("Stale data") : tr("Stale data · release expected %1", ViewPrefs.dateText(resetMs, nowMs));
     else if (!isNaN(resetMs)) {
         var sec = Math.floor((resetMs - nowMs) / 1000);
-        if (sec <= 0) v.reset = v.resetFull = tr("Cota liberada");
+        if (sec <= 0) v.reset = v.resetFull = tr("Quota released");
         else {
             var cd = ViewPrefs.countdown(sec), dt = ViewPrefs.dateText(resetMs, nowMs);
-            v.reset = prefs.date ? tr("libera %1", dt) : tr("libera em %1", cd);
-            v.resetFull = tr("libera em %1 (%2)", cd, dt);
+            v.reset = prefs.date ? tr("releases %1", dt) : tr("releases in %1", cd);
+            v.resetFull = tr("releases in %1 (%2)", cd, dt);
         }
     }
     if (pct >= 0 && win.tokens_used > 0) v.tokens = tr("%1 tokens", win.tokens_used.toLocaleString());
@@ -309,8 +321,9 @@ function windowView(acc, win, kind, prefs, nowMs, tr) {
 
 // Texto único para tecnologias assistivas (a informação nunca depende só da cor)
 function viewSummary(v, remaining, tr) {
-    var s = v.title + ": " + (v.known ? v.text + " " + (remaining ? tr("restante") : tr("usado")) : tr("sem dados"));
-    if (v.level) s += ", " + levelWord(v.level, tr);
-    if (v.resetFull) s += ", " + v.resetFull;
-    return s + (v.forecast.text ? ", " + v.forecast.text : "");
+    var parts = [tr("%1: %2", v.title, v.known ? (remaining ? tr("%1 remaining", v.text) : tr("%1 used", v.text)) : tr("no data"))];
+    if (v.level) parts.push(levelWord(v.level, tr));
+    if (v.resetFull) parts.push(v.resetFull);
+    if (v.forecast.text) parts.push(v.forecast.text);
+    return joined(parts, tr);
 }

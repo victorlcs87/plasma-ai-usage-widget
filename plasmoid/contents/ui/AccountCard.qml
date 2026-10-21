@@ -6,6 +6,7 @@ import org.kde.plasma.plasma5support as Plasma5Support
 import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
+import "I18n.js" as I18n
 
 // Card de uma Conta no Notch escuro: Anel Duplo, nível, % (usado ou restante), liberação (contagem ou data),
 // previsão, nota de limites, Estado da Sessão, detalhamentos, histórico e convites. Ações: ativar no sistema e
@@ -30,11 +31,11 @@ Rectangle {
     // ADR-0007: dados desatualizados (servidos do cache) ou ausentes (sem cache nem histórico local)
     readonly property bool isStale: cardRoot.accountData?.stale === true
     readonly property bool hasNoData: cardRoot.accountData?.no_data === true
-    readonly property var nativeView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.native_window, "native", cardRoot.prefs, cardRoot.nowMs, cardRoot.safeI18n)
-    readonly property var weeklyView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.weekly_window, "weekly", cardRoot.prefs, cardRoot.nowMs, cardRoot.safeI18n)
+    readonly property var nativeView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.native_window, "native", cardRoot.prefs, cardRoot.nowMs, I18n.tr)
+    readonly property var weeklyView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.weekly_window, "weekly", cardRoot.prefs, cardRoot.nowMs, I18n.tr)
     readonly property bool hasDetails: Boolean(cardRoot.accountData?.token_history) || NotchModel.hasUsageDetails(cardRoot.accountData?.usage_details)
     readonly property string healthStatus: cardRoot.accountData?.health?.status || "unknown"
-    readonly property string accountName: cardRoot.accountData?.name || cardRoot.accountData?.label || cardRoot.safeI18n("Conta")
+    readonly property string accountName: cardRoot.accountData?.name || cardRoot.accountData?.label || I18n.tr("Account")
 
     signal accountSwitched()
 
@@ -45,12 +46,12 @@ Rectangle {
     border.color: cardRoot.isActive ? cardRoot.accent : Presets.ui.edge
 
     Accessible.role: Accessible.Grouping
-    Accessible.name: cardRoot.safeI18n("%1, conta %2", Presets.providerInfo(cardRoot.accountData?.provider).name, cardRoot.accountName)
+    Accessible.name: I18n.tr("%1, account %2", Presets.providerInfo(cardRoot.accountData?.provider).name, cardRoot.accountName)
     Accessible.description: [
-        cardRoot.isActive ? cardRoot.safeI18n("Ativa no sistema") : "",
-        NotchModel.viewSummary(cardRoot.nativeView, cardRoot.prefs.remaining, cardRoot.safeI18n),
-        NotchModel.viewSummary(cardRoot.weeklyView, cardRoot.prefs.remaining, cardRoot.safeI18n),
-        NotchModel.sessionWord(cardRoot.sessionState, cardRoot.safeI18n)
+        cardRoot.isActive ? I18n.tr("Active on the system") : "",
+        NotchModel.viewSummary(cardRoot.nativeView, cardRoot.prefs.remaining, I18n.tr),
+        NotchModel.viewSummary(cardRoot.weeklyView, cardRoot.prefs.remaining, I18n.tr),
+        NotchModel.sessionWord(cardRoot.sessionState, I18n.tr)
     ].filter(function (x) { return x; }).join(". ")
 
     Component.onCompleted: cardRoot.detailsOpen = cardRoot.isActive && cardRoot.hasDetails
@@ -83,8 +84,8 @@ Rectangle {
                 }
                 cardRoot.accountSwitched();
             } else {
-                var errMsg = stderr || stdout || cardRoot.safeI18n("Código de saída %1", exitCode);
-                cardRoot.switchError = cardRoot.safeI18n("Erro ao alternar conta: %1", errMsg);
+                var errMsg = stderr || stdout || I18n.tr("Exit code %1", exitCode);
+                cardRoot.switchError = I18n.tr("Error switching account: %1", errMsg);
                 if (cardRoot.plasmoidItem) {
                     cardRoot.plasmoidItem.lastError = cardRoot.switchError;
                 }
@@ -174,39 +175,44 @@ Rectangle {
             return c && c.window && c.kind && !(c.expires_at && Date.parse(c.expires_at) <= now);
         });
         if (changes.length === 0) return "";
-        var names = { native: cardRoot.safeI18n("janela ativa"), weekly: cardRoot.safeI18n("janela semanal") };
-        var kinds = {
-            added: cardRoot.safeI18n("nova"),
-            removed: cardRoot.safeI18n("removida"),
-            duration: cardRoot.safeI18n("com duração diferente"),
-            early_reset: cardRoot.safeI18n("com reset antecipado")
+        var texts = {
+            native: {
+                added: I18n.tr("New active window"),
+                removed: I18n.tr("Active window removed"),
+                duration: I18n.tr("Active window with a different duration"),
+                early_reset: I18n.tr("Active window with an early reset")
+            },
+            weekly: {
+                added: I18n.tr("New weekly window"),
+                removed: I18n.tr("Weekly window removed"),
+                duration: I18n.tr("Weekly window with a different duration"),
+                early_reset: I18n.tr("Weekly window with an early reset")
+            }
         };
-        return cardRoot.safeI18n("Limites mudaram: %1", changes.map(function (c) {
-            return (names[c.window] || c.window) + " " + (kinds[c.kind] || c.kind);
-        }).join(", "));
+        return I18n.tr("Limits changed: %1", NotchModel.joined(changes.map(function (c) {
+            return (texts[c.window] && texts[c.window][c.kind]) || (c.window + " " + c.kind);  // fora do contrato: dado cru
+        }), I18n.tr));
     }
 
-    function safeI18n(text, arg1, arg2, arg3) {
-        if (typeof i18n === "function") {
-            if (arg3 !== undefined) return i18n(text, arg1, arg2, arg3);
-            if (arg2 !== undefined) return i18n(text, arg1, arg2);
-            if (arg1 !== undefined) return i18n(text, arg1);
-            return i18n(text);
+    // Mensagem do erro de consulta pelo `kind` (conjunto fechado do coletor); kind novo = a mensagem do coletor
+    function fetchErrorText(err) {
+        if (!err) return "";
+        switch (err.kind) {
+        case "rate_limited": return I18n.tr("Provider rate limit reached (HTTP 429); waiting for the requested pause.");
+        case "auth": return I18n.tr("Login expired or revoked at the provider; log in again.");
+        case "network": return I18n.tr("Failed to query the provider (network unavailable).");
+        case "invalid_response": return I18n.tr("The provider answered without the expected usage data.");
+        default: return err.message || "";
         }
-        var res = text;
-        if (arg1 !== undefined) res = res.replace("%1", arg1);
-        if (arg2 !== undefined) res = res.replace("%2", arg2);
-        if (arg3 !== undefined) res = res.replace("%3", arg3);
-        return res;
     }
 
     // Saúde: palavra + forma (a cor sozinha nunca informa)
     function healthText() {
         var st = cardRoot.healthStatus;
-        if (st === "valid") return cardRoot.safeI18n("Ativa");
-        if (st === "session_expired") return cardRoot.safeI18n("Expirada");
-        if (st === "not_configured") return cardRoot.safeI18n("Não config.");
-        return cardRoot.safeI18n("Erro");
+        if (st === "valid") return I18n.tr("Active");
+        if (st === "session_expired") return I18n.tr("Expired");
+        if (st === "not_configured") return I18n.tr("Not set up");
+        return I18n.tr("Error");
     }
 
     function healthMark() {
@@ -218,12 +224,12 @@ Rectangle {
     function statusLine() {
         var acc = cardRoot.accountData || {};
         var parts = [];
-        if (acc.fetch_error && acc.fetch_error.message) parts.push("⚠ " + acc.fetch_error.message);
-        if (cardRoot.hasNoData) parts.push(cardRoot.safeI18n("Sem dados do provedor"));
+        if (acc.fetch_error && cardRoot.fetchErrorText(acc.fetch_error)) parts.push("⚠ " + cardRoot.fetchErrorText(acc.fetch_error));
+        if (cardRoot.hasNoData) parts.push(I18n.tr("No data from the provider"));
         else if (cardRoot.isStale && acc.fetched_at && !isNaN(Date.parse(acc.fetched_at)))
-            parts.push(cardRoot.safeI18n("Dados de %1", ViewPrefs.dateText(Date.parse(acc.fetched_at), cardRoot.nowMs)));
+            parts.push(I18n.tr("Data from %1", ViewPrefs.dateText(Date.parse(acc.fetched_at), cardRoot.nowMs)));
         if (acc.next_check_at && !isNaN(Date.parse(acc.next_check_at)))
-            parts.push(cardRoot.safeI18n("Próxima consulta às %1", ViewPrefs.dateText(Date.parse(acc.next_check_at), cardRoot.nowMs)));
+            parts.push(I18n.tr("Next check at %1", ViewPrefs.dateText(Date.parse(acc.next_check_at), cardRoot.nowMs)));
         return parts.join(" • ");
     }
 
@@ -282,12 +288,12 @@ Rectangle {
                         id: switchAccountButton
                         visible: !cardRoot.isActive && (cardRoot.accountData?.health?.status === "valid")
                         enabled: !cardRoot.isSwitching
-                        text: cardRoot.isSwitching ? cardRoot.safeI18n("Ativando...") : cardRoot.safeI18n("⚡ Ativar no Sistema")
+                        text: cardRoot.isSwitching ? I18n.tr("Activating...") : I18n.tr("⚡ Activate on System")
                         accent: cardRoot.accent
-                        accessibleName: cardRoot.safeI18n("Ativar %1 no sistema", cardRoot.accountName)
+                        accessibleName: I18n.tr("Activate %1 on the system", cardRoot.accountName)
                         hint: cardRoot.switchError.length > 0 ? cardRoot.switchError
-                            : cardRoot.isSwitching ? cardRoot.safeI18n("Ativando conta no sistema...")
-                            : cardRoot.safeI18n("Ativar esta conta como perfil padrão no CLI do sistema")
+                            : cardRoot.isSwitching ? I18n.tr("Activating account on the system...")
+                            : I18n.tr("Activate this account as the default profile for the system CLI")
                         onClicked: cardRoot.switchAccount()
                     }
 
@@ -302,20 +308,20 @@ Rectangle {
                         border.width: 1
                         border.color: Kirigami.Theme.highlightColor
                         Accessible.role: Accessible.StaticText
-                        Accessible.name: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.")
+                        Accessible.name: I18n.tr("This account is set as the active account on the system.")
 
                         QQC2.Label {
                             id: activeCliLabel
                             Accessible.ignored: true
                             anchors.centerIn: parent
-                            text: cardRoot.safeI18n("✓ Ativa no CLI")
+                            text: I18n.tr("✓ Active in the CLI")
                             textFormat: Text.PlainText
                             font.bold: true
                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                             color: Presets.ui.fg
                         }
                         HoverHandler { id: activeHover }
-                        PlainTip { visible: activeHover.hovered; text: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.") }
+                        PlainTip { visible: activeHover.hovered; text: I18n.tr("This account is set as the active account on the system.") }
                     }
 
                     Rectangle {
@@ -326,7 +332,7 @@ Rectangle {
                         radius: 4
                         color: Presets.ui.chip
                         Accessible.role: Accessible.StaticText
-                        Accessible.name: cardRoot.safeI18n("Saúde da conta: %1", cardRoot.healthText())
+                        Accessible.name: I18n.tr("Account health: %1", cardRoot.healthText())
                         Accessible.description: cardRoot.accountData?.health?.message || ""
 
                         QQC2.Label {
@@ -361,7 +367,7 @@ Rectangle {
                     Accessible.ignored: true
                     Layout.fillWidth: true
                     visible: cardRoot.sessionState !== ""
-                    text: NotchModel.sessionWord(cardRoot.sessionState, cardRoot.safeI18n)
+                    text: NotchModel.sessionWord(cardRoot.sessionState, I18n.tr)
                     textFormat: Text.PlainText
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     font.bold: true
@@ -378,7 +384,7 @@ Rectangle {
             view: cardRoot.nativeView
             remaining: cardRoot.prefs.remaining
             accent: cardRoot.accent
-            summary: NotchModel.viewSummary(cardRoot.nativeView, cardRoot.prefs.remaining, cardRoot.safeI18n)
+            summary: NotchModel.viewSummary(cardRoot.nativeView, cardRoot.prefs.remaining, I18n.tr)
         }
 
         // Medidor 2: Janela Semanal (7 dias)
@@ -390,7 +396,7 @@ Rectangle {
             view: cardRoot.weeklyView
             remaining: cardRoot.prefs.remaining
             accent: cardRoot.accent
-            summary: NotchModel.viewSummary(cardRoot.weeklyView, cardRoot.prefs.remaining, cardRoot.safeI18n)
+            summary: NotchModel.viewSummary(cardRoot.weeklyView, cardRoot.prefs.remaining, I18n.tr)
         }
 
         // Nota de mudança de limites (campo opcional "limit_changes", válida por 3 dias)
@@ -408,8 +414,8 @@ Rectangle {
         NotchButton {
             id: detailsToggle
             visible: cardRoot.hasDetails
-            text: (cardRoot.detailsOpen ? "▾ " : "▸ ") + cardRoot.safeI18n("Histórico e detalhes")
-            accessibleName: cardRoot.safeI18n("Histórico e detalhes de %1", cardRoot.accountName)
+            text: (cardRoot.detailsOpen ? "▾ " : "▸ ") + I18n.tr("History and details")
+            accessibleName: I18n.tr("History and details for %1", cardRoot.accountName)
             Accessible.expanded: cardRoot.detailsOpen
             accent: cardRoot.accent
             onClicked: cardRoot.detailsOpen = !cardRoot.detailsOpen
@@ -446,21 +452,19 @@ Rectangle {
                 color: Presets.ui.fg
                 text: {
                     var count = cardRoot.accountData?.free_trial_invites?.available_count || 0;
-                    return "✉ " + (count === 1
-                        ? cardRoot.safeI18n("1 convite de teste gratuito disponível")
-                        : cardRoot.safeI18n("%1 convites de teste gratuito disponíveis", count));
+                    return "✉ " + I18n.trp("%1 free trial invite available", "%1 free trial invites available", count);
                 }
             }
 
             NotchButton {
                 id: copyInviteButton
                 visible: Boolean(cardRoot.accountData?.free_trial_invites?.invite_url)
-                text: cardRoot.copiedFeedback ? cardRoot.safeI18n("Copiado!") : cardRoot.safeI18n("Copiar Link")
-                accessibleName: cardRoot.safeI18n("Copiar link de convite de %1", cardRoot.accountName)
+                text: cardRoot.copiedFeedback ? I18n.tr("Copied!") : I18n.tr("Copy Link")
+                accessibleName: I18n.tr("Copy invite link for %1", cardRoot.accountName)
                 accent: cardRoot.accent
                 hint: cardRoot.copiedFeedback
-                    ? cardRoot.safeI18n("Link copiado para a Área de Transferência!")
-                    : cardRoot.safeI18n("Copiar link de convite para a Área de Transferência")
+                    ? I18n.tr("Link copied to the clipboard!")
+                    : I18n.tr("Copy invite link to the clipboard")
                 onClicked: {
                     var url = cardRoot.accountData?.free_trial_invites?.invite_url;
                     if (url) {

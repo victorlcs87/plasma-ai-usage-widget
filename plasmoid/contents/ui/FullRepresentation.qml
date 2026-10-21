@@ -7,6 +7,7 @@ import org.kde.plasma.plasmoid
 import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
+import "I18n.js" as I18n
 
 // Popup: Notch escuro com um bloco por provedor (ordem e visibilidade configuráveis) e um card por Conta.
 // Ações de Conta no popup: Atualizar agora, Configurações (criar, renomear, remover, capturar, login e órfãos
@@ -50,7 +51,7 @@ Item {
     }
 
     Accessible.role: Accessible.Pane
-    Accessible.name: fullRoot.safeI18n("Monitor de Uso de IA")
+    Accessible.name: I18n.tr("AI Usage Monitor")
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 20
     Layout.preferredWidth: Kirigami.Units.gridUnit * 25
@@ -58,19 +59,7 @@ Item {
     Layout.minimumHeight: Kirigami.Units.gridUnit * 22
     Layout.preferredHeight: Kirigami.Units.gridUnit * 28
 
-    function safeI18n(text, arg1, arg2) {
-        if (typeof i18n === "function") {
-            if (arg2 !== undefined) return i18n(text, arg1, arg2);
-            if (arg1 !== undefined) return i18n(text, arg1);
-            return i18n(text);
-        }
-        var res = text;
-        if (arg1 !== undefined) res = res.replace("%1", arg1);
-        if (arg2 !== undefined) res = res.replace("%2", arg2);
-        return res;
-    }
-
-    function countText(n) { return n === 1 ? safeI18n("1 conta") : safeI18n("%1 contas", n); }
+    function countText(n) { return I18n.trp("%1 account", "%1 accounts", n); }
 
     // Preferência gravada na configuração do Plasmoid (vale em todo o widget); só valores conhecidos
     function setPref(key, value) {
@@ -132,7 +121,7 @@ Item {
 
                 QQC2.Label {
                     Accessible.role: Accessible.Heading
-                    text: fullRoot.safeI18n("Monitor de Uso de IA")
+                    text: I18n.tr("AI Usage Monitor")
                     textFormat: Text.PlainText
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize * 1.15
@@ -144,8 +133,8 @@ Item {
                 QQC2.Label {
                     objectName: "updatedLabel"
                     // Texto além da animação: a atualização em curso também é dita
-                    text: fullRoot.refreshing ? fullRoot.safeI18n("Atualizando métricas...")
-                        : (fullRoot.plasmoidItem?.lastUpdatedFormatted || fullRoot.safeI18n("Atualização recente"))
+                    text: fullRoot.refreshing ? I18n.tr("Updating metrics...")
+                        : (fullRoot.plasmoidItem?.lastUpdatedFormatted || I18n.tr("Recently updated"))
                     textFormat: Text.PlainText
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     color: Presets.ui.muted
@@ -157,11 +146,11 @@ Item {
             NotchButton {
                 id: refreshButton
                 icon.name: "view-refresh"
-                text: fullRoot.safeI18n("Atualizar agora")
+                text: I18n.tr("Update now")
                 display: QQC2.AbstractButton.IconOnly
                 accent: fullRoot.accent
                 enabled: !fullRoot.refreshing
-                hint: fullRoot.refreshing ? fullRoot.safeI18n("Atualizando métricas...") : fullRoot.safeI18n("Atualizar agora")
+                hint: fullRoot.refreshing ? I18n.tr("Updating metrics...") : I18n.tr("Update now")
                 onClicked: {
                     if (fullRoot.plasmoidItem) {
                         fullRoot.plasmoidItem.refreshCollector();
@@ -182,10 +171,10 @@ Item {
             NotchButton {
                 id: configureButton
                 icon.name: "configure"
-                text: fullRoot.safeI18n("Configurações")
+                text: I18n.tr("Settings")
                 display: QQC2.AbstractButton.IconOnly
                 accent: fullRoot.accent
-                hint: fullRoot.safeI18n("Gerenciar contas e configurações")
+                hint: I18n.tr("Manage accounts and settings")
                 visible: (typeof Plasmoid !== "undefined" && Plasmoid && typeof Plasmoid.internalAction === "function" && Boolean(Plasmoid.internalAction("configure")))
                 onClicked: {
                     if (typeof Plasmoid !== "undefined" && Plasmoid.internalAction) {
@@ -203,10 +192,10 @@ Item {
 
             Repeater {
                 model: [
-                    { pref: "usageDisplay", value: "used", text: fullRoot.safeI18n("Usado"), hint: fullRoot.safeI18n("Mostrar quanto da cota já foi usado") },
-                    { pref: "usageDisplay", value: "remaining", text: fullRoot.safeI18n("Restante"), hint: fullRoot.safeI18n("Mostrar quanto da cota ainda resta") },
-                    { pref: "resetDisplay", value: "countdown", text: fullRoot.safeI18n("Contagem"), hint: fullRoot.safeI18n("Mostrar o tempo até a liberação") },
-                    { pref: "resetDisplay", value: "date", text: fullRoot.safeI18n("Data"), hint: fullRoot.safeI18n("Mostrar a data e a hora da liberação") }
+                    { pref: "usageDisplay", value: "used", text: I18n.tr("Used"), hint: I18n.tr("Show how much of the quota has been used") },
+                    { pref: "usageDisplay", value: "remaining", text: I18n.tr("Remaining"), hint: I18n.tr("Show how much of the quota is left") },
+                    { pref: "resetDisplay", value: "countdown", text: I18n.tr("Countdown"), hint: I18n.tr("Show the time until release") },
+                    { pref: "resetDisplay", value: "date", text: I18n.tr("Date"), hint: I18n.tr("Show the release date and time") }
                 ]
                 delegate: NotchButton {
                     required property var modelData
@@ -256,8 +245,8 @@ Item {
                 }
                 NotchButton {
                     visible: modelData.url !== ""
-                    text: fullRoot.safeI18n("Ver release")
-                    hint: fullRoot.safeI18n("Abrir a página da release no navegador")
+                    text: I18n.tr("View release")
+                    hint: I18n.tr("Open the release page in the browser")
                     accent: fullRoot.accent
                     onClicked: Qt.openUrlExternally(modelData.url)
                 }
@@ -320,8 +309,8 @@ Item {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
                             Accessible.role: Accessible.Heading
-                            Accessible.name: block.modelData.name + (block.modelData.accounts.length > 0
-                                ? ", " + fullRoot.countText(block.modelData.accounts.length) : "")
+                            Accessible.name: block.modelData.accounts.length > 0
+                                ? I18n.tr("%1, %2", block.modelData.name, fullRoot.countText(block.modelData.accounts.length)) : block.modelData.name
 
                             Rectangle {  // inicial do provedor: identifica sem depender de cor
                                 Accessible.ignored: true
@@ -352,9 +341,9 @@ Item {
                                 Accessible.ignored: true
                                 Layout.fillWidth: true
                                 // Conta Ativa no Sistema: sem nenhuma marcada, nunca outra conta no lugar
-                                text: block.modelData.accounts.length === 0 ? fullRoot.safeI18n("sem contas")
+                                text: block.modelData.accounts.length === 0 ? I18n.tr("no accounts")
                                     : block.modelData.hasActive ? fullRoot.countText(block.modelData.accounts.length)
-                                    : "○ " + fullRoot.safeI18n("sem conta ativa no sistema")
+                                    : "○ " + I18n.tr("no account active on the system")
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight
                                 font.pointSize: Kirigami.Theme.smallFont.pointSize
@@ -399,9 +388,9 @@ Item {
                     textFormat: Text.PlainText
                     color: Presets.ui.muted
                     text: fullRoot.providers.length === 0
-                        ? fullRoot.safeI18n("Nenhum provedor visível no popup. Escolha os provedores em Configurações.")
-                        : fullRoot.safeI18n("Nenhuma conta encontrada") + "\n"
-                          + fullRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
+                        ? I18n.tr("No provider visible in the popup. Choose providers in Settings.")
+                        : I18n.tr("No accounts found") + "\n"
+                          + I18n.tr("Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json")
                 }
             }
         }

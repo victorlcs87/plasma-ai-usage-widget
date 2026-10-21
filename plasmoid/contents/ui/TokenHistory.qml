@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import "Presets.js" as Presets
+import "I18n.js" as I18n
 
 // Historico de Tokens de uma Conta: totais de hoje/semana/mes e grafico de barras.
 // Apenas apresenta o campo opcional `token_history` do contrato (calculado no coletor).
@@ -31,11 +32,6 @@ ColumnLayout {
     visible: Boolean(history)
     spacing: Kirigami.Units.smallSpacing
 
-    function tr(text, arg1) {
-        var out = (typeof i18n === "function") ? i18n(text, arg1) : text;
-        return arg1 === undefined ? out : out.replace("%1", arg1);
-    }
-
     function compact(n) {
         n = Number(n) || 0;
         if (n >= 1e9) return (n / 1e9).toFixed(1) + "B";
@@ -44,7 +40,7 @@ ColumnLayout {
         return String(n);
     }
 
-    readonly property var periodNames: [tr("30 dias"), tr("3 meses"), tr("12 meses")]
+    readonly property var periodNames: [I18n.tr("30 days"), I18n.tr("3 months"), I18n.tr("12 months")]
 
     function pointLabel(p) {
         return p.date || p.week_start || p.month || "";
@@ -68,21 +64,20 @@ ColumnLayout {
             elide: Text.ElideRight
             textFormat: Text.PlainText
             text: root.history
-                ? root.tr("Hoje %1", root.compact(root.history.today))
-                  + " • " + root.tr("Semana %1", root.compact(root.history.week))
-                  + " • " + root.tr("Mês %1", root.compact(root.history.month))
-                + (root.history.estimated ? " • " + root.tr("estimado") : "")
+                ? (root.history.estimated
+                    ? I18n.tr("Today %1 • Week %2 • Month %3 • estimated", root.compact(root.history.today), root.compact(root.history.week), root.compact(root.history.month))
+                    : I18n.tr("Today %1 • Week %2 • Month %3", root.compact(root.history.today), root.compact(root.history.week), root.compact(root.history.month)))
                 : ""
         }
 
         Repeater {
-            model: root.summaryOnly ? [] : [root.tr("30d"), root.tr("3m"), root.tr("12m")]
+            model: root.summaryOnly ? [] : [I18n.tr("30d"), I18n.tr("3m"), I18n.tr("12m")]
             delegate: NotchButton {
                 required property int index
                 required property string modelData
                 text: modelData
                 visible: !root.summaryOnly
-                accessibleName: root.owner ? root.periodNames[index] + ", " + root.owner : root.periodNames[index]
+                accessibleName: root.owner ? I18n.tr("%1, %2", root.periodNames[index], root.owner) : root.periodNames[index]
                 hint: root.periodNames[index]
                 checkable: true
                 checked: root.period === index
@@ -97,8 +92,8 @@ ColumnLayout {
         visible: !root.summaryOnly
         // Resumo para tecnologias assistivas: as barras são só visuais
         Accessible.role: Accessible.Chart
-        Accessible.name: root.tr("Histórico de tokens, %1", root.periodNames[root.period])
-        Accessible.description: root.series.length === 0 ? root.tr("Sem dados") : root.tr("Maior valor: %1", root.compact(root.maxTokens))
+        Accessible.name: I18n.tr("Token history, %1", root.periodNames[root.period])
+        Accessible.description: root.series.length === 0 ? I18n.tr("No data") : I18n.tr("Highest value: %1", root.compact(root.maxTokens))
         Layout.fillWidth: true
         implicitHeight: Kirigami.Units.gridUnit * 2
 
@@ -128,7 +123,7 @@ ColumnLayout {
                         hoverEnabled: true
                     }
 
-                    PlainTip { visible: barMouse.containsMouse; text: root.pointLabel(modelData) + ": " + root.compact(modelData.tokens) + " tokens" }
+                    PlainTip { visible: barMouse.containsMouse; text: I18n.tr("%1: %2 tokens", root.pointLabel(modelData), root.compact(modelData.tokens)) }
                 }
             }
         }

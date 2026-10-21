@@ -3,6 +3,7 @@ import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import "Presets.js" as Presets
+import "I18n.js" as I18n
 
 // Exibicao minima do campo opcional "usage_details" do contrato (v2).
 // Linhas sem dado nao aparecem; sem usage_details o componente fica oculto.
@@ -23,30 +24,18 @@ ColumnLayout {
         var out = [];
         if (!d) return out;
         if (d.tokens_by_model && d.tokens_by_model.length > 0)
-            out.push(tr("Por modelo: %1", d.tokens_by_model.slice(0, 3).map(function (m) { return m.model + " " + fmtTokens(m.tokens); }).join(", ")));
+            out.push(I18n.tr("By model: %1", d.tokens_by_model.slice(0, 3).map(function (m) { return m.model + " " + fmtTokens(m.tokens); }).join(", ")));
         if (d.tokens_by_project && d.tokens_by_project.length > 0)
-            out.push(tr("Por projeto: %1", d.tokens_by_project.slice(0, 3).map(function (p) { return p.project + " " + fmtTokens(p.tokens); }).join(", ")));
+            out.push(I18n.tr("By project: %1", d.tokens_by_project.slice(0, 3).map(function (p) { return p.project + " " + fmtTokens(p.tokens); }).join(", ")));
         if (d.extra_usage && d.extra_usage.spent !== undefined)
             out.push(d.extra_usage.monthly_limit !== undefined
-                ? tr("Uso extra: $%1 de $%2/mês", d.extra_usage.spent.toFixed(2), d.extra_usage.monthly_limit.toFixed(2))
-                : tr("Uso extra: $%1", d.extra_usage.spent.toFixed(2)));
+                ? I18n.tr("Extra usage: $%1 of $%2/month", d.extra_usage.spent.toFixed(2), d.extra_usage.monthly_limit.toFixed(2))
+                : I18n.tr("Extra usage: $%1", d.extra_usage.spent.toFixed(2)));
         if (d.credits)
-            out.push(d.credits.unlimited ? tr("Créditos: ilimitados") : tr("Créditos: %1", d.credits.balance));
+            out.push(d.credits.unlimited ? I18n.tr("Credits: unlimited") : I18n.tr("Credits: %1", d.credits.balance));
         if (d.current_model)
-            out.push(tr("Modelo atual: %1", d.current_model));
+            out.push(I18n.tr("Current model: %1", d.current_model));
         return out;
-    }
-
-    function tr(text, arg1, arg2) {
-        if (typeof i18n === "function") {
-            if (arg2 !== undefined) return i18n(text, arg1, arg2);
-            if (arg1 !== undefined) return i18n(text, arg1);
-            return i18n(text);
-        }
-        var res = text;
-        if (arg1 !== undefined) res = res.replace("%1", arg1);
-        if (arg2 !== undefined) res = res.replace("%2", arg2);
-        return res;
     }
 
     function modelPct(p) {
@@ -57,7 +46,7 @@ ColumnLayout {
         if (!iso) return "";
         var d = new Date(iso);
         if (isNaN(d.getTime())) return "";
-        return "  ·  " + tr("reinicia %1", Qt.formatDateTime(d, "dd/MM HH:mm"));
+        return "  ·  " + I18n.tr("resets %1", Qt.formatDateTime(d, "dd/MM HH:mm"));
     }
 
     function fmtTokens(n) {
@@ -70,7 +59,7 @@ ColumnLayout {
         id: toggle
         visible: detailsRoot.models.length > 0
         Layout.fillWidth: true
-        text: detailsRoot.tr("Cota por modelo (%1)", detailsRoot.models.length)
+        text: I18n.tr("Quota by model (%1)", detailsRoot.models.length)
         checkable: true
         checked: detailsRoot.modelsExpanded
         onToggled: detailsRoot.modelsExpanded = checked

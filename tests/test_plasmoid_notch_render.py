@@ -23,7 +23,7 @@ STUBS = {
 }
 
 COMPACT_FILES = ("CompactRepresentation.qml", "DualRing.qml", "PanelItem.qml", "LevelBars.qml", "SessionMark.qml",
-                 "Presets.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
+                 "Presets.js", "I18n.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
 import QtQuick
@@ -32,11 +32,12 @@ import QtTest
 import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import "NotchModel.js" as NotchModel
+import "I18n.js" as I18n
 Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
   Item { id: logic
-    property var compactModel: NotchModel.buildModel(%(data)s, %(cfg)s, safeI18n)
+    property var compactModel: NotchModel.buildModel(%(data)s, %(cfg)s, I18n.tr)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
-    property var updateInfo: NotchModel.updateSummary(%(data)s, safeI18n)
+    property var updateInfo: NotchModel.updateSummary(%(data)s, I18n.tr)
     property int totalInvites: %(invites)d
     property color accentColor: "#3daee9"
     property string toolTipMainText: "AI"
@@ -47,7 +48,6 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
     function setPillHovered(h) { calls.push("hover:" + h) }
     function pillClicked() { calls.push("click") }
     function closePopup() { calls.push("close") }
-    function safeI18n(t, a, b) { var r = t; if (a !== undefined) r = r.replace("%%1", a); if (b !== undefined) r = r.replace("%%2", b); return r }
   }
   CompactRepresentation { id: c; plasmoidItem: logic; anchors.fill: parent }
   property bool skipGrab: false
@@ -134,7 +134,7 @@ def test_missing_weekly_window_is_unknown_not_zero(tmp_path):
     out = render(tmp_path, "a1", {"claude": {"name": "Claude", "accounts": [acct(True, weekly=None)]}}, invites=2)
     claude = out["model"][0]
     assert claude["outerPct"] == -1 and claude["innerPct"] == 40
-    assert "semanal -" in claude["description"] and "0%" not in claude["description"].replace("40%", "")
+    assert "weekly -" in claude["description"] and "0%" not in claude["description"].replace("40%", "")
 
 
 def test_no_active_account_shows_neutral_provider_without_health_badge(tmp_path):
@@ -142,7 +142,7 @@ def test_no_active_account_shows_neutral_provider_without_health_badge(tmp_path)
     out = render(tmp_path, "m1", agents, vertical=True)
     claude = out["model"][0]
     assert claude["innerPct"] == -1 and claude["outerPct"] == -1
-    assert "sem conta ativa" in claude["description"]
+    assert "no account active" in claude["description"]
     assert out["health"] == ""
 
 
@@ -155,8 +155,8 @@ def test_update_badge_model_ignores_untrusted_values(tmp_path):
     out = render(tmp_path, "u1", agents, updates={"enabled": True, "items": items})
     info = out["update"]
     assert info["widget"]["url"] == "" and info["clis"] == ["claude"]
-    assert [l["text"] for l in info["lines"]] == ["Nova versão do widget: 9.0.0", "Nova versão do Claude Code: 2.1.0"]
-    assert out["model"][0]["update"]["latest"] == "2.1.0" and "nova versão 2.1.0" in out["model"][0]["description"]
+    assert [l["text"] for l in info["lines"]] == ["New widget version: 9.0.0", "New Claude Code version: 2.1.0"]
+    assert out["model"][0]["update"]["latest"] == "2.1.0" and "new version 2.1.0" in out["model"][0]["description"]
     items["widget"]["url"] = ok
     assert render(tmp_path / "b", "u2", agents, updates={"enabled": True, "items": items})["update"]["widget"]["url"] == ok
     for n, bad in enumerate((ok + "/../../x", ok + "/%2E%2e/x", ok + "..%2fx", ok + "%5Cx", ok + "%zz",
@@ -170,7 +170,7 @@ def test_session_state_in_model_and_rings_render(tmp_path):
     for n in ("busy", "waiting", "off", "bad"):
         (tmp_path / n).mkdir()
     agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
-    for state, word in (("busy", "ocupada"), ("waiting", "aguardando")):
+    for state, word in (("busy", "busy"), ("waiting", "waiting")):
         out = render(tmp_path / state, f"s_{state}", agents, extra_cfg={"showSession": True, "sessionOverlay": {"claude/a": state}})
         assert out["model"][0]["sessionState"] == state and word in out["model"][0]["description"]
     off = render(tmp_path / "off", "s_off", agents, extra_cfg={"sessionOverlay": {"claude/a": "busy"}})  # desligado: sem indicador

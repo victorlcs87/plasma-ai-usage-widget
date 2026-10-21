@@ -4,6 +4,7 @@ import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
+import "I18n.js" as I18n
 
 // Uma janela de uma Conta no popup (NotchModel.windowView): título, nível (forma + palavra + cor), %,
 // liberação e previsão. Sem dado: "—" esmaecido, nunca 0%. Cor só pelo nível do contrato.
@@ -24,8 +25,6 @@ ColumnLayout {
     Accessible.role: Accessible.StaticText
     Accessible.name: summary
 
-    function tr(text) { return typeof i18n === "function" ? i18n(text) : text; }
-
     RowLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
@@ -43,7 +42,7 @@ ColumnLayout {
             objectName: "levelWord"
             Accessible.ignored: true
             visible: row.flagged
-            text: row.view.level === "critical" ? row.tr("Crítico") : row.tr("Atenção")
+            text: row.view.level === "critical" ? I18n.tr("Critical") : I18n.tr("Warning")
             textFormat: Text.PlainText
             font.pointSize: Kirigami.Theme.smallFont.pointSize
             font.bold: true
@@ -69,7 +68,7 @@ ColumnLayout {
         QQC2.Label {
             Accessible.ignored: true
             visible: row.view.known === true
-            text: row.remaining ? row.tr("restante") : row.tr("usado")
+            text: row.remaining ? I18n.tr("remaining") : I18n.tr("used")
             textFormat: Text.PlainText
             font.pointSize: Kirigami.Theme.smallFont.pointSize
             color: Presets.ui.muted

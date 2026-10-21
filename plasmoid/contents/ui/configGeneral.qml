@@ -11,6 +11,7 @@ import org.kde.plasma.extras as PlasmaExtras
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
 import "ViewPrefs.js" as ViewPrefs
+import "I18n.js" as I18n
 
 Item {
     id: configRoot
@@ -123,21 +124,6 @@ Item {
 
     readonly property bool isBusy: isLoading || isDeleting || isRenaming || isAdding || isCapturing || isInteractiveLogin
 
-    function safeI18n(text, arg1, arg2, arg3) {
-        if (!text) return "";
-        if (typeof i18n === "function") {
-            if (arg3 !== undefined) return i18n(text, arg1, arg2, arg3);
-            if (arg2 !== undefined) return i18n(text, arg1, arg2);
-            if (arg1 !== undefined) return i18n(text, arg1);
-            return i18n(text);
-        }
-        var res = text;
-        if (arg1 !== undefined) res = res.replace("%1", arg1);
-        if (arg2 !== undefined) res = res.replace("%2", arg2);
-        if (arg3 !== undefined) res = res.replace("%3", arg3);
-        return res;
-    }
-
     function shellQuote(str) {
         if (str === null || str === undefined) return "''";
         return "'" + String(str).replace(/'/g, "'\\''") + "'";
@@ -218,11 +204,11 @@ Item {
         var inviteUrl = (inviteUrlField.text || "").trim();
 
         if (!label) {
-            configRoot.errorMessage = configRoot.safeI18n("Por favor, preencha o apelido/nome da conta.");
+            configRoot.errorMessage = I18n.tr("Please fill in the account nickname/name.");
             return;
         }
         if (!path) {
-            configRoot.errorMessage = configRoot.safeI18n("Por favor, informe o caminho das credenciais ou diretório.");
+            configRoot.errorMessage = I18n.tr("Please enter the credentials path or directory.");
             return;
         }
 
@@ -315,7 +301,7 @@ Item {
                         configRoot.notifyMuted = Array.isArray(nt.muted) ? nt.muted : [];
                     }
                 } catch (e) {
-                    configRoot.errorMessage = configRoot.safeI18n("Erro ao ler dados de status: %1", e.message);
+                    configRoot.errorMessage = I18n.tr("Error reading status data: %1", e.message);
                 }
             }
             disconnectSource(sourceName);
@@ -347,7 +333,7 @@ Item {
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+                configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
             }
             disconnectSource(sourceName);
         }
@@ -376,7 +362,7 @@ Item {
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+                configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
             }
             disconnectSource(sourceName);
         }
@@ -422,7 +408,7 @@ Item {
             } else {
                 configRoot.updateCheck = configRoot.updateCheckBefore;
                 updateCheckBox.checked = configRoot.updateCheckBefore;
-                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+                configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
             }
             disconnectSource(sourceName);
         }
@@ -450,7 +436,7 @@ Item {
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+                configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
             }
             disconnectSource(sourceName);
         }
@@ -469,11 +455,11 @@ Item {
             var stderr = (data["stderr"] || "").trim();
 
             if (exitCode === 0) {
-                configRoot.statusMessage = configRoot.safeI18n("Conta removida com sucesso!");
+                configRoot.statusMessage = I18n.tr("Account removed successfully!");
                 configRoot.errorMessage = "";
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = configRoot.safeI18n("Falha ao remover conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.errorMessage = I18n.tr("Failed to remove account: %1", stderr || stdout || I18n.tr("Unknown error"));
                 configRoot.statusMessage = "";
             }
             disconnectSource(sourceName);
@@ -502,7 +488,7 @@ Item {
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+                configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
             }
             disconnectSource(sourceName);
         }
@@ -522,7 +508,7 @@ Item {
 
             if (exitCode === 0) {
                 var lines = stdout.split("\n");
-                var msg = lines[0] || configRoot.safeI18n("Conta renomeada com sucesso!");
+                var msg = lines[0] || I18n.tr("Account renamed successfully!");
                 configRoot.statusMessage = msg;
                 configRoot.errorMessage = "";
                 var jsonStart = stdout.indexOf("{");
@@ -536,7 +522,7 @@ Item {
                     configRoot.loadStatus();
                 }
             } else {
-                configRoot.errorMessage = configRoot.safeI18n("Falha ao renomear conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.errorMessage = I18n.tr("Failed to rename account: %1", stderr || stdout || I18n.tr("Unknown error"));
                 configRoot.statusMessage = "";
             }
             disconnectSource(sourceName);
@@ -556,12 +542,12 @@ Item {
             var stderr = (data["stderr"] || "").trim();
 
             if (exitCode === 0) {
-                configRoot.statusMessage = configRoot.safeI18n("Conta adicionada com sucesso!");
+                configRoot.statusMessage = I18n.tr("Account added successfully!");
                 configRoot.errorMessage = "";
                 configRoot.clearAddAccountForm();
                 configRoot.loadStatus();
             } else {
-                configRoot.errorMessage = configRoot.safeI18n("Falha ao adicionar conta: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.errorMessage = I18n.tr("Failed to add account: %1", stderr || stdout || I18n.tr("Unknown error"));
                 configRoot.statusMessage = "";
             }
             disconnectSource(sourceName);
@@ -582,7 +568,7 @@ Item {
 
             if (exitCode === 0) {
                 var lines = stdout.split("\n");
-                var msg = lines[0] || configRoot.safeI18n("Sessão ativa capturada com sucesso!");
+                var msg = lines[0] || I18n.tr("Active session captured successfully!");
                 configRoot.statusMessage = msg;
                 configRoot.errorMessage = "";
                 configRoot.clearAddAccountForm();
@@ -597,7 +583,7 @@ Item {
                     configRoot.loadStatus();
                 }
             } else {
-                configRoot.errorMessage = configRoot.safeI18n("Falha ao capturar login atual: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.errorMessage = I18n.tr("Failed to capture current login: %1", stderr || stdout || I18n.tr("Unknown error"));
                 configRoot.statusMessage = "";
             }
             disconnectSource(sourceName);
@@ -618,7 +604,7 @@ Item {
 
             if (exitCode === 0) {
                 var lines = stdout.split("\n");
-                var msg = lines[0] || configRoot.safeI18n("Login interativo concluído com sucesso!");
+                var msg = lines[0] || I18n.tr("Interactive login completed successfully!");
                 configRoot.statusMessage = msg;
                 configRoot.errorMessage = "";
                 configRoot.clearAddAccountForm();
@@ -633,7 +619,7 @@ Item {
                     configRoot.loadStatus();
                 }
             } else {
-                configRoot.errorMessage = configRoot.safeI18n("Falha no login interativo: %1", stderr || stdout || configRoot.safeI18n("Erro desconhecido"));
+                configRoot.errorMessage = I18n.tr("Interactive login failed: %1", stderr || stdout || I18n.tr("Unknown error"));
                 configRoot.statusMessage = "";
             }
             disconnectSource(sourceName);
@@ -678,7 +664,7 @@ Item {
         if (!configRoot.accountPendingRename) return;
         var newName = (renameAccountField.text || "").trim();
         if (!newName) {
-            configRoot.errorMessage = configRoot.safeI18n("O nome da conta não pode ser vazio.");
+            configRoot.errorMessage = I18n.tr("The account name cannot be empty.");
             return;
         }
         var acc = configRoot.accountPendingRename;
@@ -712,17 +698,18 @@ Item {
             spacing: Kirigami.Units.smallSpacing
 
             Kirigami.Heading {
+                textFormat: Text.PlainText
                 level: 2
-                text: configRoot.safeI18n("Gerenciamento de Contas de IA")
+                text: I18n.tr("AI Account Management")
                 Layout.fillWidth: true
             }
 
             PlasmaComponents3.Button {
                 icon.name: "view-refresh"
-                text: configRoot.safeI18n("Recarregar")
+                text: I18n.tr("Reload")
                 display: QQC2.AbstractButton.IconOnly
                 enabled: !configRoot.isBusy
-                QQC2.ToolTip.text: configRoot.safeI18n("Atualizar lista de contas")
+                QQC2.ToolTip.text: I18n.tr("Refresh account list")
                 QQC2.ToolTip.visible: hovered
                 onClicked: {
                     configRoot.statusMessage = "";
@@ -733,8 +720,9 @@ Item {
         }
 
         QQC2.Label {
+            textFormat: Text.PlainText
             Layout.fillWidth: true
-            text: configRoot.safeI18n("Visualize as contas cadastradas de Claude, Codex e Gemini e gerencie o ciclo de vida diretamente.")
+            text: I18n.tr("View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly.")
             color: Kirigami.Theme.disabledTextColor
             wrapMode: Text.WordWrap
         }
@@ -790,42 +778,42 @@ Item {
             Layout.fillWidth: true
             currentIndex: 0
             Accessible.role: Accessible.PageTabList
-            Accessible.name: configRoot.safeI18n("Seções da configuração")
+            Accessible.name: I18n.tr("Settings sections")
 
             QQC2.TabButton {
-                text: configRoot.safeI18n("Geral")
+                text: I18n.tr("General")
                 activeFocusOnTab: true
                 Accessible.role: Accessible.PageTab
-                Accessible.name: configRoot.safeI18n("Geral")
-                Accessible.description: configRoot.safeI18n("Configurações gerais: atualização, alertas, ocultar sem CLI e verificação de versões")
+                Accessible.name: I18n.tr("General")
+                Accessible.description: I18n.tr("General settings: refresh, alerts, hiding without a CLI and version checks")
             }
             QQC2.TabButton {
-                text: configRoot.safeI18n("Painel")
+                text: I18n.tr("Panel")
                 activeFocusOnTab: true
                 Accessible.role: Accessible.PageTab
-                Accessible.name: configRoot.safeI18n("Painel")
-                Accessible.description: configRoot.safeI18n("Aparência do Notch compacto no painel")
+                Accessible.name: I18n.tr("Panel")
+                Accessible.description: I18n.tr("Appearance of the compact Notch in the panel")
             }
             QQC2.TabButton {
-                text: configRoot.safeI18n("Popup")
+                text: I18n.tr("Popup")
                 activeFocusOnTab: true
                 Accessible.role: Accessible.PageTab
-                Accessible.name: configRoot.safeI18n("Popup")
-                Accessible.description: configRoot.safeI18n("Popup: abertura, exibição, opacidade e provedores")
+                Accessible.name: I18n.tr("Popup")
+                Accessible.description: I18n.tr("Popup: opening, display, opacity and providers")
             }
             QQC2.TabButton {
-                text: configRoot.safeI18n("Contas")
+                text: I18n.tr("Accounts")
                 activeFocusOnTab: true
                 Accessible.role: Accessible.PageTab
-                Accessible.name: configRoot.safeI18n("Contas")
-                Accessible.description: configRoot.safeI18n("Contas cadastradas, criação, captura e perfis órfãos")
+                Accessible.name: I18n.tr("Accounts")
+                Accessible.description: I18n.tr("Registered accounts, creation, capture and orphan profiles")
             }
             QQC2.TabButton {
-                text: configRoot.safeI18n("Notificações")
+                text: I18n.tr("Notifications")
                 activeFocusOnTab: true
                 Accessible.role: Accessible.PageTab
-                Accessible.name: configRoot.safeI18n("Notificações")
-                Accessible.description: configRoot.safeI18n("Estado da sessão, notificações e sons")
+                Accessible.name: I18n.tr("Notifications")
+                Accessible.description: I18n.tr("Session state, notifications and sounds")
             }
         }
 
@@ -856,7 +844,8 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Atualizar a cada (s):")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Refresh every (s):")
                             }
 
                             Repeater {
@@ -870,6 +859,7 @@ Item {
                                     spacing: Kirigami.Units.smallSpacing
 
                                     QQC2.Label {
+                                        textFormat: Text.PlainText
                                         text: modelData.name
                                     }
 
@@ -880,7 +870,7 @@ Item {
                                         editable: true
                                         value: configRoot[modelData.key]
                                         onValueModified: configRoot[modelData.key] = value
-                                        QQC2.ToolTip.text: configRoot.safeI18n("Intervalo de Atualização do %1 em segundos (mínimo 60)", modelData.name)
+                                        QQC2.ToolTip.text: I18n.tr("%1 refresh interval in seconds (minimum 60)", modelData.name)
                                         QQC2.ToolTip.visible: hovered
                                     }
                                 }
@@ -893,7 +883,8 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Alerta por:")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Alert by:")
                             }
 
                             QQC2.ComboBox {
@@ -901,16 +892,17 @@ Item {
                                 textRole: "text"
                                 valueRole: "value"
                                 model: [
-                                    { value: "pace", text: configRoot.safeI18n("Ritmo de uso") },
-                                    { value: "threshold", text: configRoot.safeI18n("Limiar fixo") }
+                                    { value: "pace", text: I18n.tr("Usage pace") },
+                                    { value: "threshold", text: I18n.tr("Fixed threshold") }
                                 ]
                                 currentIndex: configRoot.alertMode === "threshold" ? 1 : 0
                                 onActivated: { configRoot.alertMode = currentValue; configRoot.alertsDirty = true; }
-                                Accessible.name: configRoot.safeI18n("Modo de alerta")
+                                Accessible.name: I18n.tr("Alert mode")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Aviso (%):")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Warning (%):")
                                 enabled: configRoot.alertMode === "threshold"
                             }
 
@@ -921,11 +913,12 @@ Item {
                                 enabled: configRoot.alertMode === "threshold"
                                 value: configRoot.alertWarning
                                 onValueModified: { configRoot.alertWarning = value; configRoot.alertsDirty = true; }
-                                Accessible.name: configRoot.safeI18n("Limiar de aviso em porcentagem")
+                                Accessible.name: I18n.tr("Warning threshold in percent")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Crítico (%):")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Critical (%):")
                                 enabled: configRoot.alertMode === "threshold"
                             }
 
@@ -936,11 +929,11 @@ Item {
                                 enabled: configRoot.alertMode === "threshold"
                                 value: configRoot.alertCritical
                                 onValueModified: { configRoot.alertCritical = value; configRoot.alertsDirty = true; }
-                                Accessible.name: configRoot.safeI18n("Limiar crítico em porcentagem")
+                                Accessible.name: I18n.tr("Critical threshold in percent")
                             }
 
                             PlasmaComponents3.Button {
-                                text: configRoot.safeI18n("Aplicar")
+                                text: I18n.tr("Apply")
                                 icon.name: "dialog-ok-apply"
                                 enabled: !configRoot.isBusy && !configRoot.isSavingAlerts
                                 onClicked: configRoot.saveAlertSettings()
@@ -953,7 +946,7 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Ocultar sem a CLI em execução:")
+                                text: I18n.tr("Hide without the CLI running:")
                                 textFormat: Text.PlainText
                             }
 
@@ -961,20 +954,20 @@ Item {
                                 textRole: "text"
                                 valueRole: "value"
                                 model: [
-                                    { value: "off", text: configRoot.safeI18n("Nunca") },
-                                    { value: "provider", text: configRoot.safeI18n("Só o provedor parado") },
-                                    { value: "widget", text: configRoot.safeI18n("O widget inteiro") }
+                                    { value: "off", text: I18n.tr("Never") },
+                                    { value: "provider", text: I18n.tr("Only the stopped provider") },
+                                    { value: "widget", text: I18n.tr("The whole widget") }
                                 ]
                                 currentIndex: configRoot.hideMode === "widget" ? 2 : (configRoot.hideMode === "provider" ? 1 : 0)
                                 onActivated: { configRoot.hideMode = currentValue; configRoot.hideDirty = true; }
-                                Accessible.name: configRoot.safeI18n("Ocultar quando o processo da CLI não está em execução")
-                                Accessible.description: configRoot.safeI18n("O widget inteiro reaparece ao abrir o popup ou a configuração; no painel resta uma fatia fina com o menu de botão direito")
+                                Accessible.name: I18n.tr("Hide when the CLI process is not running")
+                                Accessible.description: I18n.tr("The whole widget reappears when you open the popup or the settings; a thin sliver with the right-click menu remains in the panel")
                                 QQC2.ToolTip.text: Accessible.description
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
 
                             PlasmaComponents3.Button {
-                                text: configRoot.safeI18n("Aplicar")
+                                text: I18n.tr("Apply")
                                 icon.name: "dialog-ok-apply"
                                 enabled: !configRoot.isBusy && !configRoot.isSavingHide
                                 onClicked: configRoot.saveHideSettings()
@@ -985,18 +978,18 @@ Item {
                                 wrapMode: Text.WordWrap
                                 color: Kirigami.Theme.disabledTextColor
                                 textFormat: Text.PlainText
-                                text: configRoot.safeI18n("Para reencontrar o widget oculto: aponte para a fatia fina no painel (ela reabre o monitor e o botão direito leva a Configurar), use o modo de edição do painel, ou, na bandeja do sistema, abra os itens ocultos. O widget nunca some com o popup ou esta janela abertos.")
+                                text: I18n.tr("To find the hidden widget again: point at the thin sliver in the panel (it reopens the monitor and right-click leads to Configure), use the panel edit mode, or open the hidden items in the system tray. The widget never disappears while the popup or this window is open.")
                             }
                         }
 
                         // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
                         QQC2.CheckBox {
                             id: updateCheckBox
-                            text: configRoot.safeI18n("Verificar novas versões uma vez por dia")
+                            text: I18n.tr("Check for new versions once a day")
                             checked: configRoot.updateCheck
                             enabled: !configRoot.isBusy && !configRoot.isSavingUpdates
                             onToggled: { configRoot.updateCheck = checked; configRoot.saveUpdateSetting(checked); }
-                            Accessible.description: configRoot.safeI18n("Consulta o GitHub Releases do widget e o npm do Claude Code, Codex e Gemini CLI; nada é baixado nem instalado")
+                            Accessible.description: I18n.tr("Queries the widget's GitHub Releases and the npm registry for Claude Code, Codex and Gemini CLI; nothing is downloaded or installed")
                             QQC2.ToolTip.text: Accessible.description
                             QQC2.ToolTip.visible: hovered || activeFocus
                         }
@@ -1021,21 +1014,36 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Cor de destaque:")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Accent color:")
                             }
 
                             QQC2.ComboBox {
                                 id: accentCombo
                                 textRole: "name"
                                 valueRole: "key"
-                                model: Presets.accents
+                                model: [
+                                    { key: "plasma", name: I18n.tr("Plasma highlight") },
+                                    { key: "pink", name: I18n.tr("Pink") },
+                                    { key: "red", name: I18n.tr("Red") },
+                                    { key: "orange", name: I18n.tr("Orange") },
+                                    { key: "yellow", name: I18n.tr("Yellow") },
+                                    { key: "green", name: I18n.tr("Green") },
+                                    { key: "teal", name: I18n.tr("Teal") },
+                                    { key: "blue", name: I18n.tr("Blue") },
+                                    { key: "indigo", name: I18n.tr("Indigo") },
+                                    { key: "purple", name: I18n.tr("Purple") },
+                                    { key: "white", name: I18n.tr("White") },
+                                    { key: "off", name: I18n.tr("Off") }
+                                ]
                                 currentIndex: Math.max(0, indexOfValue(configRoot.cfg_accentPreset))
                                 onActivated: configRoot.cfg_accentPreset = currentValue
-                                Accessible.name: configRoot.safeI18n("Cor de destaque do Notch")
+                                Accessible.name: I18n.tr("Notch accent color")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Provedores no painel:")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Providers in the panel:")
                             }
 
                             Repeater {
@@ -1054,13 +1062,13 @@ Item {
                                         icon.name: "go-previous"
                                         enabled: index > 0
                                         onClicked: configRoot.moveProvider(index, -1)
-                                        Accessible.name: configRoot.safeI18n("Mover %1 para antes", Presets.providerInfo(modelData).name)
+                                        Accessible.name: I18n.tr("Move %1 earlier", Presets.providerInfo(modelData).name)
                                     }
                                     QQC2.ToolButton {
                                         icon.name: "go-next"
                                         enabled: index < configRoot.providerOrderList.length - 1
                                         onClicked: configRoot.moveProvider(index, 1)
-                                        Accessible.name: configRoot.safeI18n("Mover %1 para depois", Presets.providerInfo(modelData).name)
+                                        Accessible.name: I18n.tr("Move %1 later", Presets.providerInfo(modelData).name)
                                     }
                                 }
                             }
@@ -1072,61 +1080,61 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Estilo do painel:")
+                                text: I18n.tr("Panel style:")
                                 textFormat: Text.PlainText
                             }
                             QQC2.ComboBox {
                                 textRole: "name"
                                 valueRole: "key"
                                 model: [
-                                    { key: "pill", name: configRoot.safeI18n("Pílula") },
-                                    { key: "ring", name: configRoot.safeI18n("Ring") },
-                                    { key: "text", name: configRoot.safeI18n("Text (% e ponto)") },
-                                    { key: "bar", name: configRoot.safeI18n("Bar (barras)") }
+                                    { key: "pill", name: I18n.tr("Pill") },
+                                    { key: "ring", name: I18n.tr("Ring") },
+                                    { key: "text", name: I18n.tr("Text (% and dot)") },
+                                    { key: "bar", name: I18n.tr("Bar (bars)") }
                                 ]
                                 currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.style))
                                 onActivated: configRoot.cfg_panelStyle = currentValue
-                                Accessible.name: configRoot.safeI18n("Estilo do painel")
-                                Accessible.description: configRoot.safeI18n("Pílula: cápsula escura com anéis. Ring: anéis soltos. Text: porcentagem e ponto de nível. Bar: barras verticais com marcador de tempo")
+                                Accessible.name: I18n.tr("Panel style")
+                                Accessible.description: I18n.tr("Pill: dark capsule with rings. Ring: loose rings. Text: percentage and level dot. Bar: vertical bars with a time marker")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Exibir:")
+                                text: I18n.tr("Show:")
                                 textFormat: Text.PlainText
                             }
                             QQC2.ComboBox {
                                 textRole: "name"
                                 valueRole: "key"
                                 model: [
-                                    { key: "ring", name: configRoot.safeI18n("Só o gráfico") },
-                                    { key: "ringpct", name: configRoot.safeI18n("Gráfico e %") },
-                                    { key: "pct", name: configRoot.safeI18n("Só %") }
+                                    { key: "ring", name: I18n.tr("Chart only") },
+                                    { key: "ringpct", name: I18n.tr("Chart and %") },
+                                    { key: "pct", name: I18n.tr("% only") }
                                 ]
                                 currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.mode))
                                 onActivated: configRoot.cfg_panelMode = currentValue
-                                Accessible.name: configRoot.safeI18n("Modo de exibição do painel")
+                                Accessible.name: I18n.tr("Panel display mode")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Centro do anel:")
+                                text: I18n.tr("Ring center:")
                                 textFormat: Text.PlainText
                             }
                             QQC2.ComboBox {
                                 textRole: "name"
                                 valueRole: "key"
                                 model: [
-                                    { key: "logo", name: configRoot.safeI18n("Logo") },
-                                    { key: "pct", name: configRoot.safeI18n("%") },
-                                    { key: "logopct", name: configRoot.safeI18n("Logo e %") }
+                                    { key: "logo", name: I18n.tr("Logo") },
+                                    { key: "pct", name: I18n.tr("%") },
+                                    { key: "logopct", name: I18n.tr("Logo and %") }
                                 ]
                                 currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.center))
                                 onActivated: configRoot.cfg_ringCenter = currentValue
-                                Accessible.name: configRoot.safeI18n("Centro do anel")
-                                Accessible.description: configRoot.safeI18n("Com % no centro o anel cresce para 28 px; em painéis finos volta ao logo")
+                                Accessible.name: I18n.tr("Ring center")
+                                Accessible.description: I18n.tr("With % in the center the ring grows to 28 px; in thin panels it goes back to the logo")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Tamanho (%):")
+                                text: I18n.tr("Size (%):")
                                 textFormat: Text.PlainText
                             }
                             QQC2.SpinBox {
@@ -1136,16 +1144,16 @@ Item {
                                 editable: true
                                 value: Math.round(configRoot.panelNow.scale * 100)
                                 onValueModified: configRoot.cfg_metricSize = value
-                                Accessible.name: configRoot.safeI18n("Tamanho das métricas em porcentagem (80 a 160)")
-                                QQC2.ToolTip.text: configRoot.safeI18n("80 a 160. O painel limita o tamanho à sua espessura, sem cortar")
+                                Accessible.name: I18n.tr("Metrics size in percent (80 to 160)")
+                                QQC2.ToolTip.text: I18n.tr("80 to 160. The panel limits the size to its thickness, without clipping")
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
 
                             QQC2.CheckBox {
-                                text: configRoot.safeI18n("Margem automática")
+                                text: I18n.tr("Automatic margin")
                                 checked: configRoot.panelNow.margin < 0
                                 onToggled: configRoot.cfg_panelMargin = checked ? -1 : Kirigami.Units.smallSpacing
-                                Accessible.name: configRoot.safeI18n("Margem interna automática do painel")
+                                Accessible.name: I18n.tr("Automatic inner margin of the panel")
                             }
                             QQC2.SpinBox {
                                 from: 0
@@ -1154,14 +1162,14 @@ Item {
                                 enabled: configRoot.panelNow.margin >= 0
                                 value: Math.max(0, configRoot.panelNow.margin)
                                 onValueModified: configRoot.cfg_panelMargin = value
-                                Accessible.name: configRoot.safeI18n("Margem interna do painel em pixels (0 a 16)")
+                                Accessible.name: I18n.tr("Inner margin of the panel in pixels (0 to 16)")
                             }
 
                             QQC2.Label {
                                 width: parent.width
                                 wrapMode: Text.WordWrap
                                 textFormat: Text.PlainText
-                                text: configRoot.safeI18n("Bar em painel vertical precisa de cerca de 40 px de largura: mais estreito, o painel usa Text ou Pílula em vez de cortar. No estilo Text, \"Só o gráfico\" vale como \"Gráfico e %\". Com % no centro, o anel cresce para 28 px (em painéis finos, volta ao logo).")
+                                text: I18n.tr("Bar in a vertical panel needs about 40 px of width: narrower than that, the panel uses Text or Pill instead of clipping. In the Text style, \"Chart only\" counts as \"Chart and %\". With % in the center, the ring grows to 28 px (in thin panels it goes back to the logo).")
                             }
                         }
                 }
@@ -1180,7 +1188,7 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
 
                         QQC2.CheckBox {
-                            text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
+                            text: I18n.tr("Open the popup on mouse hover (off: click only)")
                             checked: configRoot.cfg_hoverOpen
                             onToggled: configRoot.cfg_hoverOpen = checked
                         }
@@ -1191,34 +1199,34 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Popup:")
+                                text: I18n.tr("Popup:")
                                 textFormat: Text.PlainText
                             }
                             QQC2.ComboBox {
                                 textRole: "name"
                                 valueRole: "key"
                                 model: [
-                                    { key: "used", name: configRoot.safeI18n("Mostrar usado") },
-                                    { key: "remaining", name: configRoot.safeI18n("Mostrar restante") }
+                                    { key: "used", name: I18n.tr("Show used") },
+                                    { key: "remaining", name: I18n.tr("Show remaining") }
                                 ]
                                 currentIndex: configRoot.viewNow.remaining ? 1 : 0
                                 onActivated: configRoot.cfg_usageDisplay = currentValue
-                                Accessible.name: configRoot.safeI18n("Valores exibidos: usado ou restante")
-                                Accessible.description: configRoot.safeI18n("Vale para o popup, a dica e o painel; notificações não mudam")
+                                Accessible.name: I18n.tr("Displayed values: used or remaining")
+                                Accessible.description: I18n.tr("Applies to the popup, the tooltip and the panel; notifications do not change")
                             }
                             QQC2.ComboBox {
                                 textRole: "name"
                                 valueRole: "key"
                                 model: [
-                                    { key: "countdown", name: configRoot.safeI18n("Liberação em contagem") },
-                                    { key: "date", name: configRoot.safeI18n("Liberação em data e hora") }
+                                    { key: "countdown", name: I18n.tr("Release as countdown") },
+                                    { key: "date", name: I18n.tr("Release as date and time") }
                                 ]
                                 currentIndex: configRoot.viewNow.date ? 1 : 0
                                 onActivated: configRoot.cfg_resetDisplay = currentValue
-                                Accessible.name: configRoot.safeI18n("Liberação exibida como contagem regressiva ou data e hora")
+                                Accessible.name: I18n.tr("Release shown as a countdown or as date and time")
                             }
                             QQC2.Label {
-                                text: configRoot.safeI18n("Opacidade do fundo (%):")
+                                text: I18n.tr("Background opacity (%):")
                                 textFormat: Text.PlainText
                             }
                             QQC2.SpinBox {
@@ -1228,10 +1236,10 @@ Item {
                                 editable: true
                                 value: Math.round(configRoot.viewNow.opacity * 100)
                                 onValueModified: configRoot.cfg_popupOpacity = value
-                                Accessible.name: configRoot.safeI18n("Opacidade do fundo do popup em porcentagem (80 a 100)")
+                                Accessible.name: I18n.tr("Popup background opacity in percent (80 to 100)")
                             }
                             QQC2.Label {
-                                text: configRoot.safeI18n("Provedores no popup:")
+                                text: I18n.tr("Providers in the popup:")
                                 textFormat: Text.PlainText
                             }
                             Repeater {
@@ -1250,13 +1258,13 @@ Item {
                                         icon.name: "go-previous"
                                         enabled: index > 0
                                         onClicked: configRoot.movePopupProvider(index, -1)
-                                        Accessible.name: configRoot.safeI18n("Mover %1 para antes no popup", Presets.providerInfo(modelData).name)
+                                        Accessible.name: I18n.tr("Move %1 earlier in the popup", Presets.providerInfo(modelData).name)
                                     }
                                     QQC2.ToolButton {
                                         icon.name: "go-next"
                                         enabled: index < configRoot.popupOrderList.length - 1
                                         onClicked: configRoot.movePopupProvider(index, 1)
-                                        Accessible.name: configRoot.safeI18n("Mover %1 para depois no popup", Presets.providerInfo(modelData).name)
+                                        Accessible.name: I18n.tr("Move %1 later in the popup", Presets.providerInfo(modelData).name)
                                     }
                                 }
                             }
@@ -1291,7 +1299,8 @@ Item {
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("+ Adicionar Nova Conta")
+                                textFormat: Text.PlainText
+                                text: I18n.tr("+ Add New Account")
                                 font.bold: true
                                 font.pointSize: Kirigami.Theme.defaultFont.pointSize
                                 Layout.fillWidth: true
@@ -1307,7 +1316,7 @@ Item {
 
                             PlasmaComponents3.Button {
                                 id: toggleAddFormBtn
-                                text: configRoot.isAddFormExpanded ? configRoot.safeI18n("Recolher") : configRoot.safeI18n("Expandir")
+                                text: configRoot.isAddFormExpanded ? I18n.tr("Collapse") : I18n.tr("Expand")
                                 icon.name: configRoot.isAddFormExpanded ? "arrow-up" : "arrow-down"
                                 display: QQC2.AbstractButton.TextBesideIcon
                                 onClicked: {
@@ -1333,7 +1342,8 @@ Item {
                                 spacing: Kirigami.Units.smallSpacing
 
                                 QQC2.Label {
-                                    text: configRoot.safeI18n("Provedor:")
+                                    textFormat: Text.PlainText
+                                    text: I18n.tr("Provider:")
                                     Layout.minimumWidth: Kirigami.Units.gridUnit * 7
                                     font.bold: true
                                 }
@@ -1364,7 +1374,8 @@ Item {
                                 spacing: Kirigami.Units.smallSpacing
 
                                 QQC2.Label {
-                                    text: configRoot.safeI18n("Apelido:")
+                                    textFormat: Text.PlainText
+                                    text: I18n.tr("Nickname:")
                                     Layout.minimumWidth: Kirigami.Units.gridUnit * 7
                                     font.bold: true
                                 }
@@ -1372,7 +1383,7 @@ Item {
                                 QQC2.TextField {
                                     id: accountNameField
                                     Layout.fillWidth: true
-                                    placeholderText: configRoot.safeI18n("Ex: Claude Trabalho, Codex Pessoal (opcional)")
+                                    placeholderText: I18n.tr("E.g. Claude Work, Codex Personal (optional)")
                                     enabled: !configRoot.isBusy
                                 }
                             }
@@ -1385,11 +1396,11 @@ Item {
 
                                 PlasmaComponents3.Button {
                                     id: captureCurrentAccountBtn
-                                    text: configRoot.safeI18n("Capturar Login Atual do CLI")
+                                    text: I18n.tr("Capture Current CLI Login")
                                     icon.name: "document-import"
                                     highlighted: true
                                     enabled: !configRoot.isBusy
-                                    QQC2.ToolTip.text: configRoot.safeI18n("Detecta e importa a sessão ativa atual no sistema para %1 sem exigir digitação de caminhos", providerComboBox.currentText)
+                                    QQC2.ToolTip.text: I18n.tr("Detects and imports the session currently active on the system for %1 without typing any paths", providerComboBox.currentText)
                                     QQC2.ToolTip.visible: hovered
                                     onClicked: {
                                         configRoot.captureCurrentAccount();
@@ -1398,10 +1409,10 @@ Item {
 
                                 PlasmaComponents3.Button {
                                     id: interactiveLoginAccountBtn
-                                    text: configRoot.safeI18n("Fazer Login no Terminal...")
+                                    text: I18n.tr("Log In in the Terminal...")
                                     icon.name: "utilities-terminal"
                                     enabled: !configRoot.isBusy
-                                    QQC2.ToolTip.text: configRoot.safeI18n("Abre terminal isolado para autenticar nova conta de %1 sem sobrescrever o login principal", providerComboBox.currentText)
+                                    QQC2.ToolTip.text: I18n.tr("Opens an isolated terminal to authenticate a new %1 account without overwriting the main login", providerComboBox.currentText)
                                     QQC2.ToolTip.visible: hovered
                                     onClicked: {
                                         configRoot.interactiveLoginAccount();
@@ -1430,7 +1441,8 @@ Item {
                                 }
 
                                 QQC2.Label {
-                                    text: configRoot.safeI18n("Opções Avançadas (Configuração Manual)")
+                                    textFormat: Text.PlainText
+                                    text: I18n.tr("Advanced Options (Manual Setup)")
                                     font.bold: false
                                     color: Kirigami.Theme.disabledTextColor
                                     Layout.fillWidth: true
@@ -1446,7 +1458,7 @@ Item {
 
                                 PlasmaComponents3.Button {
                                     id: toggleAdvancedBtn
-                                    text: configRoot.isAdvancedExpanded ? configRoot.safeI18n("Ocultar") : configRoot.safeI18n("Configurar Manualmente")
+                                    text: configRoot.isAdvancedExpanded ? I18n.tr("Hide") : I18n.tr("Set Up Manually")
                                     icon.name: configRoot.isAdvancedExpanded ? "arrow-up" : "arrow-down"
                                     display: QQC2.AbstractButton.TextBesideIcon
                                     onClicked: {
@@ -1467,7 +1479,8 @@ Item {
                                     spacing: Kirigami.Units.smallSpacing
 
                                     QQC2.Label {
-                                        text: configRoot.safeI18n("Caminho:")
+                                        textFormat: Text.PlainText
+                                        text: I18n.tr("Path:")
                                         Layout.minimumWidth: Kirigami.Units.gridUnit * 7
                                         font.bold: true
                                     }
@@ -1475,16 +1488,16 @@ Item {
                                     QQC2.TextField {
                                         id: credentialPathField
                                         Layout.fillWidth: true
-                                        placeholderText: configRoot.safeI18n("Ex: %1", configRoot.getDefaultPath(providerComboBox.currentText))
+                                        placeholderText: I18n.tr("E.g. %1", configRoot.getDefaultPath(providerComboBox.currentText))
                                         enabled: !configRoot.isBusy
                                     }
 
                                     PlasmaComponents3.Button {
                                         id: useDefaultPathBtn
-                                        text: configRoot.safeI18n("Usar Caminho Padrão")
+                                        text: I18n.tr("Use Default Path")
                                         icon.name: "document-open"
                                         enabled: !configRoot.isBusy
-                                        QQC2.ToolTip.text: configRoot.safeI18n("Preencher com o diretório padrão '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
+                                        QQC2.ToolTip.text: I18n.tr("Fill in with the default directory '%1'", configRoot.getDefaultPath(providerComboBox.currentText))
                                         QQC2.ToolTip.visible: hovered
                                         onClicked: {
                                             credentialPathField.text = configRoot.getDefaultPath(providerComboBox.currentText);
@@ -1498,14 +1511,15 @@ Item {
                                     spacing: Kirigami.Units.smallSpacing
 
                                     QQC2.Label {
-                                        text: configRoot.safeI18n("Link de Convite:")
+                                        textFormat: Text.PlainText
+                                        text: I18n.tr("Invite Link:")
                                         Layout.minimumWidth: Kirigami.Units.gridUnit * 7
                                     }
 
                                     QQC2.TextField {
                                         id: inviteUrlField
                                         Layout.fillWidth: true
-                                        placeholderText: configRoot.safeI18n("https://... (opcional)")
+                                        placeholderText: I18n.tr("https://... (optional)")
                                         enabled: !configRoot.isBusy
                                     }
                                 }
@@ -1522,7 +1536,7 @@ Item {
 
                                     PlasmaComponents3.Button {
                                         id: clearFormBtn
-                                        text: configRoot.safeI18n("Limpar")
+                                        text: I18n.tr("Clear")
                                         icon.name: "edit-clear"
                                         enabled: !configRoot.isBusy
                                         onClicked: {
@@ -1532,10 +1546,10 @@ Item {
 
                                     PlasmaComponents3.Button {
                                         id: saveAccountBtn
-                                        text: configRoot.safeI18n("Salvar Manualmente")
+                                        text: I18n.tr("Save Manually")
                                         icon.name: "document-save"
                                         enabled: !configRoot.isBusy
-                                        QQC2.ToolTip.text: configRoot.safeI18n("Salvar Conta informando o caminho customizado manualmente")
+                                        QQC2.ToolTip.text: I18n.tr("Save the account using the custom path entered manually")
                                         QQC2.ToolTip.visible: hovered
                                         onClicked: {
                                             configRoot.addAccount();
@@ -1575,6 +1589,7 @@ Item {
                                     color: configRoot.getProviderColor(modelData.provider)
 
                                     QQC2.Label {
+                                        textFormat: Text.PlainText
                                         id: providerTag
                                         anchors.centerIn: parent
                                         text: (modelData.provider || "").toUpperCase()
@@ -1593,6 +1608,7 @@ Item {
                                         spacing: Kirigami.Units.smallSpacing
 
                                         QQC2.Label {
+                                            textFormat: Text.PlainText
                                             text: modelData.name || modelData.id
                                             font.bold: true
                                             font.pointSize: Kirigami.Theme.defaultFont.pointSize
@@ -1610,12 +1626,13 @@ Item {
                                             }
 
                                             QQC2.Label {
+                                                textFormat: Text.PlainText
                                                 id: healthText
                                                 anchors.centerIn: parent
                                                 text: {
-                                                    if (modelData.healthStatus === "valid") return configRoot.safeI18n("Ativa");
-                                                    if (modelData.healthStatus === "session_expired") return configRoot.safeI18n("Expirada");
-                                                    if (modelData.healthStatus === "not_configured") return configRoot.safeI18n("Não config.");
+                                                    if (modelData.healthStatus === "valid") return I18n.tr("Active");
+                                                    if (modelData.healthStatus === "session_expired") return I18n.tr("Expired");
+                                                    if (modelData.healthStatus === "not_configured") return I18n.tr("Not set up");
                                                     return modelData.healthStatus;
                                                 }
                                                 font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
@@ -1629,19 +1646,22 @@ Item {
                                         spacing: Kirigami.Units.smallSpacing
 
                                         QQC2.Label {
-                                            text: "ID: " + modelData.id
+                                            textFormat: Text.PlainText
+                                            text: I18n.tr("ID: %1", modelData.id)
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                                             color: Kirigami.Theme.disabledTextColor
                                         }
 
                                         QQC2.Label {
+                                            textFormat: Text.PlainText
                                             text: "•"
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                                             color: Kirigami.Theme.disabledTextColor
                                         }
 
                                         QQC2.Label {
-                                            text: modelData.source === "auto" ? configRoot.safeI18n("Detecção automática") : configRoot.safeI18n("Configuração manual")
+                                            textFormat: Text.PlainText
+                                            text: modelData.source === "auto" ? I18n.tr("Automatic detection") : I18n.tr("Manual setup")
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
                                             color: Kirigami.Theme.disabledTextColor
                                         }
@@ -1652,12 +1672,12 @@ Item {
                                 PlasmaComponents3.Button {
                                     id: renameAccountBtn
                                     icon.name: "document-edit"
-                                    text: configRoot.safeI18n("Renomear conta")
+                                    text: I18n.tr("Rename account")
                                     display: QQC2.AbstractButton.IconOnly
                                     enabled: !configRoot.isBusy
 
                                     QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: configRoot.safeI18n("Renomear conta '%1'", modelData.name || modelData.id)
+                                    QQC2.ToolTip.text: I18n.tr("Rename account '%1'", modelData.name || modelData.id)
 
                                     onClicked: {
                                         configRoot.requestRenameAccount(modelData);
@@ -1668,12 +1688,12 @@ Item {
                                 PlasmaComponents3.Button {
                                     id: deleteAccountBtn
                                     icon.name: "delete"
-                                    text: configRoot.safeI18n("Remover conta")
+                                    text: I18n.tr("Remove account")
                                     display: QQC2.AbstractButton.IconOnly
                                     enabled: !configRoot.isBusy
 
                                     QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: configRoot.safeI18n("Remover conta '%1'", modelData.name || modelData.id)
+                                    QQC2.ToolTip.text: I18n.tr("Remove account '%1'", modelData.name || modelData.id)
 
                                     onClicked: {
                                         configRoot.requestDeleteAccount(modelData);
@@ -1688,8 +1708,8 @@ Item {
                             width: parent.width - Kirigami.Units.gridUnit * 2
                             visible: accountsListView.count === 0
                             iconName: "im-user-offline"
-                            text: configRoot.safeI18n("Nenhuma conta cadastrada")
-                            explanation: configRoot.safeI18n("Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json")
+                            text: I18n.tr("No registered accounts")
+                            explanation: I18n.tr("Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json")
                         }
                     }
                 }
@@ -1701,8 +1721,9 @@ Item {
                     spacing: Kirigami.Units.smallSpacing
 
                     Kirigami.Heading {
+                        textFormat: Text.PlainText
                         level: 4
-                        text: configRoot.safeI18n("Perfis Órfãos")
+                        text: I18n.tr("Orphan Profiles")
                     }
 
                     Repeater {
@@ -1720,13 +1741,13 @@ Item {
                             }
 
                             PlasmaComponents3.Button {
-                                text: configRoot.safeI18n("Reimportar")
+                                text: I18n.tr("Re-import")
                                 enabled: !configRoot.isBusy
                                 onClicked: configRoot.runOrphanAction("--reimport-orphan", modelData, false)
                             }
 
                             PlasmaComponents3.Button {
-                                text: configRoot.safeI18n("Excluir")
+                                text: I18n.tr("Delete")
                                 icon.name: "delete"
                                 enabled: !configRoot.isBusy
                                 onClicked: {
@@ -1757,21 +1778,21 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.CheckBox {
-                                text: configRoot.safeI18n("Mostrar o estado da sessão (Claude e Codex)")
+                                text: I18n.tr("Show the session state (Claude and Codex)")
                                 checked: configRoot.cfg_sessionState
                                 onToggled: configRoot.cfg_sessionState = checked
-                                Accessible.description: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
-                                QQC2.ToolTip.text: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno e é o que permite o som/Notch no Codex (sem ele o Codex só mostra o estado). Se o estado não atualizar, reinstale o pacote: pip install -e .")
+                                Accessible.description: I18n.tr("Claude: ai-usage-collector --install-hooks (isolated profile: run it with each profile's CLAUDE_CONFIG_DIR). Codex: busy comes from the session logs without installing anything; ai-usage-collector --install-hooks codex (optional) ends the busy state at the end of each turn and is what enables the sound/Notch on Codex (without it Codex only shows the state). If the state does not update, reinstall the package: pip install -e .")
+                                QQC2.ToolTip.text: I18n.tr("Claude: ai-usage-collector --install-hooks (isolated profile: run it with each profile's CLAUDE_CONFIG_DIR). Codex: busy comes from the session logs without installing anything; ai-usage-collector --install-hooks codex (optional) ends the busy state at the end of each turn and is what enables the sound/Notch on Codex (without it Codex only shows the state). If the state does not update, reinstall the package: pip install -e .")
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
                             QQC2.CheckBox {
-                                text: configRoot.safeI18n("Abrir o Notch por 5 s quando a sessão terminar ou pedir algo")
+                                text: I18n.tr("Open the Notch for 5 s when the session finishes or asks for something")
                                 enabled: configRoot.cfg_sessionState
                                 checked: configRoot.cfg_sessionAutoOpen
                                 onToggled: configRoot.cfg_sessionAutoOpen = checked
                             }
                             QQC2.CheckBox {
-                                text: configRoot.safeI18n("Tocar um som nesses momentos")
+                                text: I18n.tr("Play a sound at those moments")
                                 enabled: configRoot.cfg_sessionState
                                 checked: configRoot.cfg_sessionSound
                                 onToggled: configRoot.cfg_sessionSound = checked
@@ -1784,7 +1805,7 @@ Item {
                             spacing: Kirigami.Units.smallSpacing
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Notificar em (%):")
+                                text: I18n.tr("Notify at (%):")
                                 textFormat: Text.PlainText
                             }
 
@@ -1794,11 +1815,11 @@ Item {
                                 editable: true
                                 value: configRoot.notifyWarning
                                 onValueModified: { configRoot.notifyWarning = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
-                                Accessible.name: configRoot.safeI18n("Notificar ao atingir esta porcentagem de uso")
+                                Accessible.name: I18n.tr("Notify when this usage percentage is reached")
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("e em (%):")
+                                text: I18n.tr("and at (%):")
                                 textFormat: Text.PlainText
                             }
 
@@ -1808,29 +1829,29 @@ Item {
                                 editable: true
                                 value: configRoot.notifyCritical
                                 onValueModified: { configRoot.notifyCritical = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
-                                Accessible.name: configRoot.safeI18n("Notificar com urgência ao atingir esta porcentagem de uso")
+                                Accessible.name: I18n.tr("Notify urgently when this usage percentage is reached")
                             }
 
                             QQC2.CheckBox {
-                                text: configRoot.safeI18n("Avisar antes de esgotar")
+                                text: I18n.tr("Warn before running out")
                                 checked: configRoot.notifyEarly
                                 onToggled: { configRoot.notifyEarly = checked; configRoot.notifyDirty = true; }
-                                Accessible.description: configRoot.safeI18n("Janela nativa: previsão de esgotamento em 30 min; semanal: em 24 h (uma vez por janela)")
+                                Accessible.description: I18n.tr("Native window: exhaustion forecast in 30 min; weekly: in 24 h (once per window)")
                                 QQC2.ToolTip.text: Accessible.description
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
 
                             QQC2.CheckBox {
-                                text: configRoot.safeI18n("Avisar quando o limite for liberado")
+                                text: I18n.tr("Notify when the limit is released")
                                 checked: configRoot.notifyReset
                                 onToggled: { configRoot.notifyReset = checked; configRoot.notifyDirty = true; }
-                                Accessible.description: configRoot.safeI18n("Só para limites que já geraram aviso")
+                                Accessible.description: I18n.tr("Only for limits that already triggered a warning")
                                 QQC2.ToolTip.text: Accessible.description
                                 QQC2.ToolTip.visible: hovered || activeFocus
                             }
 
                             QQC2.Label {
-                                text: configRoot.safeI18n("Silenciar:")
+                                text: I18n.tr("Mute:")
                                 textFormat: Text.PlainText
                             }
 
@@ -1845,12 +1866,12 @@ Item {
                                     text: modelData.name
                                     checked: configRoot.notifyMuted.indexOf(modelData.key) >= 0
                                     onToggled: configRoot.setProviderMuted(modelData.key, checked)
-                                    Accessible.name: configRoot.safeI18n("Silenciar notificações do %1", modelData.name)
+                                    Accessible.name: I18n.tr("Mute %1 notifications", modelData.name)
                                 }
                             }
 
                             PlasmaComponents3.Button {
-                                text: configRoot.safeI18n("Aplicar")
+                                text: I18n.tr("Apply")
                                 icon.name: "dialog-ok-apply"
                                 enabled: !configRoot.isBusy && !configRoot.isSavingNotify
                                 onClicked: configRoot.saveNotifySettings()
@@ -1864,7 +1885,7 @@ Item {
     // Diálogo de confirmação de exclusão de Perfil Órfão
     QQC2.Dialog {
         id: orphanDeleteDialog
-        title: configRoot.safeI18n("Excluir Perfil Órfão")
+        title: I18n.tr("Delete Orphan Profile")
         modal: true
         anchors.centerIn: parent
 
@@ -1873,7 +1894,7 @@ Item {
 
             QQC2.Label {
                 text: configRoot.orphanPendingDeletion
-                    ? configRoot.safeI18n("Excluir definitivamente o perfil '%1' do disco? As credenciais dele serão apagadas.", configRoot.orphanPendingDeletion.id)
+                    ? I18n.tr("Permanently delete the profile '%1' from disk? Its credentials will be erased.", configRoot.orphanPendingDeletion.id)
                     : ""
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
@@ -1886,12 +1907,12 @@ Item {
                 spacing: Kirigami.Units.smallSpacing
 
                 PlasmaComponents3.Button {
-                    text: configRoot.safeI18n("Cancelar")
+                    text: I18n.tr("Cancel")
                     onClicked: orphanDeleteDialog.close()
                 }
 
                 PlasmaComponents3.Button {
-                    text: configRoot.safeI18n("Excluir Perfil")
+                    text: I18n.tr("Delete Profile")
                     icon.name: "delete"
                     highlighted: true
                     enabled: !configRoot.isBusy
@@ -1907,7 +1928,7 @@ Item {
     // Diálogo nativo de confirmação de exclusão
     QQC2.Dialog {
         id: confirmDialog
-        title: configRoot.safeI18n("Confirmar Remoção de Conta")
+        title: I18n.tr("Confirm Account Removal")
         modal: true
         anchors.centerIn: parent
 
@@ -1915,11 +1936,12 @@ Item {
             spacing: Kirigami.Units.largeSpacing
 
             QQC2.Label {
+                textFormat: Text.PlainText
                 text: {
                     var acc = configRoot.accountPendingDeletion;
                     if (!acc) return "";
-                    return configRoot.safeI18n(
-                        "Deseja realmente remover a conta '%1' (ID: %2) do provedor %3?\n\nEsta operação removerá a conta do arquivo de configuração e atualizará o widget imediatamente.",
+                    return I18n.tr(
+                        "Do you really want to remove the account '%1' (ID: %2) from the provider %3?\n\nThis removes the account from the configuration file and updates the widget immediately.",
                         acc.name || acc.id,
                         acc.id,
                         (acc.provider || "").toUpperCase()
@@ -1941,13 +1963,13 @@ Item {
                 }
 
                 PlasmaComponents3.Button {
-                    text: configRoot.safeI18n("Cancelar")
+                    text: I18n.tr("Cancel")
                     onClicked: confirmDialog.close()
                 }
 
                 PlasmaComponents3.Button {
                     id: confirmDeleteButton
-                    text: configRoot.safeI18n("Remover Conta")
+                    text: I18n.tr("Remove Account")
                     icon.name: "delete"
                     highlighted: true
                     enabled: !configRoot.isBusy
@@ -1963,7 +1985,7 @@ Item {
     // Diálogo nativo de renomeação de conta (sem standardButtons para compatibilidade com Breeze)
     QQC2.Dialog {
         id: renameDialog
-        title: configRoot.safeI18n("Renomear Conta")
+        title: I18n.tr("Rename Account")
         modal: true
         anchors.centerIn: parent
 
@@ -1971,11 +1993,12 @@ Item {
             spacing: Kirigami.Units.largeSpacing
 
             QQC2.Label {
+                textFormat: Text.PlainText
                 text: {
                     var acc = configRoot.accountPendingRename;
                     if (!acc) return "";
-                    return configRoot.safeI18n(
-                        "Digite o novo nome para a conta '%1' (ID: %2) do provedor %3:",
+                    return I18n.tr(
+                        "Enter the new name for the account '%1' (ID: %2) of the provider %3:",
                         acc.name || acc.id,
                         acc.id,
                         (acc.provider || "").toUpperCase()
@@ -1989,7 +2012,7 @@ Item {
             QQC2.TextField {
                 id: renameAccountField
                 Layout.fillWidth: true
-                placeholderText: configRoot.safeI18n("Novo nome da conta")
+                placeholderText: I18n.tr("New account name")
                 enabled: !configRoot.isBusy
                 onAccepted: {
                     if (saveRenameButton.enabled) {
@@ -2009,13 +2032,13 @@ Item {
                 }
 
                 PlasmaComponents3.Button {
-                    text: configRoot.safeI18n("Cancelar")
+                    text: I18n.tr("Cancel")
                     onClicked: renameDialog.close()
                 }
 
                 PlasmaComponents3.Button {
                     id: saveRenameButton
-                    text: configRoot.safeI18n("Salvar")
+                    text: I18n.tr("Save")
                     icon.name: "document-save"
                     highlighted: true
                     enabled: !configRoot.isBusy && (renameAccountField.text || "").trim().length > 0

@@ -1,19 +1,19 @@
 .pragma library
 
-// Predefinições da cor de destaque do Notch. "plasma" = cor de realce do Plasma (padrão).
+// Predefinições da cor de destaque do Notch (os nomes traduzidos ficam em configGeneral.qml). "plasma" = cor de realce do Plasma (padrão).
 var accents = [
-    { key: "plasma", name: "Realce do Plasma", color: "" },
-    { key: "pink", name: "Rosa", color: "#ff5fa2" },
-    { key: "red", name: "Vermelho", color: "#ff5c5c" },
-    { key: "orange", name: "Laranja", color: "#ff9f43" },
-    { key: "yellow", name: "Amarelo", color: "#ffd84d" },
-    { key: "green", name: "Verde", color: "#4cd964" },
-    { key: "teal", name: "Teal", color: "#2dd4bf" },
-    { key: "blue", name: "Azul", color: "#4da3ff" },
-    { key: "indigo", name: "Índigo", color: "#7b83ff" },
-    { key: "purple", name: "Roxo", color: "#b57bff" },
-    { key: "white", name: "Branco", color: "#f2f2f2" },
-    { key: "off", name: "Desligado", color: "#9aa0a6" }
+    { key: "plasma", color: "" },
+    { key: "pink", color: "#ff5fa2" },
+    { key: "red", color: "#ff5c5c" },
+    { key: "orange", color: "#ff9f43" },
+    { key: "yellow", color: "#ffd84d" },
+    { key: "green", color: "#4cd964" },
+    { key: "teal", color: "#2dd4bf" },
+    { key: "blue", color: "#4da3ff" },
+    { key: "indigo", color: "#7b83ff" },
+    { key: "purple", color: "#b57bff" },
+    { key: "white", color: "#f2f2f2" },
+    { key: "off", color: "#9aa0a6" }
 ];
 
 var providers = [

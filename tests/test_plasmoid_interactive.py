@@ -110,8 +110,8 @@ def test_config_general_gui_add_account_form_elements():
     config_general_path = UI_DIR / "configGeneral.qml"
     content = config_general_path.read_text(encoding="utf-8")
 
-    # 1. Expandable section "+ Adicionar Nova Conta"
-    assert "+ Adicionar Nova Conta" in content
+    # 1. Expandable section "+ Add New Account"
+    assert "+ Add New Account" in content
     assert "addAccountSection" in content
     assert "toggleAddFormBtn" in content
     assert "isAddFormExpanded" in content
@@ -126,33 +126,33 @@ def test_config_general_gui_add_account_form_elements():
 
     # 4. Quick Action Buttons: Capture Current CLI Login and Interactive Terminal Login
     assert "captureCurrentAccountBtn" in content
-    assert "Capturar Login Atual do CLI" in content
+    assert "Capture Current CLI Login" in content
     assert "captureCurrentAccount" in content
 
     assert "interactiveLoginAccountBtn" in content
-    assert "Fazer Login no Terminal..." in content
+    assert "Log In in the Terminal..." in content
     assert "interactiveLoginAccount" in content
 
     # 5. Collapsible Advanced Options Section (Manual Configuration)
-    assert "Opções Avançadas (Configuração Manual)" in content
+    assert "Advanced Options (Manual Setup)" in content
     assert "toggleAdvancedBtn" in content
     assert "isAdvancedExpanded" in content
 
     # 6. Manual Path and Default button
     assert "credentialPathField" in content
     assert "useDefaultPathBtn" in content
-    assert "Usar Caminho Padrão" in content
+    assert "Use Default Path" in content
     assert "~/.claude" in content
     assert "~/.codex" in content
     assert "~/.gemini" in content
 
     # 7. Optional invite URL TextField
     assert "inviteUrlField" in content
-    assert "https://... (opcional)" in content
+    assert "https://... (optional)" in content
 
     # 8. Save Account button and Clear button
     assert "saveAccountBtn" in content
-    assert "Salvar Manualmente" in content
+    assert "Save Manually" in content
     assert "document-save" in content or "list-add" in content
     assert "clearFormBtn" in content
 
@@ -212,7 +212,7 @@ def test_account_card_copy_invite_and_clipboard_actions():
 
     # Visual feedback
     assert "copiedFeedback" in content
-    assert "Copiado!" in content
+    assert "Copied!" in content
     assert "copiedFeedbackTimer" in content
 
 
@@ -318,7 +318,7 @@ def test_simulated_remove_account_from_widget(tmp_path: Path):
     ]
     res = subprocess.run(cmd, capture_output=True, text=True, check=False)
     assert res.returncode == 0, f"Removal failed: {res.stderr}"
-    assert "sucesso" in res.stdout.lower() or "removida" in res.stdout.lower()
+    assert "sucesso" in res.stdout.lower() or "removed" in res.stdout.lower()
 
     # Verify account was removed from config.json
     with open(config_path, "r", encoding="utf-8") as f:
@@ -598,8 +598,8 @@ def test_config_general_qml_confirm_dialog_clean_layout_and_no_conflicting_stand
 
     # 3. Verify custom action buttons exist and are wired correctly
     assert "PlasmaComponents3.Button" in dialog_block
-    assert "Cancelar" in dialog_block
-    assert "Remover Conta" in dialog_block
+    assert "Cancel" in dialog_block
+    assert "Remove Account" in dialog_block
     assert "confirmDialog.close()" in dialog_block
     assert "configRoot.confirmDelete()" in dialog_block
 
@@ -633,8 +633,8 @@ def test_config_general_qml_rename_dialog_clean_layout_and_no_conflicting_standa
     assert "renameAccountField" in dialog_block
     assert "QQC2.TextField" in dialog_block
     assert "PlasmaComponents3.Button" in dialog_block
-    assert "Cancelar" in dialog_block
-    assert "Salvar" in dialog_block
+    assert "Cancel" in dialog_block
+    assert "Save" in dialog_block
     assert "saveRenameButton" in dialog_block
     assert "highlighted: true" in dialog_block
     assert "renameDialog.close()" in dialog_block
@@ -681,9 +681,9 @@ def test_account_card_active_cli_badge():
     assert "accountData.isActive" in content
     assert "isActive" in content
 
-    # 2. Visual badge [✓ Ativa no CLI]
+    # 2. Visual badge [✓ Active in the CLI]
     assert "activeCliBadge" in content
-    assert "✓ Ativa no CLI" in content
+    assert "✓ Active in the CLI" in content
     assert "visible: cardRoot.isActive" in content
     assert "Kirigami.Theme.highlightColor" in content
 
@@ -695,8 +695,8 @@ def test_account_card_switch_account_button_and_contracts():
 
     # 1. Switch button with lightning icon/text
     assert "switchAccountButton" in content
-    assert "⚡ Ativar no Sistema" in content
-    assert "Ativando..." in content
+    assert "⚡ Activate on System" in content
+    assert "Activating..." in content
 
     # 2. Display condition: inactive accounts with valid health
     assert "!cardRoot.isActive" in content

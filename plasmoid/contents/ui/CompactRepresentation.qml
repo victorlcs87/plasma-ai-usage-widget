@@ -7,6 +7,7 @@ import org.kde.plasma.core as PlasmaCore
 import "Presets.js" as Presets
 import "PanelStyle.js" as PanelStyle
 import "ViewPrefs.js" as ViewPrefs
+import "I18n.js" as I18n
 
 // Notch compacto: pílula sempre escura com um Anel Duplo por provedor (Conta Ativa no Sistema).
 Item {
@@ -61,10 +62,6 @@ Item {
         + (widgetUpdate ? (vertical ? widgetBadge.implicitHeight : widgetBadge.implicitWidth) + gap : 0)
         + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0) - gap
 
-    function tr(text, arg) {
-        return compactRoot.plasmoidItem ? compactRoot.plasmoidItem.safeI18n(text, arg) : text;
-    }
-
     function runLength(g) { return count * (vertical ? g.h : g.w) + (count - 1) * gap + badgeLength + 2 * pad; }
 
     // Clique do mouse: abre/fixa/solta (main.qml); teclado: abre/fecha como antes
@@ -91,7 +88,7 @@ Item {
     Keys.onEscapePressed: closePopup()
 
     Accessible.role: Accessible.Button
-    Accessible.name: compactRoot.idle ? compactRoot.tr("Monitor de IA oculto: nenhuma CLI em execução. Ative para abrir")
+    Accessible.name: compactRoot.idle ? I18n.tr("AI monitor hidden: no CLI running. Activate to open")
         : (compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : "")
     Accessible.description: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipSubText : ""
     Accessible.onPressAction: toggle()
@@ -183,8 +180,8 @@ Item {
                     radius: implicitWidth / 2
                     color: compactRoot.health === "session_expired" ? "#f5a524"
                          : compactRoot.health === "not_configured" ? "#8a9099" : "#ff4d4f"
-                    Accessible.name: compactRoot.health === "session_expired" ? compactRoot.tr("Sessão expirada")
-                                   : compactRoot.health === "not_configured" ? compactRoot.tr("Conta não configurada") : compactRoot.tr("Erro na conta")
+                    Accessible.name: compactRoot.health === "session_expired" ? I18n.tr("Session expired")
+                                   : compactRoot.health === "not_configured" ? I18n.tr("Account not set up") : I18n.tr("Account error")
                 }
 
                 // Ponto azul: nova versão de Claude Code, Codex ou Gemini CLI
@@ -198,10 +195,10 @@ Item {
                     radius: implicitWidth / 2
                     color: compactRoot.updateColor  // >= 4,5:1 sobre a pílula, qualquer realce (Presets.onPill)
                     Accessible.role: Accessible.Indicator
-                    Accessible.name: compactRoot.tr("Nova versão de CLI disponível")
+                    Accessible.name: I18n.tr("New CLI version available")
                     HoverHandler { id: updateDotHover }
                     QQC2.ToolTip.visible: updateDotHover.hovered
-                    QQC2.ToolTip.text: compactRoot.tr("Nova versão de CLI disponível")
+                    QQC2.ToolTip.text: I18n.tr("New CLI version available")
                 }
 
                 // Selo: nova versão do widget
@@ -215,7 +212,7 @@ Item {
                     radius: implicitHeight / 2
                     color: compactRoot.updateColor
                     Accessible.role: Accessible.Indicator
-                    Accessible.name: compactRoot.tr("Nova versão do widget disponível")
+                    Accessible.name: I18n.tr("New widget version available")
 
                     QQC2.Label {
                         anchors.centerIn: parent
@@ -237,7 +234,7 @@ Item {
                     implicitWidth: Math.max(inviteLabel.implicitWidth + 6, implicitHeight)
                     radius: implicitHeight / 2
                     color: "#c24d00"
-                    Accessible.name: compactRoot.tr("%1 convites disponíveis", compactRoot.totalInvites)
+                    Accessible.name: I18n.trp("%1 invite available", "%1 invites available", compactRoot.totalInvites)
 
                     QQC2.Label {
                         id: inviteLabel

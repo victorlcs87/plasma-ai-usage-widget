@@ -248,7 +248,7 @@ def test_plasmoid_config_has_per_provider_interval_with_minimum():
     # Revisao: remocao enfileirada durante execucao e watchdog de 120 s para isRefreshing preso
     assert "pendingRemovals.push" in main_qml and "interval: 120000" in main_qml
     model = (root / "ui" / "NotchModel.js").read_text(encoding="utf-8")
-    assert "isNum(win.usage_percentage)" in model and "Dados desatualizados" in model
+    assert "isNum(win.usage_percentage)" in model and "Stale data" in model
 
 
 # --- Revisao do ticket 23 -------------------------------------------------------

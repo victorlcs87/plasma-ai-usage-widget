@@ -330,5 +330,5 @@ def test_plasmoid_wiring_and_recovery_path():
     assert "Date.now()" in main and "nowMs" in main and "root.nowMs = Date.now();  // antes da chamada" in main
     assert "!root.pillHovered && !root.pinned && !root.popupHovered" in main and "idleDelay" in main  # histerese
     assert "Accessible.name: compactRoot.idle" in compact
-    assert "reencontrar o widget oculto" in config
+    assert "find the hidden widget again" in config
     assert '"--set-visibility-config"' in config and '"--hide-when-not-running"' in config

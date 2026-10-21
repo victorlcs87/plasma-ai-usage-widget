@@ -37,7 +37,7 @@ STUBS = {
 }
 
 FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
-         "DualRing.qml", "SessionMark.qml", "Presets.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
+         "DualRing.qml", "SessionMark.qml", "Presets.js", "I18n.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
 import QtQuick
@@ -47,6 +47,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support
 import org.kde.kirigami as Kirigami
 import "NotchModel.js" as NotchModel
+import "I18n.js" as I18n
 Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
   Item { id: logic
     property var statusData: %(data)s
@@ -57,7 +58,7 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     property bool isLoading: false
     property string lastError: %(error)s
     property string lastUpdatedFormatted: "Atualizado às 10:00"
-    property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
+    property var updateInfo: NotchModel.updateSummary(statusData, I18n.tr)
     property color accentColor: "#3daee9"
     property var sessionOverlay: %(overlay)s
     property var calls: []
@@ -65,7 +66,6 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     function closePopup() { calls.push("close") }
     function refreshCollector() { calls.push("refresh") }
     function loadStatus() { calls.push("load") }
-    function safeI18n(t, a, b) { var r = t; if (a !== undefined) r = r.replace("%%1", a); if (b !== undefined) r = r.replace("%%2", b); return r }
   }
   FullRepresentation { id: f; plasmoidItem: logic; anchors.fill: parent }
   TestCase { id: tc; when: false; name: "t" }
@@ -173,8 +173,8 @@ def test_popup_renders_provider_blocks_and_cards(tmp_path):
     out = popup(tmp_path, "render", drive=drive, size=(460, 1400))
     assert out["providers"] == ["provider_claude", "provider_codex", "provider_gemini"]
     assert out["names"] == ["Trabalho", "Pessoal", "Antiga", "Codex Pro", "Gemini velho", "Gemini vazio"]
-    assert "Atenção" in out["words"] and "Crítico" in out["words"]
-    assert any("Esgota em" in t for t in out["forecast"]) and any("Limites mudaram" in t for t in out["limit"])
+    assert "Warning" in out["words"] and "Critical" in out["words"]
+    assert any("Runs out in" in t for t in out["forecast"]) and any("Limits changed" in t for t in out["limit"])
     # sem dado nunca é 0%: Antiga e Gemini vazio mostram "—"
     assert out["pct"].count("—") >= 3 and "0%" not in [p for p in out["pct"]]
 
@@ -191,11 +191,11 @@ def test_popup_account_actions_call_the_same_commands(tmp_path):
     data = fixture()
     data["agents"]["claude"]["accounts"][1]["id"] = "x'; touch /tmp/pwn; '"  # id hostil: tem de ir entre aspas
     drive = """
-    btn("Atualizar agora").click(); btn("Configurações").click()
-    var sw = buttons().filter(function (b) { return b.text.indexOf("Ativar no Sistema") >= 0 })[0]
+    btn("Update now").click(); btn("Settings").click()
+    var sw = buttons().filter(function (b) { return b.text.indexOf("Activate on System") >= 0 })[0]
     obs('switchAccount', sw.visible); sw.click(); obs('busy', sw.enabled)
-    btn("Copiar Link").click()
-    obs('release', btn("Ver release") !== undefined)
+    btn("Copy Link").click()
+    obs('release', btn("View release") !== undefined)
     """
     out = popup(tmp_path, "actions", data=data, drive=drive, size=(460, 1400))
     assert "refresh" in out["calls"] and out["triggered"] == ["configure"]
@@ -209,13 +209,13 @@ def test_popup_account_actions_call_the_same_commands(tmp_path):
 
 def test_switch_result_reloads_status_and_error_surfaces(tmp_path):
     drive = """
-    var sw = buttons().filter(function (b) { return b.text.indexOf("Ativar no Sistema") >= 0 })[0]
+    var sw = buttons().filter(function (b) { return b.text.indexOf("Activate on System") >= 0 })[0]
     sw.click()
     for (var i = 0; i < Log.sources.length; i++) Log.sources[i].newData(Log.cmds[0], {"exit code": 1, stdout: "", stderr: "boom"})
     obs('err', logic.lastError)
     """
     out = popup(tmp_path, "switcherr", drive=drive, size=(460, 1400))
-    assert out["err"] == "Erro ao alternar conta: boom"
+    assert out["err"] == "Error switching account: boom"
 
 
 def test_account_management_actions_stay_in_config_with_quoted_args():
@@ -253,15 +253,15 @@ def test_remaining_and_date_preferences_change_the_popup(tmp_path):
     base = popup(tmp_path / "a", "pref_used", drive=drive)
     rem = popup(tmp_path / "b", "pref_remaining", drive=drive, cfg={"usageDisplay": "remaining", "resetDisplay": "date"}, size=(460, 700))
     assert base["pct"] == ["82%", "45%"] and rem["pct"] == ["18%", "55%"]
-    assert base["reset"].startswith("120.000 tokens • libera em ") and "libera em" not in rem["reset"] and " • libera " in rem["reset"]
+    assert base["reset"].startswith("120.000 tokens • releases in ") and "releases in" not in rem["reset"] and " • releases " in rem["reset"]
     assert base["rings"] == [[82, 45]] and rem["rings"] == [[18, 55]]  # o arco mostra o que sobra
     assert base["marks"] == rem["marks"] == ["▲"]                  # o nível não muda com a preferência
 
 
 def test_toggle_buttons_write_the_preference_and_reflect_the_current_one(tmp_path):
     drive = """
-    btn("Restante").click(); btn("Data").click(); wait(50)
-    obs('pct', txt('pct')[0]); obs('checked', [btn("Restante").checked, btn("Usado").checked, btn("Data").checked, btn("Contagem").checked])
+    btn("Remaining").click(); btn("Date").click(); wait(50)
+    obs('pct', txt('pct')[0]); obs('checked', [btn("Remaining").checked, btn("Used").checked, btn("Date").checked, btn("Countdown").checked])
     obs('stored', [Plasmoid.configuration.usageDisplay, Plasmoid.configuration.resetDisplay])
     """
     out = popup(tmp_path, "toggle", drive=drive)
@@ -284,9 +284,9 @@ def test_order_and_visibility_of_provider_cards(tmp_path):
     out = popup(tmp_path, "order", cfg={"popupProviderOrder": "gemini,claude,codex", "popupHiddenProviders": "codex"}, drive=drive)
     assert out["provs"] == ["provider_gemini", "provider_claude"]
     none = popup(tmp_path / "n", "allhidden", cfg={"popupHiddenProviders": "claude,codex,gemini"}, drive=drive)
-    assert none["provs"] == [] and "Nenhum provedor visível" in none["empty"][0]
+    assert none["provs"] == [] and "No provider visible" in none["empty"][0]
     empty = popup(tmp_path / "e", "noaccounts", data={"agents": {}}, drive=drive)
-    assert "Nenhuma conta encontrada" in empty["empty"][0]
+    assert "No accounts found" in empty["empty"][0]
 
 
 def test_never_a_false_zero_and_no_active_account(tmp_path):
@@ -295,8 +295,8 @@ def test_never_a_false_zero_and_no_active_account(tmp_path):
     var rows = named('nativeRow'); obs('summ', rows.map(function (r) { return r.summary }))
     """
     out = popup(tmp_path, "zero", drive=drive, size=(460, 1400))
-    assert any("sem dados" in s for s in out["summ"])
-    stale = [s for s in out["summ"] if s.startswith("Janela Diária: 30%")]
+    assert any("no data" in s for s in out["summ"])
+    stale = [s for s in out["summ"] if s.startswith("Daily Window: 30%")]
     assert stale and "normal" not in stale[0]  # obsoleto: sem nível, só o percentual esmaecido
 
 
@@ -304,7 +304,7 @@ def test_session_state_shows_word_for_the_active_account_only(tmp_path):
     drive = "obs('words', txt('sessionWord'))"
     cfg = {"sessionState": True}
     out = popup(tmp_path, "session", cfg=cfg, overlay={"claude/work": "busy", "claude/personal": "waiting", "codex/cx": "waiting"}, drive=drive)
-    assert out["words"] == ["sessão ocupada", "aguardando você"]  # Claude/Trabalho e Codex; a Conta inativa não mostra
+    assert out["words"] == ["session busy", "waiting for you"]  # Claude/Trabalho e Codex; a Conta inativa não mostra
     assert popup(tmp_path / "o", "sessionoff", overlay={"claude/work": "busy"}, drive=drive)["words"] == []
 
 
@@ -315,7 +315,7 @@ def test_keyboard_focus_enter_and_escape(tmp_path):
     f.forceActiveFocus()
     for (var i = 0; i < all0.length + 6; i++) { tc.keyClick(Qt.Key_Tab); var a = win.activeFocusItem; if (a && a.hint !== undefined) seen[a.text || a.Accessible.name] = true }
     obs('reached', Object.keys(seen).length)
-    var r = btn("Atualizar agora"); r.forceActiveFocus(); tc.keyClick(Qt.Key_Return); obs('enter', logic.calls.indexOf('refresh') >= 0)
+    var r = btn("Update now"); r.forceActiveFocus(); tc.keyClick(Qt.Key_Return); obs('enter', logic.calls.indexOf('refresh') >= 0)
     r.forceActiveFocus(); tc.keyClick(Qt.Key_Escape)
     """
     out = popup(tmp_path, "keys", drive=drive, size=(460, 1400))
@@ -342,8 +342,8 @@ def test_reduced_motion_and_refreshing_state(tmp_path):
     """
     run = popup(tmp_path / "a", "refreshing", drive=drive, refreshing=True)
     still = popup(tmp_path / "b", "refreshing_reduced", drive=drive, refreshing=True, reduced=True)
-    assert run["rot"] is True and run["bar"] is True and run["label"] == ["Atualizando métricas..."]
-    assert still["rot"] is False and still["bar"] is False and still["label"] == ["Atualizando métricas..."]
+    assert run["rot"] is True and run["bar"] is True and run["label"] == ["Updating metrics..."]
+    assert still["rot"] is False and still["bar"] is False and still["label"] == ["Updating metrics..."]
 
 
 def test_idle_hidden_widget_does_not_animate_popup(tmp_path):
@@ -352,16 +352,16 @@ def test_idle_hidden_widget_does_not_animate_popup(tmp_path):
 
 
 def test_error_banner_and_background_opacity_render(tmp_path):
-    out = popup(tmp_path, "error", error="Cache de status não encontrado. Execute o coletor.", cfg={"popupOpacity": 80}, drive="obs('bg', String(named('popupBackground')[0].color)); obs('err', named('errorBox')[0].visible)", size=(460, 300))
+    out = popup(tmp_path, "error", error="Status cache not found. Run the collector.", cfg={"popupOpacity": 80}, drive="obs('bg', String(named('popupBackground')[0].color)); obs('err', named('errorBox')[0].visible)", size=(460, 300))
     assert out["err"] is True and out["bg"].startswith("#cc")  # alfa 0,8
 
 
 def js(tmp_path, expr):
     """Executa JS puro dos módulos (ViewPrefs/NotchModel) no qml6."""
-    for f in ("ViewPrefs.js", "NotchModel.js", "Presets.js", "PanelStyle.js"):
+    for f in ("ViewPrefs.js", "NotchModel.js", "Presets.js", "PanelStyle.js", "I18n.js"):
         (tmp_path / f).write_text((UI_DIR / f).read_text())
-    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nItem { Timer { interval: 50; running: true; onTriggered: { '
-                                    'var tr = function (t, a, b) { var r = t; if (a !== undefined) r = r.replace("%1", a); if (b !== undefined) r = r.replace("%2", b); return r }; '
+    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nimport "I18n.js" as I18n\nItem { Timer { interval: 50; running: true; onTriggered: { '
+                                    'var tr = I18n.tr; '
                                     'console.log("RESULT " + JSON.stringify(EXPR)); Qt.quit() } } }'.replace("EXPR", expr))
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
     res = subprocess.run(["qml6", str(tmp_path / "t.qml")], env=env, capture_output=True, text=True, timeout=60)
@@ -384,10 +384,10 @@ def test_tooltip_and_description_follow_the_preferences(tmp_path):
     expr = ('[NM.tooltipText(%(d)s, {}, tr, Date.parse("2098-12-31T12:00:00Z")), NM.tooltipText(%(d)s, {remaining: true, date: true}, tr, Date.parse("2098-12-31T12:00:00Z")),'
             ' NM.buildModel(%(d)s, {remaining: true}, tr, 0)[0].description]') % {"d": json.dumps({"agents": agents})}
     plain, pref, desc = js(tmp_path, expr)
-    assert "Janela nativa: 40% — libera em 1d 0h" in plain
-    assert "Janela nativa: 60% restante — libera " in pref and "libera em" not in pref
-    assert "Semanal: —" in pref and "Semanal: —" in plain  # sem dado: nunca 0%
-    assert "Janela nativa 60% restante" in desc and "semanal -" in desc
+    assert "Native window: 40% — releases in 1d 0h" in plain
+    assert "Native window: 60% remaining — releases " in pref and "releases in" not in pref
+    assert "Weekly: —" in pref and "Weekly: —" in plain  # sem dado: nunca 0%
+    assert "Native window 60% remaining" in desc and "weekly -" in desc
 
 
 def test_compact_panel_percent_follows_remaining_preference(tmp_path):
@@ -398,7 +398,7 @@ def test_compact_panel_percent_follows_remaining_preference(tmp_path):
     base = render(tmp_path / "a", "rem_a", agents, panel={"panelStyle": "text", "panelMode": "pct"})
     rem = render(tmp_path / "b", "rem_b", agents, panel={"panelStyle": "text", "panelMode": "pct", "usageDisplay": "remaining"}, extra_cfg={"remaining": True})
     assert base["items"][0]["pct"] == "40%" and rem["items"][0]["pct"] == "60%"
-    assert "60% restante" in rem["model"][0]["description"]
+    assert "60% remaining" in rem["model"][0]["description"]
     unknown = render(tmp_path / "c", "rem_c", {"claude": {"name": "Claude", "accounts": []}}, panel={"panelStyle": "text", "panelMode": "pct", "usageDisplay": "remaining"})
     assert unknown["items"][0]["pct"] == "\u2014"  # sem dado continua "—", nunca 100%
 
@@ -414,12 +414,12 @@ def test_popup_options_declared_with_safe_defaults_and_exposed():
         assert entries[name].attrib["type"] == typ and (entries[name].find("{*}default").text or None) == default
         assert f"cfg_{name}" in cfg
     assert entries["popupOpacity"].find("{*}min").text == "80" and entries["popupOpacity"].find("{*}max").text == "100"
-    assert "Accessible.name" in cfg.split('safeI18n("Popup:")')[1][:5000]
+    assert "Accessible.name" in cfg.split('I18n.tr("Popup:")')[1][:5000]
 
 
 def test_keyboard_focus_scrolls_the_list_to_the_focused_control(tmp_path):
     drive = """
-    var last = buttons().filter(function (b) { return b.text.indexOf("Ativar no Sistema") >= 0 }).pop()
+    var last = buttons().filter(function (b) { return b.text.indexOf("Activate on System") >= 0 }).pop()
     var flick = named('popupFlick')[0]; obs('before', flick.contentY)
     last.forceActiveFocus(); wait(50)
     var y = last.mapToItem(flick, 0, 0).y; obs('inView', y >= 0 && y + last.height <= flick.height + 1); obs('after', flick.contentY)
@@ -463,8 +463,8 @@ def test_repeated_buttons_have_unique_glyph_free_accessible_names(tmp_path):
     drive = "obs('names', buttons().map(function (b) { return b.Accessible.name }))"
     out = popup(tmp_path, "names", drive=drive, size=(460, 1400))
     names = out["names"]
-    assert "Ativar Pessoal no sistema" in names and "Copiar link de convite de Trabalho" in names
-    assert "Histórico e detalhes de Trabalho" in names and "30 dias, Trabalho" in names
+    assert "Activate Pessoal on the system" in names and "Copy invite link for Trabalho" in names
+    assert "History and details for Trabalho" in names and "30 days, Trabalho" in names
     assert len(names) == len(set(names))  # nenhum nome repetido
     assert not any(ch in n for n in names for ch in "⚡▾▸✓")
 
@@ -489,8 +489,8 @@ def test_token_summary_stays_visible_when_details_are_collapsed(tmp_path):
     var th = all(f).filter(function (k) { return k.summaryOnly !== undefined && k.history })
     obs('n', th.length); obs('summaryOnly', th.map(function (k) { return k.summaryOnly }))
     obs('chart', th.map(function (k) { return k.visible }))
-    obs('labels', all(f).filter(function (k) { return k.visible && typeof k.text === 'string' && k.text.indexOf('Hoje ') === 0 }).length)
-    var d = btn("Histórico e detalhes de Trabalho"); d.click(); wait(50)
+    obs('labels', all(f).filter(function (k) { return k.visible && typeof k.text === 'string' && k.text.indexOf('Today ') === 0 }).length)
+    var d = btn("History and details for Trabalho"); d.click(); wait(50)
     obs('after', th.map(function (k) { return k.summaryOnly }))
     """
     data = fixture()
@@ -502,7 +502,7 @@ def test_token_summary_stays_visible_when_details_are_collapsed(tmp_path):
 
 def test_empty_usage_details_do_not_offer_a_details_toggle(tmp_path):
     data = {"agents": {"claude": {"name": "Claude", "accounts": [acct("claude", "a", "A", True, usage_details={"tokens_by_model": [], "quota_by_model": []})]}}}
-    out = popup(tmp_path, "nodetails", data=data, drive="obs('has', btn('Histórico e detalhes de A') !== undefined)")
+    out = popup(tmp_path, "nodetails", data=data, drive="obs('has', btn('History and details de A') !== undefined)")
     assert out["has"] is False
 
 

@@ -167,10 +167,10 @@ def test_no_orphan_timers_with_popup_closed(out):
 def test_tooltip_lists_all_limits_with_countdown(out):
     tip = out["tooltip"]
     assert out["fmt"] == 0  # Text.PlainText
-    assert "Claude\n  Janela nativa: 40% — libera em 2h 30min\n  Semanal: —" in tip
-    assert "Codex\n  Janela nativa: já liberado\n  Semanal: 70% — libera em 3d 5h" in tip
+    assert "Claude\n  Native window: 40% — releases in 2h 30min\n  Weekly: —" in tip
+    assert "Codex\n  Native window: already released\n  Weekly: 70% — releases in 3d 5h" in tip
     # saúde / obsolescência / mudança de limites, curtas e em texto puro
-    assert "Semanal: —\n  Sessão expirada\nCodex" in tip
-    assert "Semanal: 70% — libera em 3d 5h\n  limites mudaram\nGemini" in tip
-    assert "Gemini\n  Janela nativa: —\n  Semanal: —\n  dados desatualizados" in tip
+    assert "Weekly: —\n  Session expired\nCodex" in tip
+    assert "Weekly: 70% — releases in 3d 5h\n  limits changed\nGemini" in tip
+    assert "Gemini\n  Native window: —\n  Weekly: —\n  stale data" in tip
     assert "0%" not in tip.replace("10%", "").replace("70%", "").replace("40%", "")

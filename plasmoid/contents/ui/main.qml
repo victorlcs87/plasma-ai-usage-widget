@@ -10,6 +10,7 @@ import org.kde.kirigami as Kirigami
 import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
+import "I18n.js" as I18n
 
 PlasmoidItem {
     id: root
@@ -23,7 +24,7 @@ PlasmoidItem {
     preferredRepresentation: Plasmoid.formFactor === PlasmaCore.Types.Planar ? fullRepresentation : null
 
     Plasmoid.icon: "view-split-left-right"
-    Plasmoid.title: safeI18n("Monitor de Uso de IA")
+    Plasmoid.title: I18n.tr("AI Usage Monitor")
     toolTipMainText: Plasmoid.title || ""
     toolTipSubText: getSummaryToolTip() || ""
     toolTipTextFormat: Text.PlainText
@@ -50,8 +51,8 @@ PlasmoidItem {
     property var sessionOverlay: ({})
     // Preferências de exibição (usado/restante, contagem/data): valem no painel, na dica e no popup
     readonly property var viewPrefs: ViewPrefs.config(Plasmoid.configuration)
-    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n, root.nowMs)
-    property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, I18n.tr, root.nowMs)
+    property var updateInfo: NotchModel.updateSummary(statusData, I18n.tr)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
     // Timer de 15 s e a cada status lido, para uma leitura velha deixar de esconder mesmo sem status novo.
@@ -90,19 +91,6 @@ PlasmoidItem {
     Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
-    function safeI18n(text, arg1, arg2) {
-        if (!text) return "";
-        if (typeof i18n === "function") {
-            if (arg2 !== undefined) return i18n(text, arg1, arg2);
-            if (arg1 !== undefined) return i18n(text, arg1);
-            return i18n(text);
-        }
-        var res = text || "";
-        if (arg1 !== undefined) res = res.replace("%1", arg1);
-        if (arg2 !== undefined) res = res.replace("%2", arg2);
-        return res;
-    }
-
     function formatLastUpdated(isoStr) {
         if (!isoStr) return "";
         try {
@@ -111,7 +99,7 @@ PlasmoidItem {
             var hours = date.getHours();
             var minutes = date.getMinutes();
             var timeStr = (hours < 10 ? "0" : "") + hours + ":" + (minutes < 10 ? "0" : "") + minutes;
-            return safeI18n("Atualizado às %1", timeStr);
+            return I18n.tr("Updated at %1", timeStr);
         } catch (e) {
             return "";
         }
@@ -135,17 +123,17 @@ PlasmoidItem {
 
     function getSummaryToolTip() {
         if (compactModel.length === 0) {
-            return safeI18n("Nenhum provedor visível no painel.");
+            return I18n.tr("No provider visible in the panel.");
         }
         if (!statusData || !statusData.agents) {
-            return safeI18n("Nenhum dado coletado ainda.");
+            return I18n.tr("No data collected yet.");
         }
-        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, date: viewPrefs.date }, safeI18n, now)];
+        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, remaining: viewPrefs.remaining, date: viewPrefs.date }, I18n.tr, now)];
         if (totalInvites > 0) {
-            lines.push(safeI18n("%1 convites disponíveis", totalInvites));
+            lines.push(I18n.trp("%1 invite available", "%1 invites available", totalInvites));
         }
         if (sessionFailed && Plasmoid.configuration.sessionState === true) {
-            lines.push(safeI18n("Estado da sessão indisponível: reinstale o pacote do coletor (pip install -e .)"));
+            lines.push(I18n.tr("Session state unavailable: reinstall the collector package (pip install -e .)"));
         }
         return lines.join("\n");
     }
@@ -249,8 +237,8 @@ PlasmoidItem {
                 root.lastError = "";
                 root.loadStatus();
             } else {
-                var errMsg = stderr || stdout || safeI18n("Código de saída %1", exitCode);
-                root.lastError = safeI18n("Erro ao executar coletor: %1", errMsg);
+                var errMsg = stderr || stdout || I18n.tr("Exit code %1", exitCode);
+                root.lastError = I18n.tr("Error running the collector: %1", errMsg);
             }
             disconnectSource(sourceName);
             root.runPendingRemoval();
@@ -273,7 +261,7 @@ PlasmoidItem {
             var stuck = collectorDataSource.connectedSources.slice();
             for (var i = 0; i < stuck.length; i++) collectorDataSource.disconnectSource(stuck[i]);
             root.isRefreshing = false;
-            root.lastError = root.safeI18n("O coletor não respondeu em 120 s; nova tentativa no próximo ciclo.");
+            root.lastError = I18n.tr("The collector did not respond within 120 s; retrying on the next cycle.");
             root.runPendingRemoval();
         }
     }
@@ -386,11 +374,11 @@ PlasmoidItem {
                     root.statusData = parsed;
                     root.lastError = "";
                 } catch (e) {
-                    root.lastError = safeI18n("Erro ao ler JSON de status: %1", e.message);
+                    root.lastError = I18n.tr("Error reading status JSON: %1", e.message);
                 }
             } else {
                 if (exitCode !== 0) {
-                    root.lastError = safeI18n("Cache de status não encontrado. Execute o coletor.");
+                    root.lastError = I18n.tr("Status cache not found. Run the collector.");
                 }
             }
             disconnectSource(sourceName);

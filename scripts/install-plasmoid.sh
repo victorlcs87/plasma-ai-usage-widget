@@ -15,6 +15,14 @@ if [ ! -f "${PLASMOID_DIR}/metadata.json" ]; then
     exit 1
 fi
 
+# Catálogos: compila po/*.po em contents/locale/<idioma>/LC_MESSAGES/plasma_applet_<id>.mo numa cópia
+# temporária (os .mo não são versionados) e instala essa cópia.
+STAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "${STAGE_DIR}"' EXIT
+cp -r "${PLASMOID_DIR}/." "${STAGE_DIR}/"
+python3 "${REPO_ROOT}/tools/i18n.py" compile "${STAGE_DIR}/contents/locale" >/dev/null
+PLASMOID_DIR="${STAGE_DIR}"
+
 if command -v kpackagetool6 >/dev/null 2>&1; then
     echo "==> Utilizando kpackagetool6..."
     

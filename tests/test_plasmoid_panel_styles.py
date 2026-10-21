@@ -65,7 +65,7 @@ def contrast(a, b):
 
 
 def js(tmp_path, expr):
-    for f in ("PanelStyle.js", "ViewPrefs.js", "Presets.js"):
+    for f in ("PanelStyle.js", "I18n.js", "ViewPrefs.js", "Presets.js"):
         (tmp_path / f).write_text((UI_DIR / f).read_text())
     (tmp_path / "t.qml").write_text('import QtQuick\nimport "PanelStyle.js" as PS\nItem { Timer { interval: 50; running: true; onTriggered: { '
                                     'console.log("RESULT " + JSON.stringify(%s)); Qt.quit() } } }' % expr)
@@ -94,12 +94,12 @@ def test_config_page_validates_and_is_accessible():
     # todo controle do bloco tem Accessible.name e todo rótulo é texto puro
     for ctl in ("QQC2.ComboBox {", "QQC2.SpinBox {", "QQC2.CheckBox {"):
         for chunk in block.split(ctl)[1:]:
-            assert "Accessible.name: configRoot.safeI18n(" in chunk.split("\n" + " " * 24 + "}\n")[0], (ctl, chunk[:120])
+            assert "Accessible.name: I18n.tr(" in chunk.split("\n" + " " * 24 + "}\n")[0], (ctl, chunk[:120])
     for chunk in block.split("QQC2.Label {")[1:]:
         assert "textFormat: Text.PlainText" in chunk.split("\n" + " " * 24 + "}\n")[0]
     assert block.count("QQC2.ComboBox {") == 3 and block.count("QQC2.SpinBox {") == 2
-    assert 'Accessible.description: configRoot.safeI18n("Pílula:' in block  # texto de ajuda dos estilos
-    assert "40 px de largura" in block and "28 px" in block and "Só o gráfico" in block  # limites documentados
+    assert 'Accessible.description: I18n.tr("Pill:' in block  # texto de ajuda dos estilos
+    assert "40 px of width" in block and "28 px" in block and "Chart only" in block  # limites documentados
     assert "from: 80" in block and "to: 160" in block and "to: 16" in block
 
 
@@ -188,8 +188,8 @@ def test_every_style_fits_without_clipping_horizontal_and_vertical(matrix, style
         for it in out["items"]:  # nenhum item fora da área do widget
             assert it["x"] >= -0.5 and it["y"] >= -0.5 and it["x"] + it["w"] <= w + 0.5 and it["y"] + it["h"] <= h + 0.5, (key, it, (w, h))
         # selos de saúde, ponto de CLI, selo ↑ do widget e convites: todos visíveis, dentro da área, sobre fundo escuro
-        assert sorted(b["name"] for b in out["badges"]) == sorted(["Sessão expirada", "Nova versão de CLI disponível",
-                                                                   "Nova versão do widget disponível", "3 convites disponíveis"]), out["badges"]
+        assert sorted(b["name"] for b in out["badges"]) == sorted(["Session expired", "New CLI version available",
+                                                                   "New widget version available", "3 invites available"]), out["badges"]
         for b in out["badges"]:
             assert b["bg"] == DARK and b["x"] >= -0.5 and b["y"] >= -0.5 and b["x"] + b["w"] <= w + 0.5 and b["y"] + b["h"] <= h + 0.5, (key, b, (w, h))
         # o conteúdo real (fontes de verdade) cabe na caixa calculada
@@ -217,8 +217,8 @@ def test_modes_show_what_they_promise_and_never_a_false_zero(matrix, style, mode
     elif style in ("bar", "text") or mode == "pct":
         assert marks[:2] == ["■", "▲"] and marks[2] is None
     # acessibilidade: provedor, % e nível em palavras
-    assert claude["name"] == "Claude" and "crítico" in claude["desc"] and "100%" in claude["desc"]
-    assert "atenção" in codex["desc"] and "sem dados" in gemini["desc"].lower() or "sem nível" in gemini["desc"]
+    assert claude["name"] == "Claude" and "critical" in claude["desc"] and "100%" in claude["desc"]
+    assert "warning" in codex["desc"] and "no data" in gemini["desc"].lower() or "no level" in gemini["desc"]
 
 
 @needs_qml

@@ -35,3 +35,25 @@ isolado: rode com o `CLAUDE_CONFIG_DIR` de cada perfil. Ative "Mostrar o estado 
 do plasmoid. O caminho leve de consulta (`ai-usage-session-state`) exige reinstalar o pacote
 (`pip install -e .`); ele lê `session-accounts.json`, atualizado a cada refresh. Detalhes e limitações no
 ADR-0009.
+
+## Traduções (i18n)
+
+O Plasmoid segue o idioma do sistema: inglês (texto-fonte, convenção KDE) e português do Brasil, ambos completos.
+
+- **Mecanismo único:** `plasmoid/contents/ui/I18n.js` (`tr`, `trc`, `trp`), que chama `i18n`/`i18nc`/`i18np` do KDE e,
+  sem eles (harness `qml6`, testes), devolve o texto em inglês com os `%N` substituídos. Os modelos JS recebem `I18n.tr`
+  como parâmetro `tr`. Só literais de string entram como msgid; nome de conta, mensagem do coletor etc. vão como
+  argumento `%N`, nunca como msgid. Use frases inteiras com `%N` (nada de montar frase por pedaços) e `trp` para plurais.
+- **Catálogos:** `po/plasma_applet_org.kde.plasma.aiusage.pot` (domínio = `plasma_applet_` + `KPlugin.Id` do
+  `metadata.json`), `po/pt_BR.po` e `po/en.po` (`en.po` é gerado: msgstr = msgid).
+- **Regenerar o `.pot` e sincronizar os `.po`** (só Python, determinístico): `python3 tools/i18n.py extract && python3 tools/i18n.py update`.
+  `python3 tools/i18n.py check` acusa msgid não literal e texto visível fora de i18n.
+- **Novo idioma:** crie `po/<codigo>.po` copiando o `.pot` (ex.: `cp po/*.pot po/es.po`), rode `update`, traduza todas as
+  entradas (sem `fuzzy`, sem vazias, mesmos `%N`) e, se o idioma tiver regra de plural diferente, ajuste `PLURALS` em `tools/i18n.py`.
+  O teste `tests/test_i18n.py` valida o novo arquivo sozinho (adicione o código em `LANGS`).
+- **`.mo`:** `scripts/install-plasmoid.sh` compila `po/*.po` (`tools/i18n.py compile`) para
+  `contents/locale/<idioma>/LC_MESSAGES/plasma_applet_org.kde.plasma.aiusage.mo` numa cópia temporária e instala essa cópia;
+  os `.mo` não são versionados.
+- **Limites conhecidos:** `health.message` (diagnóstico do coletor, em português) é mostrado como veio; o erro de consulta
+  (`fetch_error`) é traduzido pelo `kind`. Data/hora usam o formato fixo `dd/MM HH:mm` e as unidades abreviadas da contagem
+  regressiva (`d h m s`) não variam por idioma.

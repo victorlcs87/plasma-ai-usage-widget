@@ -10,92 +10,92 @@
       <default>true</default>
     </entry>
     <entry name="refreshIntervalClaude" type="Int">
-      <label>Intervalo de Atualização do Claude em segundos</label>
+      <label>Claude refresh interval in seconds</label>
       <default>300</default>
       <min>60</min>
     </entry>
     <entry name="refreshIntervalCodex" type="Int">
-      <label>Intervalo de Atualização do Codex em segundos</label>
+      <label>Codex refresh interval in seconds</label>
       <default>300</default>
       <min>60</min>
     </entry>
     <entry name="refreshIntervalGemini" type="Int">
-      <label>Intervalo de Atualização do Gemini em segundos</label>
+      <label>Gemini refresh interval in seconds</label>
       <default>300</default>
       <min>60</min>
     </entry>
     <entry name="providerOrder" type="String">
-      <label>Ordem dos provedores no Notch compacto</label>
+      <label>Provider order in the compact Notch</label>
       <default>claude,codex,gemini</default>
     </entry>
     <entry name="hiddenProviders" type="String">
-      <label>Provedores ocultos no Notch compacto (separados por vírgula)</label>
+      <label>Providers hidden in the compact Notch (comma separated)</label>
       <default></default>
     </entry>
     <entry name="accentPreset" type="String">
-      <label>Cor de destaque do Notch (plasma = cor de realce do Plasma)</label>
+      <label>Notch accent color (plasma = the Plasma highlight color)</label>
       <default>plasma</default>
     </entry>
     <entry name="panelStyle" type="String">
-      <label>Estilo do painel (pill, ring, text ou bar)</label>
+      <label>Panel style (pill, ring, text or bar)</label>
       <default>pill</default>
     </entry>
     <entry name="panelMode" type="String">
-      <label>Modo do painel (ring = só anel, ringpct = anel + %, pct = só %)</label>
+      <label>Panel mode (ring = ring only, ringpct = ring + %, pct = % only)</label>
       <default>ring</default>
     </entry>
     <entry name="ringCenter" type="String">
-      <label>Centro do anel (logo, pct ou logopct)</label>
+      <label>Ring center (logo, pct or logopct)</label>
       <default>logo</default>
     </entry>
     <entry name="metricSize" type="Int">
-      <label>Tamanho das métricas no painel em porcentagem</label>
+      <label>Panel metrics size in percent</label>
       <default>100</default>
       <min>80</min>
       <max>160</max>
     </entry>
     <entry name="panelMargin" type="Int">
-      <label>Margem interna do painel em pixels (-1 = automática)</label>
+      <label>Panel inner margin in pixels (-1 = automatic)</label>
       <default>-1</default>
       <min>-1</min>
       <max>16</max>
     </entry>
     <entry name="sessionState" type="Bool">
-      <label>Mostrar o Estado da Sessão (requer --install-hooks)</label>
+      <label>Show the Session State (requires --install-hooks)</label>
       <default>false</default>
     </entry>
     <entry name="sessionAutoOpen" type="Bool">
-      <label>Abrir o Notch por 5 s quando a sessão termina ou pede algo</label>
+      <label>Open the Notch for 5 s when the session finishes or asks for something</label>
       <default>false</default>
     </entry>
     <entry name="sessionSound" type="Bool">
-      <label>Tocar um som quando a sessão termina ou pede algo</label>
+      <label>Play a sound when the session finishes or asks for something</label>
       <default>false</default>
     </entry>
     <entry name="hoverOpen" type="Bool">
-      <label>Abrir o popup ao passar o mouse sobre o Notch (desligado: só o clique)</label>
+      <label>Open the popup when hovering the Notch (off: click only)</label>
       <default>true</default>
     </entry>
     <entry name="usageDisplay" type="String">
-      <label>Valores exibidos em todo o widget (used = usado, remaining = restante)</label>
+      <label>Values shown across the widget (used or remaining)</label>
       <default>used</default>
     </entry>
     <entry name="resetDisplay" type="String">
-      <label>Liberação exibida em todo o widget (countdown = contagem regressiva, date = data e hora)</label>
+      <label>Release shown across the widget (countdown or date)</label>
       <default>countdown</default>
     </entry>
     <entry name="popupOpacity" type="Int">
-      <label>Opacidade do fundo do popup em porcentagem</label>
+      <label>Popup background opacity in percent</label>
       <default>100</default>
       <min>80</min>
       <max>100</max>
     </entry>
     <entry name="popupProviderOrder" type="String">
-      <label>Ordem dos provedores no popup</label>
+      <label>Provider order in the popup</label>
       <default>claude,codex,gemini</default>
     </entry>
     <entry name="popupHiddenProviders" type="String">
-      <label>Provedores ocultos no popup (separados por vírgula)</label>
+      <label>Providers hidden in the popup (comma separated)</label>
       <default></default>
     </entry>
   </group>

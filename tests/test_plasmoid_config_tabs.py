@@ -72,11 +72,11 @@ def test_qml_ids_are_unique_and_tabs_are_declared_in_order():
 
 def test_every_control_of_old_layout_survives_in_a_tab():
     blocks = tab_blocks()
-    expect = {"tabGeral": ["Atualizar a cada (s):", "Alerta por:", "Ocultar sem a CLI em execução:", "Verificar novas versões uma vez por dia", "alertModeCombo"],
-              "tabPainel": ["Cor de destaque:", "Provedores no painel:", "Estilo do painel:", "Centro do anel:", "Margem automática"],
-              "tabPopup": ["Abrir o popup ao passar o mouse", "Opacidade do fundo", "Provedores no popup:", "Liberação em contagem"],
-              "tabContas": ["Adicionar Nova Conta", "captureCurrentAccountBtn", "interactiveLoginAccountBtn", "renameAccountBtn", "Perfis Órfãos", "Reimportar", "Excluir"],
-              "tabNotif": ["Mostrar o estado da sessão", "Tocar um som nesses momentos", "--notify", "notifyDirty"]}
+    expect = {"tabGeral": ["Refresh every (s):", "Alert by:", "Hide without the CLI running:", "Check for new versions once a day", "alertModeCombo"],
+              "tabPainel": ["Accent color:", "Providers in the panel:", "Panel style:", "Ring center:", "Automatic margin"],
+              "tabPopup": ["Open the popup on mouse hover", "Background opacity", "Providers in the popup:", "Release as countdown"],
+              "tabContas": ["Add New Account", "captureCurrentAccountBtn", "interactiveLoginAccountBtn", "renameAccountBtn", "Orphan Profiles", "Re-import", "Delete"],
+              "tabNotif": ["Show the session state (Claude and Codex)", "Play a sound at those moments", "--notify", "notifyDirty"]}
     for tab, needles in expect.items():
         for n in needles:
             assert n in blocks[tab] or (n.startswith("--") and "saveNotifySettings" in blocks[tab]), (tab, n)
@@ -141,7 +141,7 @@ def config(tmp_path, drive="", size=(560, 640), pngs=None):
         (imp / f).write_text(body)
     run = tmp_path / "run"
     run.mkdir()
-    for f in ("Presets.js", "PanelStyle.js", "ViewPrefs.js"):
+    for f in ("Presets.js", "I18n.js", "PanelStyle.js", "ViewPrefs.js"):
         shutil.copy(UI_DIR / f, run / f)
     shutil.copy(UI_DIR / "configGeneral.qml", run / "ConfigGeneral.qml")
     (run / "h.qml").write_text(HARNESS % {"w": size[0], "h": size[1], "data": json.dumps(fixture()), "drive": drive, "pngs": json.dumps(pngs or [])})
@@ -166,7 +166,7 @@ def test_each_tab_renders_without_errors_and_geral_is_the_default(tmp_path):
     """
     out = config(tmp_path, drive=drive, pngs=pngs)
     assert out["current"] == 0 and out["count"] == 5 and out["stack"] is True
-    assert out["names"] == ["Geral", "Painel", "Popup", "Contas", "Notificações"]
+    assert out["names"] == ["General", "Panel", "Popup", "Accounts", "Notifications"]
 
 
 @needs_qml

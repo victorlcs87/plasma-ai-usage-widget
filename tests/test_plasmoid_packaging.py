@@ -140,7 +140,7 @@ def test_qml_contract_keys_compatibility():
         account_id="claude-pro",
         label="Claude Pro",
         source="auto",
-        health={"status": "valid", "message": "Ativa", "detected": True},
+        health={"status": "valid", "message": "Active", "detected": True},
         native_window={
             "total_capacity": 45,
             "used_capacity": 13,
@@ -216,8 +216,8 @@ def test_account_card_qml_symmetric_meters_and_clean_capacity():
     assert "msgs" not in content
 
     # 2. Janela Ativa/Semanal simétricas, com marca de tempo decorrido ao vivo e o relógio do popup
-    assert "Janela Ativa (5h)" in model and "Janela Ativa (3h)" not in model  # duracao vem do provedor via %1
-    assert "Janela Ativa (%1)" in model and "Janela Diária" in model and "Janela Semanal (7 dias)" in model
+    assert "Active Window (5h)" in model and "Active Window (3h)" not in model  # duracao vem do provedor via %1
+    assert "Active Window (%1)" in model and "Daily Window" in model and "Weekly Window (7 days)" in model
     assert "elapsed_fraction" in model and "cycle_reset_time" in model and "release_time" in model
     assert "nativeRow" in content and "weeklyRow" in content and "nowMs" in content and "weekly_window" in content
 
@@ -238,7 +238,7 @@ def test_config_general_qml_add_account_form_packaging_and_controls():
     content = config_path.read_text(encoding="utf-8")
 
     # Header and expandable container
-    assert "+ Adicionar Nova Conta" in content
+    assert "+ Add New Account" in content
     assert "addAccountSection" in content
     assert "isAddFormExpanded" in content
     assert "toggleAddFormBtn" in content
@@ -287,7 +287,7 @@ def test_cards_show_forecast_and_level_with_text_and_shapes():
     card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
     row = (UI_DIR / "WindowRow.qml").read_text(encoding="utf-8")
     model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
-    for needle in ("alert_level", "forecast", "Esgota em"):
+    for needle in ("alert_level", "forecast", "Runs out in"):
         assert needle in model
     for needle in ("Text.PlainText", "levelWord", "levelMark", "forecast"):
         assert needle in row  # nível por palavra e forma, além da cor
