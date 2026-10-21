@@ -589,6 +589,15 @@ def test_accent_has_at_least_3_to_1_on_the_pill_for_dark_system_accents_and_pres
     assert keep == [a if a else "" for a in [""] + ["#ff5fa2", "#ff5c5c", "#ff9f43", "#ffd84d", "#4cd964", "#2dd4bf", "#4da3ff", "#7b83ff", "#b57bff", "#f2f2f2", "#9aa0a6"]]  # predefinições intactas
 
 
+def test_normal_level_text_has_4_5_to_1_on_the_card_even_with_a_dark_accent(tmp_path):
+    from test_ui_contrast import ratio
+    acc = ["#1d3557", "#8e44ad", "#1b5e20", "#000000", "#3daee9"]
+    got = js(tmp_path, "[" + ",".join('PR.levelTextColor("normal", {r: %s, g: %s, b: %s})' % tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)) for h in acc) + "]")
+    for src, out in zip(acc, got):
+        assert ratio(out, "#1d2026") >= 4.5, (src, out)
+    assert js(tmp_path, 'PR.levelTextColor("critical", {r: 0, g: 0, b: 0})') == "#ff4d4f"  # os outros níveis não mudam
+
+
 def test_history_summary_keeps_all_three_metrics_with_a_large_font(tmp_path):
     """P2c: com fonte de 14 pt o resumo quebra em até 2 linhas em vez de cortar o "Mês" em silêncio."""
     drive = """
