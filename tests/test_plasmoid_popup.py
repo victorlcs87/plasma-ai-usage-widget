@@ -613,6 +613,6 @@ def test_compact_number_uses_the_locale_decimal_separator(tmp_path, monkeypatch)
     """R2 P3-4: em pt_BR "12.4k" parecia 12 mil e 400; agora vem com a vírgula do locale."""
     expr = "[%s]" % ",".join(f"I18n.compactNumber({v})" for v in (950, 12400, 410000, 1900000, 2.5e9))
     monkeypatch.setenv("LC_ALL", "pt_BR.UTF-8")
-    assert js(tmp_path, expr) == ["950", "12,4k", "410,0k", "1,9M", "2,5B"]
+    assert js(tmp_path, expr) == ["950", "12,4k", "410k", "1,9M", "2,5B"]
     monkeypatch.setenv("LC_ALL", "en_US.UTF-8")
-    assert js(tmp_path, expr) == ["950", "12.4k", "410.0k", "1.9M", "2.5B"]
+    assert js(tmp_path, expr) == ["950", "12.4k", "410k", "1.9M", "2.5B"]

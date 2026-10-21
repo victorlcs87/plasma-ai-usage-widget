@@ -50,6 +50,9 @@ function compactNumber(n) {
     n = Number(n) || 0;
     var units = [[1e9, "B"], [1e6, "M"], [1e3, "k"]];
     for (var i = 0; i < units.length; i++)
-        if (n >= units[i][0]) return (n / units[i][0]).toLocaleString(Qt.locale(), "f", 1) + units[i][1];
+        if (n >= units[i][0]) {
+            var v = Math.round(n / units[i][0] * 10) / 10;   // 410000 -> "410k", 12400 -> "12,4k"
+            return v.toLocaleString(Qt.locale(), "f", (v % 1 === 0 || v >= 100) ? 0 : 1) + units[i][1];
+        }
     return String(n);
 }
