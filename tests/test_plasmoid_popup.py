@@ -358,7 +358,7 @@ def js(tmp_path, expr):
     """Executa JS puro dos módulos (ViewPrefs/NotchModel) no qml6."""
     for f in ("ViewPrefs.js", "NotchModel.js", "Presets.js", "PanelStyle.js", "I18n.js", "Collector.js"):
         (tmp_path / f).write_text((UI_DIR / f).read_text())
-    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nimport "I18n.js" as I18n\nimport "Collector.js" as CJ\nItem { Timer { interval: 50; running: true; onTriggered: { '
+    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nimport "I18n.js" as I18n\nimport "Collector.js" as CJ\nimport "Presets.js" as PR\nItem { Timer { interval: 50; running: true; onTriggered: { '
                                     'var tr = I18n.tr; '
                                     'console.log("RESULT " + JSON.stringify(EXPR)); Qt.quit() } } }'.replace("EXPR", expr))
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -576,3 +576,14 @@ def test_session_command_prefers_light_entrypoint_then_collector_then_configured
     order = ["command -v ai-usage-session-state", "ai-usage-collector --session-state", '"$c" --session-state', "python3 -m ai_usage_collector --session-state"]
     assert [cmd.index(o) for o in order] == sorted(cmd.index(o) for o in order)
     assert cmd.endswith(" _ '/opt/x/ai-usage-collector'") and "repositorios" not in cmd
+
+
+def test_accent_has_at_least_3_to_1_on_the_pill_for_dark_system_accents_and_presets(tmp_path):
+    from test_ui_contrast import ratio
+    dark = ["#8e44ad", "#c0392b", "#1b5e20", "#1a237e", "#000000", "#3daee9"]
+    got = js(tmp_path, "[" + ",".join(f'PR.onPill(%s, %s, %s, 3)' % tuple(int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)) for h in dark) + "]")
+    for src, out in zip(dark, got):
+        assert ratio(out, "#15171b") >= 3, (src, out)
+    assert got[-1] == "#3daee9"  # já passa: não muda a cor padrão
+    keep = js(tmp_path, '[PR.accents.map(function (a) { return a.color ? PR.onPill(parseInt(a.color.substr(1,2),16)/255, parseInt(a.color.substr(3,2),16)/255, parseInt(a.color.substr(5,2),16)/255, 3) : "" })]')[0]
+    assert keep == [a if a else "" for a in [""] + ["#ff5fa2", "#ff5c5c", "#ff9f43", "#ffd84d", "#4cd964", "#2dd4bf", "#4da3ff", "#7b83ff", "#b57bff", "#f2f2f2", "#9aa0a6"]]  # predefinições intactas

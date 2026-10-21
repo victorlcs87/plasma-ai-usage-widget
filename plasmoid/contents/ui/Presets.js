@@ -67,10 +67,11 @@ function contrast(a, b) {
 function _hex(rgb) {
     return "#" + rgb.map(function (v) { var h = Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16); return h.length < 2 ? "0" + h : h; }).join("");
 }
-// r,g,b em 0..1 (Qt color); devolve "#rrggbb" com >= 4,5:1 sobre a pílula
-function onPill(r, g, b) {
+// r,g,b em 0..1 (Qt color); devolve "#rrggbb" com >= min (padrão 4,5; 3 para formas como o acento) sobre a pílula
+function onPill(r, g, b, min) {
     var c = [r, g, b];
-    for (var i = 0; i < 20 && contrast(c, PILL_RGB) < 4.5; i++)
+    min = min || 4.5;
+    for (var i = 0; i < 30 && contrast(c, PILL_RGB) < min; i++)
         c = c.map(function (v) { return v + (1 - v) * 0.1; });
     return _hex(c);
 }

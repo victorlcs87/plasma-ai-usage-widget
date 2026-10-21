@@ -104,7 +104,9 @@ PlasmoidItem {
         onTriggered: root.idleHidden = root.idleWanted
     }
     Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus
-    readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
+    // Acento é forma (arco, borda de foco) sobre o Notch escuro: piso de 3:1 também com o realce escuro do Plasma
+    readonly property color accentRaw: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
+    readonly property color accentColor: Presets.onPill(accentRaw.r, accentRaw.g, accentRaw.b, 3)
 
     function formatLastUpdated(isoStr) {
         if (!isoStr) return "";
