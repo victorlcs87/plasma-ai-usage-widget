@@ -297,7 +297,7 @@ def test_cards_show_forecast_and_level_with_text_and_shapes():
         assert needle in model
     for needle in ("Text.PlainText", "levelWord", "levelMark", "forecast"):
         assert needle in row  # nível por palavra e forma, além da cor
-    assert "Presets.levelColor" in row and "#" not in row.split("levelColor")[1].split("\n")[0]  # cor vem do nível, nunca hex fixo
+    assert "Presets.levelTextColor" in row and "#" not in row.split("levelTextColor")[1].split("\n")[0]  # cor vem do nível, nunca hex fixo
     assert "forecast" in card.lower() or "windowView" in card
 
 
