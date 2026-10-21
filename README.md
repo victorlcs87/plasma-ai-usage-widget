@@ -57,3 +57,11 @@ O Plasmoid segue o idioma do sistema: inglês (texto-fonte, convenção KDE) e p
 - **Limites conhecidos:** `health.message` (diagnóstico do coletor, em português) é mostrado como veio; o erro de consulta
   (`fetch_error`) é traduzido pelo `kind`. Data/hora usam o formato fixo `dd/MM HH:mm` e as unidades abreviadas da contagem
   regressiva (`d h m s`) não variam por idioma.
+
+## Smoke no runtime real do Plasma
+
+`scripts/plasmoidviewer-smoke.sh [diretório-de-PNGs]` instala o plasmoide num HOME temporário, gera um `status.json` de
+fixture (`tools/smoke_status.py`), roda o `plasmoidviewer` sob `xvfb-run` em pt_BR e en_US, horizontal e vertical, clica na
+pílula (`xdotool`) e salva PNGs (`import`). Sai com código != 0 se o log tiver erro de QML do plasmoide (recursive
+rearrange, TypeError, ReferenceError, Unable to assign, is not defined, Binding loop). Não usa a sessão nem dados reais.
+Requer `plasmoidviewer` (plasma-sdk), `xvfb-run`, `xdotool` e ImageMagick; `tests/test_plasmoidviewer_smoke.py` o roda se existirem.
