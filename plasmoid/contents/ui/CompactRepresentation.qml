@@ -49,27 +49,35 @@ Item {
                                       base: ringBase, scale: panel.scale, minUnit: minUnit })
     // Estilo e centro em uso: se a espessura do painel não comporta o pedido, degrada (Bar -> Text -> Pílula;
     // centro com % -> logo) em vez de cortar
-    readonly property var eff: PanelStyle.effective(reqOpts, vertical ? width : height)
+    // effC (só pela espessura) dá o mínimo e o preferido que o painel recebe; eff também degrada pelo comprimento
+    // realmente disponível (largura no painel horizontal, altura no vertical) e é o que se desenha. Preferido
+    // fora do degradê por comprimento: senão o painel, ao receber menos, nunca mais devolveria o estilo pedido.
+    readonly property var effC: PanelStyle.effective(reqOpts, vertical ? width : height)
+    readonly property var eff: PanelStyle.effective(reqOpts, vertical ? width : height, vertical ? height : width,
+                                                    function (oo) { return compactRoot.runLength(PanelStyle.layout(oo, vertical ? compactRoot.width : compactRoot.height), oo.style); })
     readonly property string style: eff.style
-    readonly property var geoOpts: ({ style: eff.style, mode: panel.mode, center: eff.center, vertical: vertical, pad: pad, gap: gap,
-                                      base: ringBase, scale: panel.scale, minUnit: minUnit })
+    function optsFor(e) { return { style: e.style, mode: panel.mode, center: e.center, vertical: vertical, pad: pad, gap: gap,
+                                   base: ringBase, scale: panel.scale, minUnit: minUnit }; }
+    readonly property var geoOpts: optsFor(eff)
+    readonly property var geoOptsC: optsFor(effC)
     // Espessura mínima e preferida do painel (a preferida nunca fica abaixo da mínima)
-    readonly property int crossMin: PanelStyle.minCross(geoOpts)
-    readonly property int crossPref: Math.max(crossMin, Math.round(ringBase * panel.scale) + 2 * pad + (style === "ring" ? 4 : 0))
-    // Tamanho de cada item: atual (encolhe até caber, sem corte) e no mínimo; o comprimento preferido
-    // acompanha o tamanho atual
+    readonly property int crossMin: PanelStyle.minCross(geoOptsC)
+    readonly property int crossPref: Math.max(crossMin, Math.round(ringBase * panel.scale) + 2 * pad + (effC.style === "ring" ? 4 : 0))
+    // Tamanho de cada item: o desenhado (encolhe até caber, sem corte), o preferido e o mínimo
     readonly property var geo: PanelStyle.layout(geoOpts, vertical ? width : height)
-    readonly property var geoMin: PanelStyle.layout(geoOpts, crossMin)
+    readonly property var geoPref: PanelStyle.layout(geoOptsC, vertical ? width : height)
+    readonly property var geoMin: PanelStyle.layout(geoOptsC, crossMin)
     // Selos entram no fluxo da pílula, depois dos itens (num grupo: no Ring, com fundo escuro próprio)
     readonly property int badgeCount: (health !== "" ? 1 : 0) + (cliUpdate ? 1 : 0) + (widgetUpdate ? 1 : 0) + (totalInvites > 0 ? 1 : 0)
     readonly property int badgePad: style === "ring" ? 3 : 0
-    readonly property int badgeLength: badgeCount === 0 ? 0 : gap + 2 * badgePad
+    function badgeLengthFor(st) { return badgeCount === 0 ? 0 : badgeInner + 2 * (st === "ring" ? 3 : 0); }
+    readonly property int badgeInner: gap
         + (health !== "" ? healthDot.implicitWidth + gap : 0)
         + (cliUpdate ? updateDot.implicitWidth + gap : 0)
         + (widgetUpdate ? (vertical ? widgetBadge.implicitHeight : widgetBadge.implicitWidth) + gap : 0)
         + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0) - gap
 
-    function runLength(g) { return count * (vertical ? g.h : g.w) + (count - 1) * gap + badgeLength + 2 * pad; }
+    function runLength(g, st) { return count * (vertical ? g.h : g.w) + (count - 1) * gap + badgeLengthFor(st) + 2 * pad; }
 
     // Clique do mouse: abre/fixa/solta (main.qml); teclado: abre/fecha como antes
     function toggle() {
@@ -82,10 +90,10 @@ Item {
 
     readonly property int sliver: Kirigami.Units.gridUnit
     readonly property int markerSize: Kirigami.Units.iconSizes.smallMedium
-    Layout.minimumWidth: marker ? markerSize : vertical ? crossMin : (idle ? sliver : runLength(geoMin))
-    Layout.minimumHeight: marker ? markerSize : vertical ? (idle ? sliver : runLength(geoMin)) : crossMin
-    Layout.preferredWidth: marker ? markerSize : vertical ? crossPref : (idle ? sliver : runLength(geo))
-    Layout.preferredHeight: marker ? markerSize : vertical ? (idle ? sliver : runLength(geo)) : crossPref
+    Layout.minimumWidth: marker ? markerSize : vertical ? crossMin : (idle ? sliver : runLength(geoMin, effC.style))
+    Layout.minimumHeight: marker ? markerSize : vertical ? (idle ? sliver : runLength(geoMin, effC.style)) : crossMin
+    Layout.preferredWidth: marker ? markerSize : vertical ? crossPref : (idle ? sliver : runLength(geoPref, effC.style))
+    Layout.preferredHeight: marker ? markerSize : vertical ? (idle ? sliver : runLength(geoPref, effC.style)) : crossPref
 
     activeFocusOnTab: true
     // Destruído com o mouse em cima (formFactor, reconfiguração): não deixa o hover preso
@@ -107,8 +115,8 @@ Item {
         id: pill
         visible: !compactRoot.idle && !compactRoot.marker
         anchors.centerIn: parent
-        width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo))
-        height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo) : compactRoot.geo.h + 2 * pad)
+        width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo, compactRoot.style))
+        height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo, compactRoot.style) : compactRoot.geo.h + 2 * pad)
         radius: compactRoot.style === "text" || compactRoot.style === "bar"
             ? Math.min(Kirigami.Units.gridUnit * 0.5, Math.min(width, height) / 2) : Math.min(width, height) / 2
         // Ring: sem cápsula comum (cada item tem fundo escuro próprio); a borda segue aparecendo no foco/hover
@@ -119,6 +127,8 @@ Item {
 
         GridLayout {
             anchors.centerIn: parent
+            // Último recurso (nem a variante mais compacta cabe): encolhe o conteúdo em vez de vazar da cápsula
+            scale: Math.min(1, (pill.width - 2) / Math.max(1, implicitWidth), (pill.height - 2) / Math.max(1, implicitHeight))
             columns: compactRoot.vertical ? 1 : compactRoot.count + 2
             rowSpacing: compactRoot.gap
             columnSpacing: compactRoot.gap

@@ -63,14 +63,14 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
     return null }
   function badges(it, out) {
     for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
-      if (k.objectName === "badge" && k.visible) { var p = k.mapToItem(c, 0, 0)
-        out.push({x: p.x, y: p.y, w: k.width, h: k.height, bg: backdrop(k), color: String(k.color), name: k.Accessible.name}) }
+      if (k.objectName === "badge" && k.visible) { var p = k.mapToItem(c, 0, 0), q = k.mapToItem(c, k.width, k.height)
+        out.push({x2: q.x, y2: q.y, x: p.x, y: p.y, w: k.width, h: k.height, bg: backdrop(k), color: String(k.color), name: k.Accessible.name}) }
       badges(k, out) }
     return out }
   function walk(it, out) {
     for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
-      if (k.objectName === "panelItem") { var p = k.mapToItem(c, 0, 0)
-        out.push({x: p.x, y: p.y, w: k.width, h: k.height, name: k.Accessible.name, desc: k.Accessible.description,
+      if (k.objectName === "panelItem") { var p = k.mapToItem(c, 0, 0), q = k.mapToItem(c, k.width, k.height)
+        out.push({x2: q.x, y2: q.y, x: p.x, y: p.y, w: k.width, h: k.height, name: k.Accessible.name, desc: k.Accessible.description,
                   pct: find(k, "panelPct"), mark: find(k, "panelMark")}) }
       walk(k, out) }
     return out }

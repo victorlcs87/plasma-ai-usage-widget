@@ -122,7 +122,9 @@ var CHAIN = { bar: ["bar", "text", "pill"], text: ["text", "pill"], ring: ["ring
 
 // Estilo e centro realmente usados na espessura `cross`: se o pedido não cabe, degrada (centro -> logo,
 // depois Bar -> Text -> Pílula) em vez de cortar. Na espessura mínima de nenhum, fica o mais compacto.
-function effective(o, cross) {
+// `along` (comprimento disponível, px; 0/ausente = sem limite) e `runFn(o)` (comprimento que a variante pede)
+// fazem o mesmo pela LARGURA (painel horizontal) ou ALTURA (vertical) disponível.
+function effective(o, cross, along, runFn) {
     var cands = [];
     CHAIN[o.style].forEach(function (st) {
         [o.center, "logo"].forEach(function (c) { if (!cands.some(function (x) { return x.style === st && x.center === c; })) cands.push({ style: st, center: c }); });
@@ -131,7 +133,7 @@ function effective(o, cross) {
         var oo = {};
         for (var k in o) oo[k] = o[k];
         oo.style = cands[i].style; oo.center = cands[i].center;
-        if (cross >= minCross(oo)) return cands[i];
+        if (cross >= minCross(oo) && !(along > 0 && runFn && runFn(oo) > along)) return cands[i];
     }
     return cands[cands.length - 1];
 }

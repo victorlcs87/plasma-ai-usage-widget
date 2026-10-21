@@ -341,3 +341,24 @@ def test_auto_margin_uses_small_spacing_until_user_sets_one(tmp_path):
     assert auto["panel"]["margin"] == -1 and auto["pref"][1] == 22 + 2 * 4  # smallSpacing do stub = 4 px
     mine = render(tmp_path / "b", "", one, panel={"panelMargin": 10})
     assert mine["panel"]["margin"] == 10 and mine["pref"][1] == 22 + 2 * 10
+
+
+@needs_qml
+@pytest.mark.parametrize("style", STYLES)
+@pytest.mark.parametrize("vertical", (False, True))
+@pytest.mark.parametrize("along", (110, 160, 220))
+def test_short_length_degrades_or_shrinks_instead_of_overflowing(tmp_path, style, vertical, along):
+    """P2b: com pouca largura (horizontal) ou altura (vertical) disponível, nada vaza da área nem da cápsula."""
+    (tmp_path / "a").mkdir()
+    size = (40, along) if vertical else (along, 40)
+    out = render(tmp_path / "a", f"short_{style}_{'v' if vertical else 'h'}_{along}", THREE, vertical=vertical, invites=3, updates=UPDATES,
+                 panel={"panelStyle": style, "panelMode": "ringpct"}, size=size, extra_cfg=OVERLAY)
+    w, h = out["size"]
+    for it in out["items"] + out["badges"]:
+        assert it["x"] >= -0.5 and it["y"] >= -0.5 and it["x2"] <= w + 0.5 and it["y2"] <= h + 0.5, (it, (w, h))  # x2/y2: canto real (com a escala de último recurso)
+    order = ["bar", "text", "pill"] if style == "bar" else [style, "pill"] if style != "pill" else ["pill"]
+    assert out["style"] in order
+    # preferido segue o pedido (não o degradê por comprimento): o painel pode devolver o espaço depois
+    big = render(tmp_path / "b", "", THREE, vertical=vertical, invites=3, updates=UPDATES, panel={"panelStyle": style, "panelMode": "ringpct"},
+                 size=(40, 600) if vertical else (600, 40), extra_cfg=OVERLAY) if (tmp_path / "b").mkdir() is None else None
+    assert big["style"] == style and out["pref"] == big["pref"]
