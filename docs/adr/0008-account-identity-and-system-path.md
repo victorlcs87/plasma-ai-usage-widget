@@ -23,4 +23,8 @@ Decidimos:
 - **Fusao automatica conservadora:** Contas de mesma identidade so sao fundidas se tambem tiverem o mesmo refresh token; com tokens divergentes ambas permanecem (o usuario remove a duplicata) e nenhuma credencial e sobrescrita.
 - **Sem regressao de tokens:** na pre-troca, se o Perfil Isolado tem `expiresAt` mais novo que a credencial do sistema, o perfil e mantido e a credencial do sistema vai para um `.bak-<timestamp>`.
 - **Credencial do sistema ilegivel:** a migracao da entrada `default` e adiada ate o arquivo voltar a ser legivel; a entrada nao e apagada.
-- **Limitacao residual:** a credencial desconhecida capturada como Conta nova leva a identidade do `~/.claude.json`, que pode estar defasada; os demais achados menores da revisao do ticket 18 devem ser registrados aqui pelo revisor.
+- **Limitacao residual:** a credencial desconhecida capturada como Conta nova leva a identidade do `~/.claude.json`, que pode estar defasada (rotulo e e-mail errados, tokens no perfil certo).
+- **Perfil legado sem `.claude.json`:** nunca recebe identidade. Se os tokens rotacionam, a troca captura os novos como Conta duplicada e A->B->A restaura os tokens velhos (que podem estar revogados); nenhuma credencial se perde, o usuario remove a duplicata.
+- **Relogin gera duplicata:** Contas de mesma identidade com tokens divergentes nao sao fundidas; o casamento escolhe o primeiro candidato, entao a ativa pode aparecer como a Conta antiga.
+- **Identidade defasada e perfil com identidade:** sem rede, tokens de uma conta podem ser aplicados ao perfil indicado pela identidade defasada; o `.bak` guarda o original.
+- **Menores:** a entrada migrada mantem o `id` `default`; rotulo automatico com `subscriptionType` em minusculas nao e reescrito; Codex/Gemini `default` sem backup na troca ate os tickets 19 e 20; `load_config` toma o lock a cada leitura.
