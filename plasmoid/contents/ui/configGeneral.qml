@@ -983,6 +983,7 @@ Item {
                     QQC2.Label {
                         Layout.fillWidth: true
                         elide: Text.ElideRight
+                        textFormat: Text.PlainText
                         text: (modelData.provider || "").toUpperCase() + " · " + (modelData.email || modelData.id)
                     }
 
@@ -1020,6 +1021,7 @@ Item {
                 text: configRoot.orphanPendingDeletion
                     ? configRoot.safeI18n("Excluir definitivamente o perfil '%1' do disco? As credenciais dele serão apagadas.", configRoot.orphanPendingDeletion.id)
                     : ""
+                textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
                 Layout.maximumWidth: Kirigami.Units.gridUnit * 22

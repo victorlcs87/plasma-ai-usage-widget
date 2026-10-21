@@ -12,7 +12,9 @@ from typing import Any
 
 from ai_usage_collector.capture import (
     _CREDENTIAL_FILENAMES,
+    _expires_at,
     _merge_label,
+    _refresh_token,
     _read_json_dict,
     _store_into_profile,
     account_credential_file,
@@ -47,7 +49,8 @@ def list_orphans(config_path: str | Path | None = None) -> list[dict[str, Any]]:
     used = _referenced_dirs(cfg)
     orphans = []
     for d in sorted(base.iterdir()):
-        if not d.is_dir() or d.resolve() in used:
+        # symlink ou resolucao fora de profiles/ nunca e orfao (ADR-0008: reimportar apontaria para fora)
+        if d.is_symlink() or not d.is_dir() or d.resolve().parent != base.resolve() or d.resolve() in used:
             continue
         for prov in SUPPORTED_PROVIDERS:
             f = d / _CREDENTIAL_FILENAMES[prov]
@@ -78,11 +81,17 @@ def reimport_orphan(provider: str, name: str, config_path: str | Path | None = N
         match = next((a for a in accounts if ident and (i := credential_identity(prov, account_credential_file(prov, a))) and i.key == ident.key), None)
         if match is not None:
             creds = _read_json_dict(cred)
+            mfile = account_credential_file(prov, match)
+            replaced = False
             if creds is not None:
-                _store_into_profile(prov, creds, cred, account_credential_file(prov, match))  # nunca regride tokens
+                # conservador (ADR-0008): so substitui com mesmo refresh token ou expiresAt do orfao estritamente maior
+                replaced = _refresh_token(prov, cred) == _refresh_token(prov, mfile) or _expires_at(creds) > _expires_at(_read_json_dict(mfile))
+                if replaced:
+                    _store_into_profile(prov, creds, cred, mfile)
             _merge_label(prov, match, {"name": label, "label": label})
             save_config(cfg, config_path)
-            return True, f"Perfil órfão '{name}' fundido na Conta '{match.get('id')}' (mesma identidade). O perfil órfão não foi apagado."
+            tokens = "tokens do perfil substituídos (anterior em .bak)" if replaced else "tokens do perfil mantidos"
+            return True, f"Perfil órfão '{name}' fundido na Conta '{match.get('id')}' (mesma identidade); {tokens}. O perfil órfão não foi apagado."
 
         entry = {
             "id": generate_account_slug(name, {str(a.get("id")) for a in accounts}),

@@ -185,7 +185,11 @@ def collect_and_save(
         else:
             status_payload["agents"][agent_id]["status"] = "not_configured"
 
-    status_payload["orphan_profiles"] = list_orphans(config_path)
+    try:
+        status_payload["orphan_profiles"] = list_orphans(config_path)
+    except OSError as e:  # Perfis Orfaos sao opcionais; nunca impedem o status
+        sys.stderr.write(f"Aviso: Perfis Orfaos nao listados: {e}\n")
+        status_payload["orphan_profiles"] = []
 
     try:
         apply_token_history(status_payload, config, cache_path, now_dt)

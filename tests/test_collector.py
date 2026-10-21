@@ -188,3 +188,16 @@ def test_collector_consolidates_all_three_providers_simultaneously(tmp_path):
     ge_acc = agents["gemini"]["accounts"][0]
     assert ge_acc["native_window"]["type"] == "daily"
     assert ge_acc["native_window"]["used_capacity"] == 1
+
+
+def test_orphan_listing_io_failure_does_not_break_status(tmp_path, monkeypatch):  # B3
+    import ai_usage_collector.collector as col
+
+    def boom(_):
+        raise PermissionError("x")
+
+    monkeypatch.setattr(col, "list_orphans", boom)
+    cfg = tmp_path / "config.json"
+    cfg.write_text('{"agents": {}}')
+    status = collect_and_save(config_path=str(cfg), cache_path=str(tmp_path / "s.json"))
+    assert status["orphan_profiles"] == []

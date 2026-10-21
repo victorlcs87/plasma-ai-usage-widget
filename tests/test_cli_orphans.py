@@ -91,3 +91,26 @@ def test_refresh_never_deletes_orphans(tmp_path):
     d = make_profile(profiles, "claude-a", "a@x.com", "uuid-a")
     run(cfg, cache, "--refresh")
     assert d.exists()
+
+
+def test_symlink_or_outside_profile_is_not_orphan(tmp_path, capsys):  # M1
+    cfg, profiles, cache = setup(tmp_path)
+    outside = tmp_path / "outside"
+    outside.mkdir()
+    (outside / ".credentials.json").write_text("{}")
+    profiles.mkdir()
+    (profiles / "link").symlink_to(outside)
+    run(cfg, cache, "--list-orphans")
+    assert json.loads(capsys.readouterr().out) == []
+
+
+def test_merge_keeps_tokens_when_refresh_differs_and_orphan_not_newer(tmp_path, capsys):  # M2
+    cfg, profiles, cache = setup(tmp_path)
+    keep = make_profile(profiles, "claude-keep", "a@x.com", "uuid-a", refresh="old")
+    c = json.loads(cfg.read_text())
+    c["agents"]["claude"]["accounts"].append({"id": "claude-keep", "label": "K", "name": "K", "credential_path": str(keep / ".credentials.json"), "claude_dir": str(keep)})
+    cfg.write_text(json.dumps(c))
+    make_profile(profiles, "claude-dup", "a@x.com", "uuid-a", refresh="new")
+    run(cfg, cache, "--reimport-orphan", "claude", "claude-dup")
+    assert "mantidos" in capsys.readouterr().out
+    assert json.loads((keep / ".credentials.json").read_text())["claudeAiOauth"]["refreshToken"] == "old"

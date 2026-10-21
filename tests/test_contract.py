@@ -251,3 +251,13 @@ def test_window_type_from_seconds_weekly_and_short():
     assert window_type_from_seconds(30) == "30s"
     assert window_type_from_seconds(90) == "90s"
 
+
+
+def test_orphan_profiles_must_be_list_of_dicts():  # B4
+    c = build_empty_status_contract()
+    c["orphan_profiles"] = [{"id": "x"}]
+    assert validate_status_contract(c)
+    c["orphan_profiles"] = "x"
+    assert not validate_status_contract(c)
+    c["orphan_profiles"] = ["x"]
+    assert not validate_status_contract(c)

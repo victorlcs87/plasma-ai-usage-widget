@@ -197,6 +197,10 @@ def validate_status_contract(data: Any) -> bool:
     if not isinstance(agents, dict):
         return False
 
+    orphans = data.get("orphan_profiles")
+    if orphans is not None and not (isinstance(orphans, list) and all(isinstance(o, dict) for o in orphans)):
+        return False
+
     for required_agent in ["claude", "codex", "gemini"]:
         if required_agent not in agents:
             return False

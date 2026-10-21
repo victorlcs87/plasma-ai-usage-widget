@@ -28,3 +28,7 @@ Decidimos:
 - **Relogin gera duplicata:** Contas de mesma identidade com tokens divergentes nao sao fundidas; o casamento escolhe o primeiro candidato, entao a ativa pode aparecer como a Conta antiga.
 - **Identidade defasada e perfil com identidade:** sem rede, tokens de uma conta podem ser aplicados ao perfil indicado pela identidade defasada; o `.bak` guarda o original.
 - **Menores:** a entrada migrada mantem o `id` `default`; rotulo automatico com `subscriptionType` em minusculas nao e reescrito; Codex/Gemini `default` sem backup na troca ate os tickets 19 e 20; `load_config` toma o lock a cada leitura.
+- **Perfis Orfaos (ticket 21):** diretorio symlink ou que resolve fora de `profiles/` nunca e listado como orfao (reimportar apontaria uma Conta para fora, ex.: `~/.claude`). A fusao por identidade so substitui tokens da Conta se o refresh token for igual ou o `expiresAt` do orfao for estritamente maior; a CLI informa se foram substituidos (anterior em `.bak`) ou mantidos.
+- **Config apagado:** se o `config.json` for apagado, todos os Perfis Isolados viram orfaos; por isso excluir exige `--confirm`.
+- **`_referenced_dirs`:** considera so o diretorio de `credential_path` de cada Conta; um `<provider>_dir` divergente nao conta como referencia.
+- **Nome iniciando em `-`:** perfil cujo nome comeca com `-` nao e gerenciavel pela CLI (e lido como opcao); falha fechada, nada e apagado.
