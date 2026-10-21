@@ -96,8 +96,8 @@ Item {
     Keys.onEscapePressed: closePopup()
 
     Accessible.role: Accessible.Button
-    Accessible.name: compactRoot.marker ? I18n.tr("AI monitor: floating Notch active. Activate to open")
-        : compactRoot.idle ? I18n.tr("AI monitor hidden: no CLI running. Activate to open")
+    Accessible.name: compactRoot.idle && !compactRoot.marker ? I18n.tr("AI monitor hidden: no CLI running. Activate to open")
+        : compactRoot.marker ? I18n.tr("AI monitor: floating Notch active. Activate to open")
         : (compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : "")
     Accessible.description: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipSubText : ""
     Accessible.onPressAction: toggle()

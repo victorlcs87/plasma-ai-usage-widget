@@ -249,7 +249,10 @@ def run_floating(tmp_path, scenarios, layer=False, drive="", break_layer=False):
     assert line, out
     bad = [l for l in res.stderr.splitlines() if "TypeError" in l or "ReferenceError" in l or "Unable to assign" in l]
     assert not bad, bad[:3]
-    return json.loads(line.split("RESULT ", 1)[1])
+    result = json.loads(line.split("RESULT ", 1)[1])
+    if png_dir:
+        (Path(png_dir) / f"_{scenarios[0]['name']}.json").write_text(json.dumps({"scenarios": scenarios, "result": result}))
+    return result
 
 
 def sc(name, edge, size=100, off=0, screen=(1280, 720), open=True, **extra):
@@ -332,3 +335,19 @@ def test_keyboard_and_pointer_reach_the_shared_pill(tmp_path):
     """
     out = run_floating(tmp_path, [{"name": "keys", "cfg": {"floatingNotch": True, "floatEdge": "bottom"}, "screen": [1280, 720], "open": False}], drive=drive)
     assert "click" in out["calls"]  # o clique chega ao mesmo pillClicked do painel (abre/fixa/solta do ticket 34)
+
+
+@needs_qml
+def test_visual_matrix_sizes_small_screens_and_far_offsets(tmp_path):
+    """Tamanhos mínimo/máximo, telas pequenas e deslocamentos extremos: tudo sempre dentro da tela (PNGs em AIU_PNG_DIR)."""
+    scenarios = []
+    for e in EDGES:
+        scenarios += [sc(f"min_{e}", e, size=80), sc(f"max_{e}", e, size=160, off=-200), sc(f"small_{e}", e, screen=(480, 360), off=99999),
+                      sc(f"closed_{e}", e, off=300, open=False)]
+    out = run_floating(tmp_path, scenarios)
+    for s in scenarios:
+        r, (sw, sh) = out[s["name"]], s["screen"]
+        p, q = r["pill"], r["popup"]
+        assert p["x"] >= 0 and p["y"] >= 0 and p["x"] + p["w"] <= sw and p["y"] + p["h"] <= sh, (s["name"], p)
+        assert q["x"] >= 0 and q["y"] >= 0 and q["x"] + q["w"] <= sw and q["y"] + q["h"] <= sh, (s["name"], q)
+        assert r["qw"]["visible"] is bool(s["open"])

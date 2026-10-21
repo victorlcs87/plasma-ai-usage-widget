@@ -178,11 +178,11 @@ msgid "Copy invite link to the clipboard"
 msgstr ""
 
 #: contents/ui/CompactRepresentation.qml:99
-msgid "AI monitor: floating Notch active. Activate to open"
+msgid "AI monitor hidden: no CLI running. Activate to open"
 msgstr ""
 
 #: contents/ui/CompactRepresentation.qml:100
-msgid "AI monitor hidden: no CLI running. Activate to open"
+msgid "AI monitor: floating Notch active. Activate to open"
 msgstr ""
 
 #: contents/ui/CompactRepresentation.qml:192 contents/ui/NotchModel.js:233

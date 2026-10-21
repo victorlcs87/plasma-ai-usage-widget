@@ -178,12 +178,12 @@ msgid "Copy invite link to the clipboard"
 msgstr "Copiar link de convite para a Área de Transferência"
 
 #: contents/ui/CompactRepresentation.qml:99
-msgid "AI monitor: floating Notch active. Activate to open"
-msgstr "Monitor de IA: Notch flutuante ativo. Ative para abrir"
-
-#: contents/ui/CompactRepresentation.qml:100
 msgid "AI monitor hidden: no CLI running. Activate to open"
 msgstr "Monitor de IA oculto: nenhuma CLI em execução. Ative para abrir"
+
+#: contents/ui/CompactRepresentation.qml:100
+msgid "AI monitor: floating Notch active. Activate to open"
+msgstr "Monitor de IA: Notch flutuante ativo. Ative para abrir"
 
 #: contents/ui/CompactRepresentation.qml:192 contents/ui/NotchModel.js:233
 msgid "Session expired"

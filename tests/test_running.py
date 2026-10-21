@@ -324,7 +324,7 @@ def test_plasmoid_wiring_and_recovery_path():
     main, compact, config = ((UI / n).read_text() for n in ("main.qml", "CompactRepresentation.qml", "configGeneral.qml"))
     assert "Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus" in main
     assert "HiddenStatus" not in main  # Hidden removeria a via de volta; Passive mantem o widget alcancavel
-    assert "!root.expanded && !Plasmoid.userConfiguring" in main  # abrir popup/configuracao sempre mostra
+    assert "!root.open && !Plasmoid.userConfiguring" in main  # abrir popup/configuracao sempre mostra
     assert '"--detect-running"' in main and 'NotchModel.hideMode(root.statusData) !== "off"' in main
     assert "sliver" in compact and "MouseArea" in compact  # no painel resta um alvo para o botao direito
     assert "Date.now()" in main and "nowMs" in main and "root.nowMs = Date.now();  // antes da chamada" in main
