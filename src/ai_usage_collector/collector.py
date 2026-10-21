@@ -9,6 +9,7 @@ from typing import Any
 
 from datetime import datetime, timezone
 
+from ai_usage_collector import refresh
 from ai_usage_collector.orphans import list_orphans
 from ai_usage_collector.capture import (
     find_matching_account,
@@ -37,6 +38,7 @@ from ai_usage_collector.contract import (
     get_current_iso_timestamp,
 )
 from ai_usage_collector.discovery import discover_account
+from ai_usage_collector.identity import credential_identity
 from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.limit_changes import apply_limit_changes
 from ai_usage_collector.extractors import (
@@ -84,15 +86,47 @@ def collect_and_save(
     config_path: str | Path | None = None,
     cache_path: str | Path | None = None,
     now: datetime | None = None,
+    providers: list[str] | None = None,
+    intervals: dict[str, int] | None = None,
 ) -> dict[str, Any]:
-    """Execute on-demand collection and write canonical status.json."""
+    """Collect and write canonical status.json (ADR-0007).
+
+    `providers` limits the collection; the others are kept from the previous status.json.
+    `intervals` (seconds per provider) defines each account's next check.
+    """
+    cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    now_dt = now or refresh.utcnow()
+    with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc)
+        save_status_cache(status_payload, cache_file)
+    return status_payload
+
+
+def _collect(
+    config_path: str | Path | None,
+    cache_file: Path,
+    now_dt: datetime,
+    providers: list[str] | None,
+    intervals: dict[str, int],
+    cyc: refresh.RefreshCycle,
+) -> dict[str, Any]:
     config = load_config(config_path)
-    now_dt = now or datetime.now(timezone.utc)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
+    previous_status = load_status_cache(cache_file)
+    previous_agents = (previous_status or {}).get("agents") or {}
 
     agents_to_collect = ["claude", "codex", "gemini"]
 
     for agent_id in agents_to_collect:
+        if providers and agent_id not in providers and isinstance(previous_agents.get(agent_id), dict):
+            status_payload["agents"][agent_id] = previous_agents[agent_id]
+            continue
+        previous_accounts = {
+            str(a.get("id")): a
+            for a in (previous_agents.get(agent_id) or {}).get("accounts") or []
+            if isinstance(a, dict)
+        }
+        interval = intervals.get(agent_id, refresh.DEFAULT_INTERVAL_SECONDS)
         accounts = get_accounts_for_agent(config, agent_id)
         account_statuses: list[dict[str, Any]] = []
 
@@ -118,6 +152,7 @@ def collect_and_save(
             manual_invite = acc.get("manual_invite_url")
             manual_invite_count = acc.get("manual_invite_count")
 
+            cyc.begin_account(agent_id, str(acc_id))
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None
@@ -171,9 +206,16 @@ def collect_and_save(
                 is_active=is_active,
                 usage_details=usage_details,
             )
+            outcome = cyc.take_outcome()
+            identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
+            refresh.apply_outcome(
+                acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
+                identity_key=identity.key if identity else None,
+            )
             account_statuses.append(acc_status)
 
         status_payload["agents"][agent_id]["accounts"] = account_statuses
+        refresh.summarize_agent(status_payload["agents"][agent_id])
         if account_statuses:
             if agent_has_valid_account:
                 status_payload["agents"][agent_id]["status"] = "ok"
@@ -196,17 +238,15 @@ def collect_and_save(
         status_payload["orphan_profiles"] = []
 
     try:
-        apply_token_history(status_payload, config, cache_path, now_dt)
+        apply_token_history(status_payload, config, cache_file, now_dt)
     except Exception as e:  # Historico de Tokens e opcional; nunca impede o status
         sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
 
     try:
-        apply_limit_changes(status_payload, load_status_cache(cache_path), now_dt)
+        apply_limit_changes(status_payload, previous_status, now_dt)
     except Exception as e:  # nota de mudanca de limites e opcional; nunca impede o status
         sys.stderr.write(f"Aviso: Nota de mudanca de limites nao atualizada: {e}\n")
 
-    # Save to disk
-    save_status_cache(status_payload, cache_path)
     return status_payload
 
 
@@ -289,6 +329,15 @@ def remove_account(
     if not cfg_file.exists():
         return False, f"Arquivo de configuração não encontrado: {cfg_file}"
 
+    c_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    # Mesmo lock do ciclo de coleta: um ciclo em andamento nao regrava a conta removida
+    with refresh.status_lock(c_file.with_name(refresh.STATE_FILENAME)):
+        return _remove_account_locked(prov, acc_id, account_id, provider, cfg_file, c_file)
+
+
+def _remove_account_locked(
+    prov: str, acc_id: str, account_id: str, provider: str, cfg_file: Path, c_file: Path
+) -> tuple[bool, str]:
     with config_lock(cfg_file):  # read-modify-write sob o lock
         try:
             config_data = load_config(cfg_file)
@@ -303,7 +352,7 @@ def remove_account(
         save_config(updated_cfg, cfg_file)
 
     # Sync cache if exists
-    c_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    refresh.forget_account(c_file.with_name(refresh.STATE_FILENAME), prov, acc_id)
     if c_file.exists():
         cache_data = load_status_cache(c_file)
         if cache_data is not None:

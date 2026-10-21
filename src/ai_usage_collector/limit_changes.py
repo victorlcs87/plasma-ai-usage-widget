@@ -47,7 +47,8 @@ def _account_changes(old: Any, acc: dict[str, Any], now: datetime) -> list[dict[
         if isinstance(c, dict) and (exp := _parse(c.get("expires_at"))) and exp > now
     ]
     # Sem dado valido de um dos lados, ausencia de janela nao e mudanca de limite
-    if (old.get("health") or {}).get("status") == "valid" and acc["health"].get("status") == "valid":
+    # Leitura desatualizada (cache servido apos falha) nunca gera nota
+    if not acc.get("stale") and (old.get("health") or {}).get("status") == "valid" and acc["health"].get("status") == "valid":
         for name, field in (("native", "native_window"), ("weekly", "weekly_window")):
             if kind := _detect(name, old.get(field) or {}, acc[field], now):
                 # Uma nota por (janela, tipo): a repeticao renova a validade em vez de duplicar

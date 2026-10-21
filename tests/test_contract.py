@@ -16,7 +16,7 @@ def test_agent_native_windows_definition():
 
 def test_build_empty_status_contract():
     contract = build_empty_status_contract()
-    assert contract["version"] == 3
+    assert contract["version"] == 4
     assert "last_updated" in contract
     assert contract["status"] == "ok"
     assert "agents" in contract
@@ -207,7 +207,7 @@ def test_elapsed_fraction_unknown_or_clamped():
 
 def test_older_contract_versions_remain_valid():
     status = build_empty_status_contract()
-    for version in (1, 2, 3):
+    for version in (1, 2, 3, 4):
         status["version"] = version
         assert validate_status_contract(status) is True
     status["version"] = 99

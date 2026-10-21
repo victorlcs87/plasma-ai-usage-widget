@@ -21,9 +21,11 @@ from ai_usage_collector.collector import (
 from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
+    SUPPORTED_PROVIDERS,
     load_config,
     set_provider_settings,
 )
+from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
 from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
 
@@ -32,7 +34,7 @@ def build_parser() -> argparse.ArgumentParser:
     """Build command line argument parser."""
     parser = argparse.ArgumentParser(
         prog="ai-usage-collector",
-        description="Coletor sob demanda de métricas de uso e cotas de agentes de IA para KDE Plasma 6",
+        description="Coletor de métricas de uso e cotas de agentes de IA para KDE Plasma 6",
     )
     parser.add_argument(
         "-v", "--version",
@@ -42,7 +44,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--refresh",
         action="store_true",
-        help="Executa a coleta sob demanda e atualiza o arquivo de status",
+        help="Executa a coleta (respeitando pausas do provedor) e atualiza o arquivo de status",
     )
     parser.add_argument(
         "--status",
@@ -141,7 +143,13 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--provider",
         type=str,
-        help="Provedor da conta ('claude', 'codex', 'gemini')",
+        help="Provedor da conta ('claude', 'codex', 'gemini'); com --refresh, lista separada por vírgula dos provedores a atualizar",
+    )
+    parser.add_argument(
+        "--refresh-interval",
+        action="append",
+        metavar="PROVIDER=SECONDS",
+        help="Intervalo de Atualização do provedor em segundos (mínimo 60, padrão 300); pode repetir",
     )
     parser.add_argument(
         "--label",
@@ -410,7 +418,22 @@ def main(argv: Sequence[str] | None = None) -> int:
         status_data = None
 
         if should_refresh:
-            status_data = collect_and_save(config_path=config_path, cache_path=cache_path)
+            providers = [p.strip().lower() for p in (args.provider or "").split(",") if p.strip()]
+            invalid = [p for p in providers if p not in SUPPORTED_PROVIDERS]
+            if invalid:
+                sys.stderr.write(f"Erro: Provedor inválido: {', '.join(invalid)}\n")
+                return 2
+            try:
+                intervals = parse_intervals(args.refresh_interval)
+            except ValueError as e:
+                sys.stderr.write(f"Erro: {e}\n")
+                return 2
+            status_data = collect_and_save(
+                config_path=config_path,
+                cache_path=cache_path,
+                providers=providers or None,
+                intervals=intervals,
+            )
 
         if should_output_status:
             if status_data is None:

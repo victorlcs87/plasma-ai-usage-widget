@@ -1,3 +1,6 @@
+import urllib.error
+import urllib.request
+
 import pytest
 
 
@@ -14,3 +17,13 @@ def _isolate_system_log_dirs(tmp_path, monkeypatch):
     monkeypatch.setenv("CODEX_HOME", str(tmp_path / "_sys_codex"))
     # Caminhos padrao sao resolvidos na importacao (antes do HOME isolado).
     monkeypatch.setattr("ai_usage_collector.history.DEFAULT_CACHE_DIR", tmp_path / "_cache")
+
+
+@pytest.fixture(autouse=True)
+def _block_real_network(monkeypatch):
+    """Nenhum teste consulta APIs reais; testes que precisam de HTTP simulam urlopen."""
+    def _offline(*_args, **_kwargs):
+        raise urllib.error.URLError("rede bloqueada nos testes")
+
+    monkeypatch.setattr(urllib.request, "urlopen", _offline)
+    monkeypatch.setattr(urllib.request.OpenerDirector, "open", _offline)

@@ -15,6 +15,11 @@ Item {
     implicitWidth: Kirigami.Units.gridUnit * 32
     implicitHeight: Kirigami.Units.gridUnit * 28
 
+    // Intervalo de Atualização por provedor (KConfigXT, main.xml)
+    property int cfg_refreshIntervalClaude: 300
+    property int cfg_refreshIntervalCodex: 300
+    property int cfg_refreshIntervalGemini: 300
+
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
@@ -536,6 +541,43 @@ Item {
             repeat: false
             onTriggered: {
                 configRoot.statusMessage = "";
+            }
+        }
+
+        // Intervalo de Atualização por provedor (mínimo de 60 s)
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Atualizar a cada (s):")
+            }
+
+            Repeater {
+                model: [
+                    { key: "cfg_refreshIntervalClaude", name: "Claude" },
+                    { key: "cfg_refreshIntervalCodex", name: "Codex" },
+                    { key: "cfg_refreshIntervalGemini", name: "Gemini" }
+                ]
+                delegate: RowLayout {
+                    required property var modelData
+                    spacing: Kirigami.Units.smallSpacing
+
+                    QQC2.Label {
+                        text: modelData.name
+                    }
+
+                    QQC2.SpinBox {
+                        from: 60
+                        to: 86400
+                        stepSize: 60
+                        editable: true
+                        value: configRoot[modelData.key]
+                        onValueModified: configRoot[modelData.key] = value
+                        QQC2.ToolTip.text: configRoot.safeI18n("Intervalo de Atualização do %1 em segundos (mínimo 60)", modelData.name)
+                        QQC2.ToolTip.visible: hovered
+                    }
+                }
             }
         }
 

@@ -5,7 +5,7 @@ from datetime import datetime, timedelta, timezone
 
 import pytest
 
-from ai_usage_collector import collector
+from ai_usage_collector import collector, refresh
 from ai_usage_collector.cli import main
 from ai_usage_collector.config import save_config
 from ai_usage_collector.contract import validate_status_contract
@@ -40,6 +40,7 @@ def env(tmp_path, monkeypatch):
             return clock["now"]
 
     monkeypatch.setattr(collector, "datetime", FakeDatetime)
+    monkeypatch.setattr(refresh, "utcnow", lambda: clock["now"])
 
     def run(now=T0, **changes):
         state.update(changes)
