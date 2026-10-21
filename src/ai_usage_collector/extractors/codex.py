@@ -470,6 +470,8 @@ def extract_codex_status(
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
+    native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+
     # Attempt primary official API usage route
     api_data = None
     if access_token and health.get("status") == "valid":
@@ -482,6 +484,8 @@ def extract_codex_status(
         if not secondary and codex_window_seconds(primary) == CODEX_7D_SECONDS:
             # A single 7-day window is the weekly limit, not a Native Window
             primary, secondary = {}, primary
+        native_source = "api" if primary else "api_missing"
+        weekly_source = "api" if secondary else "api_missing"
         native_window_seconds = codex_window_seconds(primary) or native_window_seconds
         weekly_window_seconds = codex_window_seconds(secondary) or weekly_window_seconds
 
@@ -547,6 +551,7 @@ def extract_codex_status(
 
     native_window = {
         "type": window_type_from_seconds(native_window_seconds),
+        "source": native_source,
         "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
         "used_capacity": used_3h,
@@ -566,6 +571,7 @@ def extract_codex_status(
         "usage_percentage": weekly_usage_percentage,
         "messages_used": used_7d,
         "tokens_used": 0,
+        "source": weekly_source,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
         "window_seconds": weekly_window_seconds,

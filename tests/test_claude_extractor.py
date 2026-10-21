@@ -611,3 +611,21 @@ def test_extract_claude_status_fallback_when_api_fails(tmp_path):
     assert nw["window_seconds"] == 5 * 3600
     assert ww["window_seconds"] == 7 * 86400
 
+
+
+def test_claude_windows_carry_source_marker(tmp_path):
+    """A origem da leitura (api / api_missing / local) alimenta a nota de mudanca de limites."""
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {"accessToken": "sk-ant-live"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "claude", "claude_dir": str(claude_dir)}
+    five_only = {"five_hour": {"utilization": 1.0, "resets_at": "2026-10-20T18:00:00Z"}, "seven_day": None}
+
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=five_only):
+        res = extract_claude_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("api", "api_missing")
+
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=None):
+        res = extract_claude_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("local", "local")

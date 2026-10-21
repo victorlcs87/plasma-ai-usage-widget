@@ -223,6 +223,9 @@ def validate_status_contract(data: Any) -> bool:
                 return False
             if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False
+            lc = acc.get("limit_changes")
+            if lc is not None and not (isinstance(lc, list) and all(isinstance(c, dict) for c in lc)):
+                return False
 
             ww = acc.get("weekly_window")
             if not isinstance(ww, dict):

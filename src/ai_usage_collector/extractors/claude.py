@@ -512,6 +512,8 @@ def extract_claude_status(
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
+    native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+
     # Attempt primary official API usage route
     api_data = None
     if access_token and health.get("status") in ("valid", "session_expired"):
@@ -520,6 +522,8 @@ def extract_claude_status(
     if api_data and (isinstance(api_data.get("five_hour"), dict) or isinstance(api_data.get("seven_day"), dict)):
         five_hour_info = api_data.get("five_hour") or {}
         seven_day_info = api_data.get("seven_day") or {}
+        native_source = "api" if five_hour_info else "api_missing"
+        weekly_source = "api" if seven_day_info else "api_missing"
 
         # 5h window from official API
         util_5h = five_hour_info.get("utilization")
@@ -562,6 +566,7 @@ def extract_claude_status(
 
     native_window = {
         "type": "5h",
+        "source": native_source,
         # The usage API has no duration field: it is deduced from the five_hour/seven_day bucket names
         "window_seconds": CLAUDE_5H_SECONDS,
         "total_capacity": total_capacity,
@@ -575,6 +580,7 @@ def extract_claude_status(
     }
 
     weekly_window = {
+        "source": weekly_source,
         "total_tokens_or_turns": None,
         "total_capacity": weekly_total_capacity,
         "used_capacity": weekly_used_capacity,

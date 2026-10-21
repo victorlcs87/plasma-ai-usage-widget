@@ -606,6 +606,8 @@ def extract_gemini_status(
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
+    native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+
     # Attempt primary official API usage route
     api_data = None
     if token:
@@ -636,6 +638,8 @@ def extract_gemini_status(
         health["metadata"] = metadata
 
         bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data)
+        native_source = "api" if bucket_5h else "api_missing"
+        weekly_source = "api" if bucket_weekly else "api_missing"
 
         # 5h window from official API
         if bucket_5h and bucket_5h.get("remainingFraction") is not None:
@@ -702,6 +706,7 @@ def extract_gemini_status(
 
     native_window = {
         "type": window_type_from_seconds(native_window_seconds),
+        "source": native_source,
         "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
         "used_capacity": used_daily,
@@ -721,6 +726,7 @@ def extract_gemini_status(
         "usage_percentage": weekly_usage_percentage,
         "messages_used": used_7d,
         "tokens_used": 0,
+        "source": weekly_source,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
         "window_seconds": weekly_window_seconds,

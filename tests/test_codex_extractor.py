@@ -678,3 +678,21 @@ def test_codex_single_weekly_primary_window_becomes_weekly(tmp_path):
     assert ww["usage_percentage"] == 40.0
     assert ww["cycle_reset_time"] == "2026-10-25T12:00:00+00:00"
     assert res["native_window"]["type"] == "3h"  # sem janela curta informada: fallback
+
+
+def test_codex_windows_carry_source_marker(tmp_path):
+    """A origem da leitura (api / api_missing / local) alimenta a nota de mudanca de limites."""
+    codex_dir = tmp_path / ".codex"
+    codex_dir.mkdir()
+    (codex_dir / "auth.json").write_text(json.dumps({"tokens": {"access_token": "tok"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "codex", "codex_dir": str(codex_dir)}
+    primary_only = {"rate_limit": {"primary_window": {"used_percent": 1.0, "limit_window_seconds": 18000}}}
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=primary_only):
+        res = extract_codex_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("api", "api_missing")
+
+    with patch("ai_usage_collector.extractors.codex.fetch_codex_usage_api", return_value=None):
+        res = extract_codex_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("local", "local")

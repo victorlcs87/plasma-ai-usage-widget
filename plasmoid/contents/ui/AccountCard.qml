@@ -704,7 +704,8 @@ Kirigami.AbstractCard {
             visible: text.length > 0
             text: cardRoot.limitChangeText(cardRoot.accountData?.limit_changes)
             wrapMode: Text.WordWrap
-            color: "#f39c12"
+            textFormat: Text.PlainText
+            color: Kirigami.Theme.neutralTextColor
             font.pointSize: Kirigami.Theme.smallFont.pointSize
         }
 
