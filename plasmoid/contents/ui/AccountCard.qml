@@ -328,6 +328,40 @@ Kirigami.AbstractCard {
         }
     }
 
+    // Nível de alerta calculado pelo coletor (normal/warning/critical); sem nível, cai nos limiares fixos
+    function levelColor(level, percentage) {
+        if (level === "critical") return Kirigami.Theme.negativeTextColor;
+        if (level === "warning") return Kirigami.Theme.neutralTextColor;
+        if (level === "normal") return Kirigami.Theme.positiveTextColor;
+        return getUsageColor(percentage);
+    }
+
+    // Texto e ícone do nível: o alerta nunca depende só da cor
+    function levelText(level) {
+        if (level === "critical") return safeI18n("Crítico");
+        if (level === "warning") return safeI18n("Atenção");
+        return "";
+    }
+
+    function levelIcon(level) {
+        return level === "critical" ? "dialog-error" : "dialog-warning";
+    }
+
+    // Previsão de Esgotamento do coletor; vazio quando não há previsão confiável
+    function forecastText(win) {
+        var fc = win?.forecast;
+        if (cardRoot.isStale || cardRoot.hasNoData || !fc) return "";
+        if (!fc.exhausts_at) return safeI18n("Sem esgotamento previsto");
+        var sec = fc.seconds_until;
+        var when = sec <= 0 ? safeI18n("agora")
+            : sec >= 86400 ? safeI18n("%1d %2h", Math.floor(sec / 86400), Math.floor((sec % 86400) / 3600))
+            : sec >= 3600 ? safeI18n("%1h %2min", Math.floor(sec / 3600), Math.floor((sec % 3600) / 60))
+            : safeI18n("%1 min", Math.max(1, Math.round(sec / 60)));
+        var at = formatTime(fc.exhausts_at);
+        var text = at.length > 0 && fc.seconds_until > 0 ? safeI18n("Esgota em %1 (%2)", when, at) : safeI18n("Esgota %1", when);
+        return fc.before_release ? text : safeI18n("%1, após a liberação", text);
+    }
+
     function getProviderColor(provider) {
         switch ((provider || "").toLowerCase()) {
         case "claude":
@@ -510,13 +544,36 @@ Kirigami.AbstractCard {
 
                 Item { Layout.fillWidth: true }
 
+                // Nível de alerta em texto e ícone (além da cor)
+                RowLayout {
+                    id: nativeLevelIndicator
+                    readonly property string level: cardRoot.accountData?.native_window?.alert_level || ""
+                    visible: !cardRoot.nativeUnknown && !cardRoot.isStale && (level === "warning" || level === "critical")
+                    spacing: Math.round(Kirigami.Units.smallSpacing / 2)
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: cardRoot.levelText(level)
+
+                    Kirigami.Icon {
+                        source: cardRoot.levelIcon(nativeLevelIndicator.level)
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        color: cardRoot.levelColor(nativeLevelIndicator.level, 0)
+                    }
+                    QQC2.Label {
+                        text: cardRoot.levelText(nativeLevelIndicator.level)
+                        textFormat: Text.PlainText
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        color: cardRoot.levelColor(nativeLevelIndicator.level, 0)
+                    }
+                }
+
                 QQC2.Label {
                     id: activeWindowPercentageLabel
                     property double pct: cardRoot.accountData?.native_window?.usage_percentage || 0.0
                     text: cardRoot.nativeUnknown ? "—" : cardRoot.formatPercentage(pct)
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
-                    color: cardRoot.getUsageColor(pct)
+                    color: cardRoot.levelColor(cardRoot.accountData?.native_window?.alert_level, pct)
 
                     QQC2.ToolTip.visible: activePctMouseArea.containsMouse
                     QQC2.ToolTip.text: cardRoot.safeI18n("%1% consumido da cota horária/ativa", pct.toFixed(1))
@@ -552,7 +609,7 @@ Kirigami.AbstractCard {
                         width: Math.min(parent.width, Math.max(0, nativeProgressBar.visualPosition * parent.width))
                         height: parent.height
                         radius: 3
-                        color: cardRoot.getUsageColor(cardRoot.accountData?.native_window?.usage_percentage || 0.0)
+                        color: cardRoot.levelColor(cardRoot.accountData?.native_window?.alert_level, cardRoot.accountData?.native_window?.usage_percentage || 0.0)
                     }
                     // Marca de tempo decorrido da Janela Nativa
                     Rectangle {
@@ -614,6 +671,18 @@ Kirigami.AbstractCard {
                     }
                 }
             }
+
+            // Previsão de Esgotamento (somente com amostras confiáveis)
+            QQC2.Label {
+                id: nativeForecastLabel
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: cardRoot.forecastText(cardRoot.accountData?.native_window)
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                color: cardRoot.accountData?.native_window?.forecast?.before_release ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.disabledTextColor
+            }
         }
 
         // ==========================================
@@ -638,6 +707,29 @@ Kirigami.AbstractCard {
 
                 Item { Layout.fillWidth: true }
 
+                // Nível de alerta em texto e ícone (além da cor)
+                RowLayout {
+                    id: weeklyLevelIndicator
+                    readonly property string level: cardRoot.accountData?.weekly_window?.alert_level || ""
+                    visible: !cardRoot.weeklyUnknown && !cardRoot.isStale && (level === "warning" || level === "critical")
+                    spacing: Math.round(Kirigami.Units.smallSpacing / 2)
+                    Accessible.role: Accessible.StaticText
+                    Accessible.name: cardRoot.levelText(level)
+
+                    Kirigami.Icon {
+                        source: cardRoot.levelIcon(weeklyLevelIndicator.level)
+                        implicitWidth: Kirigami.Units.iconSizes.small
+                        implicitHeight: Kirigami.Units.iconSizes.small
+                        color: cardRoot.levelColor(weeklyLevelIndicator.level, 0)
+                    }
+                    QQC2.Label {
+                        text: cardRoot.levelText(weeklyLevelIndicator.level)
+                        textFormat: Text.PlainText
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        color: cardRoot.levelColor(weeklyLevelIndicator.level, 0)
+                    }
+                }
+
                 QQC2.Label {
                     id: weeklyWindowPercentageLabel
                     property double weeklyPct: (cardRoot.accountData?.weekly_window?.usage_percentage !== undefined && cardRoot.accountData?.weekly_window?.usage_percentage !== null)
@@ -646,7 +738,7 @@ Kirigami.AbstractCard {
                     text: cardRoot.weeklyUnknown ? "—" : cardRoot.formatPercentage(weeklyPct)
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
-                    color: cardRoot.getUsageColor(weeklyPct)
+                    color: cardRoot.levelColor(cardRoot.accountData?.weekly_window?.alert_level, weeklyPct)
 
                     QQC2.ToolTip.visible: weeklyPctMouseArea.containsMouse
                     QQC2.ToolTip.text: cardRoot.safeI18n("%1% consumido da cota semanal", weeklyPct.toFixed(1))
@@ -682,7 +774,7 @@ Kirigami.AbstractCard {
                         width: Math.min(parent.width, Math.max(0, weeklyProgressBar.visualPosition * parent.width))
                         height: parent.height
                         radius: 3
-                        color: cardRoot.getUsageColor(cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0)
+                        color: cardRoot.levelColor(cardRoot.accountData?.weekly_window?.alert_level, cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0)
                     }
                     // Marca de tempo decorrido da Janela Semanal
                     Rectangle {
@@ -745,6 +837,18 @@ Kirigami.AbstractCard {
                         return parts.join(" • ");
                     }
                 }
+            }
+
+            // Previsão de Esgotamento (somente com amostras confiáveis)
+            QQC2.Label {
+                id: weeklyForecastLabel
+                Layout.fillWidth: true
+                visible: text.length > 0
+                text: cardRoot.forecastText(cardRoot.accountData?.weekly_window)
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                color: cardRoot.accountData?.weekly_window?.forecast?.before_release ? Kirigami.Theme.neutralTextColor : Kirigami.Theme.disabledTextColor
             }
         }
 

@@ -540,3 +540,25 @@ def set_provider_settings(
     if agent.get("api_key") and not agent.get("api_base_url"):
         msg += " Aviso: a chave de API só é usada com uma URL base."
     return True, msg
+
+
+def set_alert_settings(
+    mode: str | None = None,
+    warning: float | None = None,
+    critical: float | None = None,
+    config_path: str | Path | None = None,
+) -> tuple[bool, str]:
+    """Grava modo de alerta ('pace' | 'threshold') e limiares; None mantem o valor atual."""
+    from ai_usage_collector.pace import alert_settings, validate_alerts
+
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        cur = alert_settings(cfg)
+        new = {"mode": cur["mode"] if mode is None else mode,
+               "warning": cur["warning"] if warning is None else warning,
+               "critical": cur["critical"] if critical is None else critical}
+        if error := validate_alerts(**new):
+            return False, error
+        cfg["alerts"] = new
+        save_config(cfg, config_path)
+    return True, f"Alertas atualizados: modo {new['mode']}, aviso {new['warning']:g}%, crítico {new['critical']:g}%."

@@ -16,7 +16,7 @@ def test_agent_native_windows_definition():
 
 def test_build_empty_status_contract():
     contract = build_empty_status_contract()
-    assert contract["version"] == 4
+    assert contract["version"] == 5
     assert "last_updated" in contract
     assert contract["status"] == "ok"
     assert "agents" in contract
@@ -207,7 +207,7 @@ def test_elapsed_fraction_unknown_or_clamped():
 
 def test_older_contract_versions_remain_valid():
     status = build_empty_status_contract()
-    for version in (1, 2, 3, 4):
+    for version in (1, 2, 3, 4, 5):
         status["version"] = version
         assert validate_status_contract(status) is True
     status["version"] = 99
@@ -261,3 +261,14 @@ def test_orphan_profiles_must_be_list_of_dicts():  # B4
     assert not validate_status_contract(c)
     c["orphan_profiles"] = ["x"]
     assert not validate_status_contract(c)
+
+
+def test_contract_v5_alert_fields_validated():
+    status = build_empty_status_contract()
+    acc = build_agent_account_status("claude", "a", "A", "manual", {"status": "valid"},
+                                     native_window={"alert_level": "warning", "pace": 1.2,
+                                                    "forecast": {"exhausts_at": None, "seconds_until": None}})
+    status["agents"]["claude"]["accounts"].append(acc)
+    assert validate_status_contract(status)
+    acc["native_window"]["alert_level"] = "red"
+    assert not validate_status_contract(status)

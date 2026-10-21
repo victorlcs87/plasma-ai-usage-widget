@@ -41,6 +41,7 @@ from ai_usage_collector.discovery import discover_account
 from ai_usage_collector.identity import credential_identity
 from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.limit_changes import apply_limit_changes
+from ai_usage_collector.pace import apply_pace
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -246,6 +247,11 @@ def _collect(
         apply_limit_changes(status_payload, previous_status, now_dt)
     except Exception as e:  # nota de mudanca de limites e opcional; nunca impede o status
         sys.stderr.write(f"Aviso: Nota de mudanca de limites nao atualizada: {e}\n")
+
+    try:
+        apply_pace(status_payload, config, cache_file, now_dt, {a for a in agents_to_collect if not providers or a in providers})
+    except Exception as e:  # ritmo e previsao sao opcionais; nunca impedem o status
+        sys.stderr.write(f"Aviso: Ritmo de Uso e previsao nao atualizados: {e}\n")
 
     return status_payload
 

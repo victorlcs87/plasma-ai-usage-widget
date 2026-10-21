@@ -19,8 +19,11 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 # v4: optional per-agent/account "fetched_at", "stale", "next_check_at"; per-account
 #     "fetch_error" {kind, message, retry_at}, "no_data", "credential_fingerprint" (hash);
 #     window usage_percentage may be None when that window has no reliable basis (ADR-0007)
-CONTRACT_VERSION = 4
-SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4)
+# v5: optional "pace", "forecast" {exhausts_at, seconds_until, before_release, basis_seconds} and
+#     "alert_level" ("normal"|"warning"|"critical") on native_window/weekly_window, and top-level
+#     "alerts" {mode, warning, critical} (ticket 24)
+CONTRACT_VERSION = 5
+SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
 _UNIT_SECONDS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800}
 _NAMED_WINDOWS = {"daily": 86400, "weekly": 604800}
@@ -242,6 +245,14 @@ def validate_status_contract(data: Any) -> bool:
                 )
             ):
                 return False
+
+            for field in ("native_window", "weekly_window"):
+                win = acc.get(field)
+                if isinstance(win, dict):
+                    if win.get("alert_level") not in (None, "normal", "warning", "critical"):
+                        return False
+                    if win.get("forecast") is not None and not isinstance(win["forecast"], dict):
+                        return False
 
             ww = acc.get("weekly_window")
             if not isinstance(ww, dict):

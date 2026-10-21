@@ -23,6 +23,7 @@ from ai_usage_collector.config import (
     DEFAULT_CONFIG_PATH,
     SUPPORTED_PROVIDERS,
     load_config,
+    set_alert_settings,
     set_provider_settings,
 )
 from ai_usage_collector.refresh import parse_intervals
@@ -133,6 +134,14 @@ def build_parser() -> argparse.ArgumentParser:
         metavar="PROVIDER",
         help="Define caminho de credenciais (--credential-path) e, no Claude, --api-base-url/--api-key-stdin/--clear-api-key; valor vazio remove. A configuração explícita vence as variáveis de ambiente",
     )
+    parser.add_argument(
+        "--set-alert-config",
+        action="store_true",
+        help="Define o modo de alerta (--alert-mode pace|threshold) e os limiares (--alert-warning, --alert-critical; 0 < aviso < crítico <= 100)",
+    )
+    parser.add_argument("--alert-mode", choices=["pace", "threshold"], default=None, help="Alerta por ritmo (padrão) ou limiar fixo")
+    parser.add_argument("--alert-warning", type=float, default=None, help="Limiar de aviso em %% (padrão 70)")
+    parser.add_argument("--alert-critical", type=float, default=None, help="Limiar crítico em %% (padrão 90)")
     parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
     parser.add_argument(
         "--api-key-stdin",
@@ -216,6 +225,13 @@ def main(argv: Sequence[str] | None = None) -> int:
                 args.set_provider_config, args.credential_path, args.api_base_url, key, config_path,
                 clear_api_key=args.clear_api_key,
             )
+            if ok:
+                collect_and_save(config_path=config_path, cache_path=cache_path)
+            (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
+            return 0 if ok else 1
+
+        if args.set_alert_config:
+            ok, message = set_alert_settings(args.alert_mode, args.alert_warning, args.alert_critical, config_path)
             if ok:
                 collect_and_save(config_path=config_path, cache_path=cache_path)
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
@@ -406,6 +422,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not args.status
             and not args.list_orphans
             and not args.set_provider_config
+            and not args.set_alert_config
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account

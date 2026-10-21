@@ -20,6 +20,12 @@ Item {
     property int cfg_refreshIntervalCodex: 300
     property int cfg_refreshIntervalGemini: 300
 
+    // Alertas (config.json do coletor, lidos do status.json): modo "pace" ou "threshold" e limiares
+    property string alertMode: "pace"
+    property int alertWarning: 70
+    property int alertCritical: 90
+    property bool isSavingAlerts: false
+
     property var statusData: null
     property bool isLoading: false
     property bool isDeleting: false
@@ -209,9 +215,45 @@ Item {
             if (exitCode === 0 && stdout.length > 0) {
                 try {
                     configRoot.statusData = JSON.parse(stdout);
+                    var al = configRoot.statusData.alerts;
+                    if (al && !configRoot.isSavingAlerts) {
+                        configRoot.alertMode = al.mode === "threshold" ? "threshold" : "pace";
+                        configRoot.alertWarning = Math.round(Number(al.warning)) || 70;
+                        configRoot.alertCritical = Math.round(Number(al.critical)) || 90;
+                    }
                 } catch (e) {
                     configRoot.errorMessage = configRoot.safeI18n("Erro ao ler dados de status: %1", e.message);
                 }
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Modo e limiares de alerta: o coletor valida (0 < aviso < crítico <= 100) e recalcula o status
+    function saveAlertSettings() {
+        configRoot.isSavingAlerts = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        var args = shellQuote("--set-alert-config") + " " + shellQuote("--alert-mode") + " " + shellQuote(configRoot.alertMode)
+            + " " + shellQuote("--alert-warning") + " " + shellQuote(configRoot.alertWarning)
+            + " " + shellQuote("--alert-critical") + " " + shellQuote(configRoot.alertCritical);
+        alertDataSource.connectSource(configRoot.buildCollectorCommand(args));
+    }
+
+    Plasma5Support.DataSource {
+        id: alertDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingAlerts = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
             }
             disconnectSource(sourceName);
         }
@@ -578,6 +620,66 @@ Item {
                         QQC2.ToolTip.visible: hovered
                     }
                 }
+            }
+        }
+
+        // Alertas: cor por ritmo de uso (padrão) ou por limiares fixos
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Alerta por:")
+            }
+
+            QQC2.ComboBox {
+                id: alertModeCombo
+                textRole: "text"
+                valueRole: "value"
+                model: [
+                    { value: "pace", text: configRoot.safeI18n("Ritmo de uso") },
+                    { value: "threshold", text: configRoot.safeI18n("Limiar fixo") }
+                ]
+                currentIndex: configRoot.alertMode === "threshold" ? 1 : 0
+                onActivated: configRoot.alertMode = currentValue
+                Accessible.name: configRoot.safeI18n("Modo de alerta")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Aviso (%):")
+                enabled: configRoot.alertMode === "threshold"
+            }
+
+            QQC2.SpinBox {
+                from: 1
+                to: 99
+                editable: true
+                enabled: configRoot.alertMode === "threshold"
+                value: configRoot.alertWarning
+                onValueModified: configRoot.alertWarning = value
+                Accessible.name: configRoot.safeI18n("Limiar de aviso em porcentagem")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Crítico (%):")
+                enabled: configRoot.alertMode === "threshold"
+            }
+
+            QQC2.SpinBox {
+                from: 2
+                to: 100
+                editable: true
+                enabled: configRoot.alertMode === "threshold"
+                value: configRoot.alertCritical
+                onValueModified: configRoot.alertCritical = value
+                Accessible.name: configRoot.safeI18n("Limiar crítico em porcentagem")
+            }
+
+            PlasmaComponents3.Button {
+                text: configRoot.safeI18n("Aplicar")
+                icon.name: "dialog-ok-apply"
+                enabled: !configRoot.isBusy && !configRoot.isSavingAlerts
+                onClicked: configRoot.saveAlertSettings()
             }
         }
 

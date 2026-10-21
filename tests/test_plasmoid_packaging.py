@@ -291,3 +291,17 @@ def test_account_card_shows_optional_token_history():
     for key in ["today", "week", "month", "daily_30d", "weekly_3m", "monthly_12m", "Repeater", "Rectangle"]:
         assert key in comp
     assert "visible: Boolean(history)" in comp
+
+
+def test_cards_show_forecast_and_level_with_text_and_theme_colors():
+    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    for needle in ("alert_level", "forecast", "forecastText", "levelText", "levelIcon", "Text.PlainText"):
+        assert needle in card
+    level_fn = card[card.index("function levelColor"):card.index("function levelText")]
+    assert "#" not in level_fn and "Kirigami.Theme." in level_fn  # cores do tema, nunca hex fixo
+
+
+def test_config_general_exposes_alert_mode_and_thresholds():
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    for needle in ("--set-alert-config", "--alert-mode", "--alert-warning", "--alert-critical", "alertModeCombo"):
+        assert needle in cfg
