@@ -40,8 +40,9 @@ Item {
     readonly property var popup: FG.popupRect(cfg.edge, pill, { w: popupWin.want.width, h: popupWin.want.height }, scrRect)
 
     function cap(e) { return e.charAt(0).toUpperCase() + e.slice(1); }
-    function commit(off) {
-        var v = Math.round(FG.snapOffset(FG.clampOffset(cfg.edge, off, pillSize, scrRect), cfg.snap));
+    function commit(off, snap) {
+        var c = FG.clampOffset(cfg.edge, off, pillSize, scrRect);
+        var v = Math.round(snap ? FG.snapOffset(c, cfg.snap) : c);
         Plasmoid.configuration["floatOffset" + cap(cfg.edge)] = v;
         liveOffset = NaN;
     }
@@ -49,8 +50,8 @@ Item {
         if (Math.abs(d) < 1 && isNaN(liveOffset)) return;
         liveOffset = FG.clampOffset(cfg.edge, offset + d, pillSize, scrRect);
     }
-    function dragEnd() { if (!isNaN(liveOffset)) commit(liveOffset); }
-    function nudge(d) { commit(offset + d); }
+    function dragEnd() { if (!isNaN(liveOffset)) commit(liveOffset, true); }  // só o arraste gruda no centro (teclado anda de 8 em 8 px)
+    function nudge(d) { commit(offset + d, false); }
     function recenter() { liveOffset = NaN; Plasmoid.configuration["floatOffset" + cap(cfg.edge)] = 0; }
 
     FloatingPillWindow {
