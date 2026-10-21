@@ -44,7 +44,12 @@ CODEX_EVENT = "agent-turn-complete"  # unico evento do `notify` na documentacao 
 # Rollout escrito ha menos que isso = ocupada. Suposicao: o Codex grava no rollout varias vezes por
 # turno; um silencio maior (modelo pensando muito) aparece como ociosa ate a proxima escrita.
 CODEX_BUSY_SECONDS = 20
-_CODEX_GRACE = 2.0  # escritas do rollout logo apos o notify (fechamento do turno) nao reabrem "ocupada"
+# Escritas do rollout logo apos o notify (fechamento do turno) nao reabrem "ocupada". Escritas tardias
+# (> 2 s apos o notify) reabrem "ocupada" por alguns segundos e voltam a ociosa SEM confirmacao
+# (sem atencao no Plasmoid): limitacao aceita.
+_CODEX_GRACE = 2.0
+_CODEX_FUTURE_SKEW = 30  # mtime de rollout no futuro alem disso (relogio adiantado) e ignorado
+CODEX_SCAN_DAYS = 7  # dias mais novos varridos; cobre sessoes retomadas (resume) de ate ~1 semana
 _FUTURE_SKEW = 300  # relogio adiantado alem disso invalida o registro
 
 
@@ -154,36 +159,46 @@ def account_dirs(status: dict[str, Any], config: dict[str, Any], provider: str =
     return out
 
 
-def codex_busy_mtime(codex_dir: str | Path) -> float | None:
-    """Mtime do rollout mais recente nos 2 dias mais novos de `sessions/AAAA/MM/DD` (so stat, nunca le
-    o conteudo). ponytail: sessao que escreve ha mais de 1 dia sem virar o dia e ignorada.
+def codex_busy_mtime(codex_dir: str | Path, now: float | None = None) -> float | None:
+    """Mtime do rollout mais recente nos CODEX_SCAN_DAYS dias mais novos de `sessions/AAAA/MM/DD` (so
+    stat, nunca le o conteudo). ponytail: ASSUME que retomar uma sessao (resume) escreve no rollout
+    antigo (nao verificado); uma sessao retomada com rollout mais velho que a janela nunca vira ocupada.
     """
     try:
-        days = sorted(Path(codex_dir, "sessions").glob("[0-9]*/[0-9]*/[0-9]*"))[-2:]
+        days = sorted(Path(codex_dir, "sessions").glob("[0-9]*/[0-9]*/[0-9]*"))[-CODEX_SCAN_DAYS:]
         times = [f.stat().st_mtime for d in days for f in d.glob("rollout-*.jsonl")]
     except OSError:
         return None
-    return max(times, default=None)
+    limit = (time.time() if now is None else now) + _CODEX_FUTURE_SKEW  # relogio adiantado: mtime futuro nao conta
+    return max((t for t in times if t <= limit), default=None)
 
 
-def _codex_state(dirs: set[str], records: list[dict[str, Any]], now: float) -> str:
+def _codex_state(dirs: set[str], records: list[dict[str, Any]], now: float) -> tuple[str, bool]:
+    """(estado, ociosa confirmada). Confirmada = o `notify` registrou o fim do turno depois da ultima
+    escrita no rollout; ociosa so por silencio do rollout (turno longo sem escrita) nao e confirmada.
+    """
     idle_ts = {d: max((r["ts"] for r in records if r["state"] == "idle" and r["config_dir"] == d), default=None) for d in dirs}
-    state = "unknown"
+    state, confirmed = "unknown", False
     for d in dirs:
-        m, ts = codex_busy_mtime(d), idle_ts[d]
-        if m is not None and -_FUTURE_SKEW <= now - m <= CODEX_BUSY_SECONDS and (ts is None or m > ts + _CODEX_GRACE):
-            return "busy"
-        if ts is not None or (m is not None and -_FUTURE_SKEW <= now - m <= TTL_SECONDS["idle"]):
-            state = "idle"
-    return state
+        m, ts = codex_busy_mtime(d, now), idle_ts[d]
+        if m is not None and now - m <= CODEX_BUSY_SECONDS and (ts is None or m > ts + _CODEX_GRACE):
+            return "busy", False
+        if ts is not None or (m is not None and now - m <= TTL_SECONDS["idle"]):
+            state, confirmed = "idle", confirmed or (ts is not None and (m is None or m <= ts + _CODEX_GRACE))
+    return state, confirmed
+
+
+def codex_states(dirs: dict[str, list[str]], state_dir: str | Path, now: float | None = None) -> dict[str, tuple[str, bool]]:
+    now = time.time() if now is None else now
+    records = read_sessions(state_dir, now)  # sem diretorio de estado ainda vale: o mtime dos rollouts basta
+    return {aid: _codex_state(set(d), records, now) for aid, d in dirs.items()}
 
 
 def states_from_dirs(dirs: dict[str, list[str]], state_dir: str | Path, now: float | None = None, provider: str = "claude") -> dict[str, str]:
     """Estado por Conta (so biblioteca padrao). Claude: vazio se os hooks nunca gravaram nada."""
     now = time.time() if now is None else now
-    if provider == "codex":  # sem diretorio de estado ainda vale: o mtime dos rollouts basta
-        records = read_sessions(state_dir, now)
-        return {aid: _codex_state(set(d), records, now) for aid, d in dirs.items()}
+    if provider == "codex":
+        return {aid: st for aid, (st, _) in codex_states(dirs, state_dir, now).items()}
     if not Path(state_dir).is_dir():
         return {}
     records = read_sessions(state_dir, now)
@@ -213,20 +228,25 @@ def apply_session_state(status: dict[str, Any], config: dict[str, Any], cache_pa
                 acc["session_state"] = states[str(acc.get("id"))]
 
 
-def all_live_states(cache_path: str | Path, now: float | None = None) -> dict[str, dict[str, str]]:
-    """Estado ao vivo por provedor e Conta, lido do mapa do ultimo refresh; tolera tudo malformado."""
+CODEX_CONFIRMED_KEY = "codex_idle_confirmed"
+
+
+def all_live_states(cache_path: str | Path, now: float | None = None) -> dict[str, Any]:
+    """Estado ao vivo por provedor e Conta, lido do mapa do ultimo refresh; tolera tudo malformado.
+    `codex_idle_confirmed`: Contas Codex cuja ociosa foi confirmada pelo notify (so elas pedem atencao).
+    """
     cache_dir = Path(cache_path).expanduser().resolve().parent
     try:
         maps = json.loads((cache_dir / ACCOUNTS_FILENAME).read_text(encoding="utf-8"))
+        dirs = {p: {str(k): [d for d in v if isinstance(d, str)] for k, v in maps[p].items() if isinstance(v, list)} for p in PROVIDERS}
+        codex = codex_states(dirs["codex"], cache_dir / STATE_DIRNAME, now)
         return {
-            p: states_from_dirs(
-                {str(k): [d for d in v if isinstance(d, str)] for k, v in maps[p].items() if isinstance(v, list)},
-                cache_dir / STATE_DIRNAME, now, p,
-            )
-            for p in PROVIDERS
+            "claude": states_from_dirs(dirs["claude"], cache_dir / STATE_DIRNAME, now, "claude"),
+            "codex": {aid: st for aid, (st, _) in codex.items()},
+            CODEX_CONFIRMED_KEY: [aid for aid, (st, ok) in codex.items() if st == "idle" and ok],
         }
     except (OSError, ValueError, AttributeError, KeyError, TypeError):
-        return {p: {} for p in PROVIDERS}
+        return {"claude": {}, "codex": {}, CODEX_CONFIRMED_KEY: []}
 
 
 def live_states(cache_path: str | Path, now: float | None = None, provider: str = "claude") -> dict[str, str]:

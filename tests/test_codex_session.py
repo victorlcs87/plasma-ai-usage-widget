@@ -146,15 +146,15 @@ def notify(tmp_path, chome, payload, *, via_command=True):
 
 def test_registered_notify_runs_safely_and_records_idle(env, tmp_path):
     chome, cache, cfg = env
-    payload = json.dumps({"type": "agent-turn-complete", "thread-id": "t-1", "turn-id": "1", "cwd": "/x",
+    payload = json.dumps({"type": "agent-turn-complete", "thread-id": "thr-qzx9", "turn-id": "1", "cwd": "/x",
                           "input-messages": ["SEGREDO-do-prompt"], "last-assistant-message": "SEGREDO-resposta"})
     r = notify(tmp_path, chome, payload)
     assert r.returncode == 0 and r.stdout == "" and r.stderr == ""
     sdir = cache.parent / "session-state"
     files = list(sdir.glob("*.json"))
-    assert len(files) == 1 and "t-1" not in files[0].name and files[0].stat().st_mode & 0o777 == 0o600
+    assert len(files) == 1 and "thr-qzx9" not in files[0].name and files[0].stat().st_mode & 0o777 == 0o600
     raw = files[0].read_text()
-    assert "SEGREDO" not in raw and "t-1" not in raw
+    assert "SEGREDO" not in raw and "thr-qzx9" not in raw
     rec = json.loads(raw)
     assert rec["state"] == "idle" and rec["config_dir"] == str(chome.resolve())
 
@@ -207,8 +207,8 @@ def test_notify_ends_busy_immediately_but_new_writes_reopen(env):
 def test_rollouts_other_days_and_other_dirs_ignored(env):
     chome, _, _ = env
     now = 1_000_000.0
-    for d in ("2026/10/01", "2026/10/02", "2026/10/03"):
-        rollout(chome, now - 1 if d == "2026/10/01" else now - 99999, day=d)  # so o antigo e recente, mas fora dos 2 dias mais novos
+    for n in range(1, 10):
+        rollout(chome, now - 1 if n == 1 else now - 99999, day=f"2026/10/0{n}")  # so o mais antigo e recente, mas fora da janela
     assert states(chome, now) == "unknown"
     other = chome.parent / "outro"
     rollout(other, now - 1)
@@ -248,3 +248,98 @@ def test_contract_and_light_path_expose_codex_state(env):
     assert out.returncode == 0, out.stderr
     assert json.loads(out.stdout)["codex"] == {"c1": "busy"}
     assert run(cache, "--session-state") == 0
+
+
+# ---- revisao do ticket 36 ----
+
+def states_c(chome, now, idle_at=None):
+    sdir = chome.parent / "sdir"
+    if idle_at is not None:
+        session_state.write_event(sdir, "idle", "t", idle_at, config_dir=str(chome))
+    return session_state.codex_states({"a": [str(chome)]}, sdir, now)["a"]
+
+
+def test_idle_by_silence_is_not_confirmed_but_notify_confirms(env):
+    chome, _, _ = env
+    now = 1_000_000.0
+    f = rollout(chome, now - 5)
+    assert states_c(chome, now) == ("busy", False)
+    assert states_c(chome, now + 30) == ("idle", False)  # turno longo sem escrita: ociosa, sem atencao
+    os.utime(f, (now + 40, now + 40))
+    assert states_c(chome, now + 41) == ("busy", False)  # oscilacao: volta a ocupada
+    assert states_c(chome, now + 70) == ("idle", False)  # ...e de novo sem confirmacao
+    assert states_c(chome, now + 70, idle_at=now + 60) == ("idle", True)  # notify depois da ultima escrita
+    os.utime(f, (now + 80, now + 80))  # novo turno escreve; o notify antigo nao confirma o silencio dele
+    assert states_c(chome, now + 120) == ("idle", False)
+
+
+def test_live_output_lists_confirmed_codex_accounts(env):
+    chome, cache, _ = env
+    cfg = codex_cfg(env)
+    t = __import__("time").time()
+    rollout(chome, t - 60)
+    run(cache, "--config-path", str(cfg), "--refresh")
+    assert session_state.all_live_states(cache)["codex_idle_confirmed"] == []
+    session_state.write_event(session_state.state_dir_for(cache), "idle", "t", t - 30, config_dir=str(chome.resolve()))
+    live = session_state.all_live_states(cache)
+    assert live["codex"] == {"c1": "idle"} and live["codex_idle_confirmed"] == ["c1"]
+
+
+def test_qml_attention_only_for_confirmed_codex_idle():
+    src = (session_state.Path(__file__).parent.parent / "plasmoid/contents/ui/main.qml").read_text()
+    assert "codex_idle_confirmed" in src and "confirmed[id]" in src
+
+
+def test_resumed_rollout_in_recent_days_window_is_busy(env):
+    chome, _, _ = env
+    now = 1_000_000.0
+    for d in range(1, 6):
+        rollout(chome, now - 99999, day=f"2026/10/0{d}")
+    rollout(chome, now - 1, day="2026/10/01", name="rollout-resumida.jsonl")  # 5 dias atras, retomada agora
+    assert states_c(chome, now) == ("busy", False)
+    assert session_state.CODEX_SCAN_DAYS >= 7
+
+
+def test_future_mtime_ignored(env):
+    chome, _, _ = env
+    now = 1_000_000.0
+    rollout(chome, now + 100)  # relogio adiantado
+    assert states_c(chome, now) == ("unknown", False)
+    rollout(chome, now + 10, name="rollout-b.jsonl")  # dentro da tolerancia de 30 s
+    assert states_c(chome, now)[0] == "busy"
+
+
+def test_tomllib_checked_before_creating_anything(env, monkeypatch, tmp_path, capsys):
+    chome, cache, cfg = env
+    new_home = tmp_path / "novo_codex"
+    monkeypatch.setenv("CODEX_HOME", str(new_home))
+    monkeypatch.setitem(sys.modules, "tomllib", None)  # simula Python 3.10
+    assert run(cache, "--install-hooks", "codex") == 1
+    assert not new_home.exists() and "3.11" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("bad", ["a\x01b", "a\x7fb", "a\nb"])
+def test_control_chars_in_path_refused_before_backup(env, monkeypatch, tmp_path, bad, capsys):
+    chome, cache, cfg = env
+    cfg.write_text(USER_TOML)
+    assert main(["--cache-path", str(tmp_path / bad / "status.json"), "--install-hooks", "codex"]) == 1
+    assert cfg.read_text() == USER_TOML and not cfg.with_name("config.toml.plasma-ai-usage.bak").exists()
+    assert "caractere" in capsys.readouterr().err
+
+
+def test_our_identical_line_inside_table_is_not_root_install(env):
+    chome, cache, cfg = env
+    run(cache, "--install-hooks", "codex")
+    line = cfg.read_text().splitlines()[0]
+    cfg.write_text(f"[a]\n{line}\n")
+    before = cfg.read_text()
+    assert run(cache, "--install-hooks", "codex") == 1 and cfg.read_text() == before
+    assert run(cache, "--uninstall-hooks", "codex") == 1 and cfg.read_text() == before
+
+
+def test_surrogate_in_path_refused_before_backup(env, tmp_path):
+    chome, cache, cfg = env
+    cfg.write_text(USER_TOML)
+    with pytest.raises(codex_hooks.HooksError, match="caractere"):
+        codex_hooks.install_notify(tmp_path / "a\ud800b")
+    assert cfg.read_text() == USER_TOML and not cfg.with_name("config.toml.plasma-ai-usage.bak").exists()

@@ -76,3 +76,16 @@ mais lenta ao fim do turno). **Aguardando nunca existe para o Codex**: o `notify
   `CODEX_BUSY_SECONDS`); que o processo do notify herda `CODEX_HOME` (por isso o diretorio vai no argv); o
   Codex tambem tem hooks de ciclo de vida (`hooks.json`/`[hooks]`) que talvez permitam "aguardando", nao
   avaliados aqui.
+
+### Codex: atencao so com ociosa confirmada (revisao do ticket 36)
+
+- Um turno longo sem escrita no rollout (build, teste, raciocinio) por mais de 20 s aparece como ociosa e,
+  na proxima escrita, volta a ocupada. Essa ociosa **nao confirmada** e mostrada, mas nao dispara som nem
+  abertura do Notch. So conta a ociosa **confirmada**: o `notify` registrou o fim do turno depois da ultima
+  escrita no rollout. O caminho leve imprime `codex_idle_confirmed` (lista de ids de Conta); o QML dispara
+  a atencao quando a Conta passa a confirmada. Sem o `notify` instalado, o Codex nunca pede atencao.
+- Escritas tardias (mais de 2 s apos o notify) reabrem "ocupada" por alguns segundos e voltam a ociosa sem
+  confirmacao: limitacao aceita, sem atencao duplicada.
+- A varredura cobre os 7 dias mais novos de `sessions/` (`CODEX_SCAN_DAYS`), para sessoes retomadas. Suposicao
+  nao verificada: que `resume` escreve no rollout antigo; se for mais velho que a janela, nunca vira ocupada.
+- mtime de rollout mais de 30 s no futuro (relogio adiantado) e ignorado.

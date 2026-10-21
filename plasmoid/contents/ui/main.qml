@@ -398,20 +398,34 @@ PlasmoidItem {
     property bool autoOpened: false
     property bool sessionFailed: false  // consulta do estado falhou: aviso discreto na configuração e no tooltip
 
+    property var sessionConfirmed: ({})  // "codex/<id>" -> ociosa confirmada pelo notify (fim real do turno)
+
     function applySessionStates(byProvider) {
         var prev = root.sessionOverlay || {};
+        var prevConf = root.sessionConfirmed || {};
         var next = {};
+        var confirmed = {};
+        var list = (byProvider && byProvider.codex_idle_confirmed) || [];
+        for (var i = 0; i < list.length; i++) confirmed["codex/" + list[i]] = true;
         for (var p in (byProvider || {})) {
+            if (p === "codex_idle_confirmed") continue;
             for (var aid in byProvider[p]) next[p + "/" + aid] = byProvider[p][aid];
         }
         var fired = false;
         for (var id in next) {
-            // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa
+            // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa.
+            // Codex: ociosa por silêncio do log (turno longo sem escrita) oscila e não conta; só a ociosa
+            // confirmada pelo notify, no momento em que passa a confirmada (ADR-0009)
             var was = prev[id];
-            if (was !== undefined && was !== next[id]
-                    && (next[id] === "waiting" || (next[id] === "idle" && was === "busy"))) fired = true;
+            if (was === undefined || was === next[id] && !(id.indexOf("codex/") === 0 && confirmed[id] && !prevConf[id])) continue;
+            if (next[id] === "waiting") fired = true;
+            else if (next[id] === "idle") {
+                if (id.indexOf("codex/") !== 0) fired = fired || was === "busy";
+                else fired = fired || (confirmed[id] === true && !prevConf[id]);
+            }
         }
         root.sessionOverlay = next;
+        root.sessionConfirmed = confirmed;
         if (fired) root.sessionAttention();
     }
 
