@@ -24,8 +24,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     "alerts" {mode, warning, critical} (ticket 24)
 #     Top-level "notifications" {warning, critical, early, reset, muted} (ticket 25) is a new optional
 #     key read by the settings screen: no version bump
-#     Per-account "session_state" ("busy"|"waiting"|"idle"|"unknown"; Claude only, present once the
-#     opt-in session hooks have written state; ticket 35) is a new optional key: no version bump
+#     Per-account "session_state" ("busy"|"waiting"|"idle"|"unknown"; Claude and Codex (ticket 36), present once the
+#     opt-in session hooks have written state or Codex rollouts are active; ticket 35) is a new optional key: no version bump
 #     Ticket 37: optional per-agent "running" (bool|null: the CLI process runs for the current user; null =
 #     undeterminable), top-level "running_checked_at" (ISO) and "visibility" {hide_when_not_running}: new
 #     optional keys that old readers ignore: no version bump

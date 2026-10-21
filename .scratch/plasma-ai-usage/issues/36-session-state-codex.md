@@ -6,9 +6,9 @@
 
 **Blocked by:** 35 (#26)
 
-**Status:** ready-for-agent
+**Status:** done (branch feat/ticket-36)
 
-- [ ] Estado do Codex no contrato e nas animações.
-- [ ] Instalação opt-in reversível.
-- [ ] Testes pela CLI.
-- [ ] Testes do coletor passando (`.venv/bin/pytest`), sem regressão nas funcionalidades existentes.
+- [x] Estado do Codex no contrato e nas animações.
+- [x] Instalação opt-in reversível.
+- [x] Testes pela CLI.
+- [x] Testes do coletor passando (`.venv/bin/pytest`), sem regressão nas funcionalidades existentes.

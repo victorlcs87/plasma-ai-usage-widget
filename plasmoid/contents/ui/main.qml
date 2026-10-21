@@ -398,9 +398,12 @@ PlasmoidItem {
     property bool autoOpened: false
     property bool sessionFailed: false  // consulta do estado falhou: aviso discreto na configuração e no tooltip
 
-    function applySessionStates(map) {
+    function applySessionStates(byProvider) {
         var prev = root.sessionOverlay || {};
-        var next = map || {};
+        var next = {};
+        for (var p in (byProvider || {})) {
+            for (var aid in byProvider[p]) next[p + "/" + aid] = byProvider[p][aid];
+        }
         var fired = false;
         for (var id in next) {
             // só transições observadas: a 1ª leitura nunca dispara; terminou = ocupada -> ociosa
@@ -454,7 +457,7 @@ PlasmoidItem {
             root.sessionPolling = false;
             try {
                 root.sessionFailed = data["exit code"] !== 0;
-                if (!root.sessionFailed) root.applySessionStates(JSON.parse(data["stdout"]).claude);
+                if (!root.sessionFailed) root.applySessionStates(JSON.parse(data["stdout"]));
             } catch (e) { root.sessionFailed = true; /* leitura inválida: mantém o último estado */ }
             disconnectSource(sourceName);
         }

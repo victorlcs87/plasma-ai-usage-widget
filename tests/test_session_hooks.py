@@ -316,4 +316,4 @@ def test_light_path_matches_contract_and_imports_no_collector(env):
                         "assert 'ai_usage_collector.collector' not in sys.modules", str(cache)],
                        capture_output=True, text=True, env={**os.environ, "CLAUDE_CONFIG_DIR": str(cdir)})
     assert r.returncode == 0, r.stderr
-    assert json.loads(r.stdout) == {"claude": {"a": "busy"}}
+    assert json.loads(r.stdout) == {"claude": {"a": "busy"}, "codex": {}}

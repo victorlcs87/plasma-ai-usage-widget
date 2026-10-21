@@ -765,17 +765,17 @@ Item {
             }
         }
 
-        // Estado da Sessão do Claude Code (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
+        // Estado da Sessão do Claude Code e do Codex (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
         Flow {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
             QQC2.CheckBox {
-                text: configRoot.safeI18n("Mostrar o estado da sessão do Claude")
+                text: configRoot.safeI18n("Mostrar o estado da sessão (Claude e Codex)")
                 checked: configRoot.cfg_sessionState
                 onToggled: configRoot.cfg_sessionState = checked
-                Accessible.description: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil; se o estado não atualizar, reinstale o pacote: pip install -e .)")
-                QQC2.ToolTip.text: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil; se o estado não atualizar, reinstale o pacote: pip install -e .)")
+                Accessible.description: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno. Se o estado não atualizar, reinstale o pacote: pip install -e .")
+                QQC2.ToolTip.text: configRoot.safeI18n("Claude: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil). Codex: ocupada vem dos logs da sessão sem instalar nada; ai-usage-collector --install-hooks codex (opcional) encerra o estado ocupada ao fim de cada turno. Se o estado não atualizar, reinstale o pacote: pip install -e .")
                 QQC2.ToolTip.visible: hovered || activeFocus
             }
             QQC2.CheckBox {

@@ -88,11 +88,12 @@ function levelWord(level, tr) {
 
 function pctWord(pct) { return pct < 0 ? "-" : Math.round(pct) + "%"; }
 
-// Estado da Sessão (busy/waiting/idle) da Conta Ativa: o overlay ao vivo (cfg.sessionOverlay, por id
-// de Conta) vence o campo do contrato; desligado ou desconhecido = "" (sem indicador)
-function sessionState(acc, cfg) {
+// Estado da Sessão (busy/waiting/idle) da Conta Ativa (Claude ou Codex): o overlay ao vivo
+// (cfg.sessionOverlay, chave "provedor/id da Conta") vence o campo do contrato; desligado ou
+// desconhecido = "" (sem indicador)
+function sessionState(provider, acc, cfg) {
     if (!cfg.showSession) return "";
-    var s = (cfg.sessionOverlay && cfg.sessionOverlay[acc.id]) || acc.session_state;
+    var s = (cfg.sessionOverlay && cfg.sessionOverlay[provider + "/" + acc.id]) || acc.session_state;
     return (s === "busy" || s === "waiting" || s === "idle") ? s : "";
 }
 
@@ -132,7 +133,7 @@ function buildModel(statusData, cfg, tr, nowMs) {
         m.outerElapsed = windowElapsed(acc, ww, m.outerPct);
         var st = acc.health ? acc.health.status : "";
         m.health = (st && st !== "valid") ? st : "";
-        m.sessionState = sessionState(acc, cfg);
+        m.sessionState = sessionState(key, acc, cfg);
         var tail = acc.stale === true ? tr("dados desatualizados") : "";
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
         if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);

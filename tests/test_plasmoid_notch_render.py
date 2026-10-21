@@ -113,11 +113,15 @@ def test_session_state_in_model_and_rings_render(tmp_path):
         (tmp_path / n).mkdir()
     agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
     for state, word in (("busy", "ocupada"), ("waiting", "aguardando")):
-        out = render(tmp_path / state, f"s_{state}", agents, extra_cfg={"showSession": True, "sessionOverlay": {"a": state}})
+        out = render(tmp_path / state, f"s_{state}", agents, extra_cfg={"showSession": True, "sessionOverlay": {"claude/a": state}})
         assert out["model"][0]["sessionState"] == state and word in out["model"][0]["description"]
-    off = render(tmp_path / "off", "s_off", agents, extra_cfg={"sessionOverlay": {"a": "busy"}})  # desligado: sem indicador
+    off = render(tmp_path / "off", "s_off", agents, extra_cfg={"sessionOverlay": {"claude/a": "busy"}})  # desligado: sem indicador
     assert off["model"][0]["sessionState"] == ""
-    bogus = render(tmp_path / "bad", "s_bad", agents, extra_cfg={"showSession": True, "sessionOverlay": {"a": "<b>x</b>"}})
+    (tmp_path / "cx").mkdir()
+    both = {"claude": agents["claude"], "codex": {"name": "Codex", "accounts": [acct(True)]}}  # mesmo id "a": a chave inclui o provedor
+    out = render(tmp_path / "cx", "s_cx", both, extra_cfg={"showSession": True, "sessionOverlay": {"codex/a": "busy"}})
+    assert [m["sessionState"] for m in out["model"]][:2] == ["", "busy"]
+    bogus = render(tmp_path / "bad", "s_bad", agents, extra_cfg={"showSession": True, "sessionOverlay": {"claude/a": "<b>x</b>"}})
     assert bogus["model"][0]["sessionState"] == ""
 
 

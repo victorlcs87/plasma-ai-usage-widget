@@ -9,7 +9,8 @@ from typing import Sequence
 
 from ai_usage_collector import __version__
 from ai_usage_collector.claude_hooks import HooksError, install_hooks, uninstall_hooks
-from ai_usage_collector.session_state import live_states, state_dir_for
+from ai_usage_collector.codex_hooks import install_notify, uninstall_notify
+from ai_usage_collector.session_state import all_live_states, state_dir_for
 from ai_usage_collector.collector import (
     add_account_entry,
     capture_current_account,
@@ -68,18 +69,24 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--install-hooks",
-        action="store_true",
-        help="Registra no settings.json do Claude Code (CLAUDE_CONFIG_DIR, absoluto, ou ~/.claude) os hooks do Estado da Sessão: UserPromptSubmit (ocupada), PostToolUse (ocupada; batimento e fim da espera), Stop (ociosa) e Notification (aguardando); idempotente. Perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil",
+        nargs="?",
+        const="claude",
+        choices=("claude", "codex", "all"),
+        metavar="{claude,codex,all}",
+        help="Claude (padrão): registra no settings.json do Claude Code (CLAUDE_CONFIG_DIR, absoluto, ou ~/.claude) os hooks do Estado da Sessão: UserPromptSubmit (ocupada), PostToolUse (ocupada; batimento e fim da espera), Stop (ociosa) e Notification (aguardando). Codex: grava uma linha `notify` no topo do config.toml (CODEX_HOME, absoluto, ou ~/.codex), nunca sobrescreve um notify seu. Idempotente. Perfil isolado: rode com o CLAUDE_CONFIG_DIR / CODEX_HOME de cada perfil",
     )
     parser.add_argument(
         "--uninstall-hooks",
-        action="store_true",
-        help="Remove só os hooks do Estado da Sessão do widget, preservando os demais hooks e configurações",
+        nargs="?",
+        const="claude",
+        choices=("claude", "codex", "all"),
+        metavar="{claude,codex,all}",
+        help="Remove só os hooks (ou o notify do Codex) do Estado da Sessão do widget, preservando o resto da configuração",
     )
     parser.add_argument(
         "--session-state",
         action="store_true",
-        help="Imprime em JSON o Estado da Sessão por Conta Claude (le o mapa do último refresh e os hooks; nao coleta)",
+        help="Imprime em JSON o Estado da Sessão por Conta Claude e Codex (le o mapa do último refresh e os hooks; nao coleta)",
     )
     parser.add_argument(
         "--switch-account",
@@ -280,17 +287,24 @@ def main(argv: Sequence[str] | None = None) -> int:
             if args.install_hooks and args.uninstall_hooks:
                 sys.stderr.write("Erro: use --install-hooks ou --uninstall-hooks, não os dois.\n")
                 return 2
-            try:
-                sys.stdout.write(
-                    (install_hooks(state_dir_for(cache_path)) if args.install_hooks else uninstall_hooks()) + "\n"
-                )
-            except HooksError as e:
-                sys.stderr.write(f"Erro: {e}\n")
-                return 1
-            return 0
+            install = bool(args.install_hooks)
+            which = args.install_hooks or args.uninstall_hooks
+            state_dir = state_dir_for(cache_path)
+            actions = {
+                "claude": (lambda: install_hooks(state_dir)) if install else uninstall_hooks,
+                "codex": (lambda: install_notify(state_dir)) if install else uninstall_notify,
+            }
+            code = 0
+            for provider in (("claude", "codex") if which == "all" else (which,)):
+                try:
+                    sys.stdout.write(actions[provider]() + "\n")
+                except HooksError as e:
+                    sys.stderr.write(f"Erro ({provider}): {e}\n")
+                    code = 1
+            return code
 
         if args.session_state:
-            sys.stdout.write(json.dumps({"claude": live_states(cache_path)}) + "\n")
+            sys.stdout.write(json.dumps(all_live_states(cache_path)) + "\n")
             return 0
 
         if args.list_orphans:
