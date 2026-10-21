@@ -18,7 +18,7 @@ from ai_usage_collector.collector import (
     rename_account,
     switch_account,
 )
-from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH
+from ai_usage_collector.config import DEFAULT_CACHE_PATH, DEFAULT_CONFIG_PATH, load_config
 from ai_usage_collector.history import export_history
 from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
 
@@ -177,7 +177,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     try:
         if args.export_history:
-            sys.stdout.write(export_history(cache_path, args.export_history))
+            sys.stdout.write(export_history(cache_path, args.export_history, load_config(config_path)))
             sys.stdout.flush()
             return 0
 

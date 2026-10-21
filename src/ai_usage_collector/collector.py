@@ -35,7 +35,7 @@ from ai_usage_collector.contract import (
     get_current_iso_timestamp,
 )
 from ai_usage_collector.discovery import discover_account
-from ai_usage_collector.history import apply_token_history
+from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -537,6 +537,12 @@ def switch_account(
     target_acc = next((a for a in accounts if str(a.get("id")) == acc_id), None)
     if not target_acc:
         return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
+
+    # Antes de trocar a credencial, atribui o consumo dos logs do sistema a identidade que esta saindo.
+    try:
+        flush_system_history(cfg, cache_path, datetime.now(timezone.utc))
+    except Exception as e:  # Historico e opcional; nunca impede a troca
+        sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
 
     # Steps 2-4: backup/capture current system credential, apply target (rollback on failure)
     ok, msg, already_active = switch_system_account(prov, acc_id, config_path)

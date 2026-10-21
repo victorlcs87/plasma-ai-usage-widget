@@ -224,3 +224,91 @@ def test_status_without_history_field_still_valid():
     assert validate_status_contract(payload) is True
     payload["version"] = 1  # contratos antigos continuam aceitos
     assert validate_status_contract(payload) is True
+
+
+# --- Historico por Identidade da Conta (ticket 42) ---------------------------
+
+
+def _claude_world(tmp_path, monkeypatch):
+    """Sistema em CLAUDE_CONFIG_DIR (conftest); duas Contas com identidades uuid-a e uuid-b."""
+    from ai_usage_collector.config import save_secure_json
+
+    sys_dir = tmp_path / "_sys_claude"
+    accs = []
+    for name in ("a", "b"):
+        d = tmp_path / "cfg" / "profiles" / name
+        save_secure_json({"claudeAiOauth": {"accessToken": f"tok-{name}", "refreshToken": f"ref-{name}"}}, d / ".credentials.json")
+        save_secure_json({"oauthAccount": {"accountUuid": f"uuid-{name}", "emailAddress": f"{name}@x.com"}}, d / ".claude.json")
+        accs.append({"id": name, "label": name, "source": "captured",
+                     "credential_path": str(d / ".credentials.json"), "claude_dir": str(d)})
+    cfg = {"version": 1, "agents": {"claude": {"accounts": accs}, "codex": {"accounts": []}, "gemini": {"accounts": []}}}
+    config_path = tmp_path / "cfg" / "config.json"
+    save_config(cfg, config_path)
+    save_secure_json({"claudeAiOauth": {"accessToken": "tok-a", "refreshToken": "ref-a"}}, sys_dir / ".credentials.json")
+    save_secure_json({"oauthAccount": {"accountUuid": "uuid-a", "emailAddress": "a@x.com"}}, sys_dir / ".claude.json")
+    (sys_dir / "projects" / "p").mkdir(parents=True)
+    return sys_dir / "projects" / "p" / "s.jsonl", config_path, tmp_path / "cache" / "status.json"
+
+
+def _acc_by_id(status, acc_id):
+    return next(a for a in status["agents"]["claude"]["accounts"] if a["id"] == acc_id)
+
+
+def test_switch_attributes_system_logs_to_outgoing_identity(tmp_path, monkeypatch):
+    log, config_path, cache_path = _claude_world(tmp_path, monkeypatch)
+    now = datetime.now(timezone.utc)
+    base = ["--config-path", str(config_path), "--cache-path", str(cache_path)]
+
+    log.write_text(_claude_line(now, "m1", 100, 0))  # consumo de A
+    assert main(["--switch-account", "claude", "b", *base]) == 0
+    with open(log, "a") as f:
+        f.write(_claude_line(now, "m2", 20, 0))  # consumo de B
+    assert main(["--switch-account", "claude", "a", *base]) == 0
+    with open(log, "a") as f:
+        f.write(_claude_line(now, "m3", 3, 0))  # consumo de A de novo
+
+    status = _refresh(config_path, cache_path)
+    assert _acc_by_id(status, "a")["token_history"]["today"] == 103
+    assert _acc_by_id(status, "b")["token_history"]["today"] == 20
+
+
+def test_history_follows_identity_on_rename_and_converts_v1(tmp_path, monkeypatch):
+    log, config_path, cache_path = _claude_world(tmp_path, monkeypatch)
+    cache_path.parent.mkdir(parents=True)
+    day = _local_day(datetime.now(timezone.utc))
+    # v1: por id da Conta; "a" duplicada com outro id (mesma identidade) e "sistema" sem dono
+    cfg = json.loads(config_path.read_text())
+    from ai_usage_collector.config import save_secure_json
+
+    d = tmp_path / "cfg" / "profiles" / "a-old"  # mesma identidade, tokens divergentes: a fusao automatica nao a remove
+    save_secure_json({"claudeAiOauth": {"accessToken": "tok-old", "refreshToken": "ref-old"}}, d / ".credentials.json")
+    save_secure_json({"oauthAccount": {"accountUuid": "uuid-a", "emailAddress": "a@x.com"}}, d / ".claude.json")
+    dup = dict(cfg["agents"]["claude"]["accounts"][0], id="a-old", credential_path=str(d / ".credentials.json"), claude_dir=str(d))
+    cfg["agents"]["claude"]["accounts"].append(dup)
+    save_config(cfg, config_path)
+    (cache_path.parent / "history.json").write_text(json.dumps({
+        "version": 1, "cursors": {},
+        "daily": {day: {"claude": {"a": {"m": 10}, "a-old": {"m": 5}, "b": {"m": 7}, "sistema": {"m": 1}}}},
+    }))
+
+    for _ in range(2):  # idempotente
+        status = _refresh(config_path, cache_path)
+        assert _acc_by_id(status, "b")["token_history"]["today"] == 7
+        th = _acc_by_id(status, "a")["token_history"]
+        assert th["today"] == 16  # 10 + 5 + 1 (sistema -> identidade ativa), sem duplicar
+        assert th["estimated"] is True
+        assert _acc_by_id(status, "b")["token_history"]["estimated"] is False
+
+    # Renomear nao perde historico
+    cfg = json.loads(config_path.read_text())
+    cfg["agents"]["claude"]["accounts"][0]["label"] = "Novo nome"
+    save_config(cfg, config_path)
+    assert _acc_by_id(_refresh(config_path, cache_path), "a")["token_history"]["today"] == 16
+
+
+def test_first_system_read_is_estimated(tmp_path, monkeypatch):
+    log, config_path, cache_path = _claude_world(tmp_path, monkeypatch)
+    log.write_text(_claude_line(datetime.now(timezone.utc), "m1", 9, 0))
+    status = _refresh(config_path, cache_path)
+    th = _acc_by_id(status, "a")["token_history"]
+    assert (th["today"], th["estimated"]) == (9, True)

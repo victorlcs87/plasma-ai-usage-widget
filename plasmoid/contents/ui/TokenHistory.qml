@@ -64,6 +64,7 @@ ColumnLayout {
                 ? root.tr("Hoje %1", root.compact(root.history.today))
                   + " • " + root.tr("Semana %1", root.compact(root.history.week))
                   + " • " + root.tr("Mês %1", root.compact(root.history.month))
+                + (root.history.estimated ? " • " + root.tr("estimado") : "")
                 : ""
         }
 

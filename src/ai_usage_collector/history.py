@@ -9,15 +9,17 @@ import json
 import os
 from datetime import date, datetime, timedelta
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from ai_usage_collector.config import DEFAULT_CACHE_DIR, ensure_secure_dir, get_accounts_for_agent, save_secure_json
 from ai_usage_collector.extractors.claude import parse_timestamp
+from ai_usage_collector.identity import credential_identity
 
 RETENTION_DAYS = 400
 HISTORY_FILENAME = "history.json"
 LOG_GLOBS = {"claude": "projects/**/*.jsonl", "codex": "sessions/**/rollout-*.jsonl"}
-UNATTRIBUTED_ACCOUNT = "sistema"
+HISTORY_VERSION = 2  # v2: totais por Identidade da Conta (ADR-0008); v1 era por id da Conta
+UNATTRIBUTED_ACCOUNT = "sistema"  # chave do v1 para logs do sistema sem dono
 UNKNOWN_MODEL = "desconhecido"
 
 
@@ -44,6 +46,50 @@ def account_log_dir(provider: str, account: dict[str, Any]) -> Path | None:
         p = Path(cred).expanduser().resolve()
         return p.parent if p.is_file() or p.suffix == ".json" else p
     return None
+
+
+def account_key(provider: str, account: dict[str, Any]) -> str:
+    """Chave do historico de uma Conta: a Identidade da Conta; sem identidade conhecida, o id."""
+    from ai_usage_collector.capture import account_credential_file  # import local: capture importa config
+
+    ident = credential_identity(provider, account_credential_file(provider, account))
+    return ident.key if ident else str(account.get("id"))
+
+
+def system_key(provider: str, accounts: list[dict[str, Any]]) -> str | None:
+    """Chave de quem esta no caminho do sistema agora (None se desconhecido)."""
+    from ai_usage_collector.capture import find_matching_account, get_active_credentials, get_system_credential_file
+
+    sys_file = get_system_credential_file(provider)
+    creds = get_active_credentials(provider)
+    if creds is None:
+        return None
+    match = find_matching_account(provider, accounts, creds, sys_file)  # token prevalece sobre identidade defasada
+    if match is not None:
+        return account_key(provider, match)
+    ident = credential_identity(provider, sys_file)
+    return ident.key if ident else None
+
+
+def _upgrade_v1(history: dict[str, Any], rekey: dict[tuple[str, str], str]) -> None:
+    """Converte o historico por id de Conta em por identidade (Contas de mesma identidade somam).
+
+    O acumulado sem dono ("sistema") vai para a identidade ativa agora, marcado como estimado.
+    """
+    # ponytail: id de Conta ja removida/fundida antes da conversao fica sob o proprio id (so no export).
+    for provs in history["daily"].values():
+        for provider, accs in provs.items():
+            merged: dict[str, dict[str, int]] = {}
+            for old, models in accs.items():
+                key = rekey.get((provider, old), old)
+                if old == UNATTRIBUTED_ACCOUNT and key != old and key not in history["estimated"].setdefault(provider, []):
+                    history["estimated"][provider].append(key)
+                bucket = merged.setdefault(key, {})
+                for model, tokens in models.items():
+                    bucket[model] = bucket.get(model, 0) + tokens
+            provs[provider] = merged
+    history["system_seen"] = list(LOG_GLOBS)  # o v1 ja lia os logs do sistema
+    history["version"] = HISTORY_VERSION
 
 
 def _tokens(usage: Any) -> int:
@@ -88,7 +134,9 @@ PARSERS = {"claude": _parse_claude, "codex": _parse_codex}
 
 def _read_new_lines(
     path: Path, provider: str, account_id: str, history: dict[str, Any], cutoff_ts: float, seen: dict[str, set[str]]
-) -> None:
+) -> int:
+    """Le o que ha de novo em `path`; devolve os tokens acrescentados."""
+    added = 0
     cursor = history["cursors"].setdefault(str(path), {"offset": 0})
     st = path.stat()
     # Truncado/reescrito: recomeca (Claude protegido pelo dedup de ids).
@@ -97,10 +145,10 @@ def _read_new_lines(
         cursor.clear()
         cursor["offset"] = 0
     if st.st_size == cursor["offset"]:
-        return
+        return 0
     if st.st_mtime < cutoff_ts:  # tudo alem da retencao
         cursor["offset"] = st.st_size
-        return
+        return 0
 
     with open(path, "rb") as f:
         f.seek(cursor["offset"])
@@ -126,23 +174,35 @@ def _read_new_lines(
         model, tokens = parsed
         bucket = history["daily"].setdefault(day, {}).setdefault(provider, {}).setdefault(account_id, {})
         bucket[model] = bucket.get(model, 0) + tokens
+        added += tokens
+    return added
 
 
 def load_history(path: Path) -> dict[str, Any]:
     """Arquivo ausente -> vazio. Arquivo corrompido -> erro (nunca sobrescrever o historico)."""
     if not path.exists():
-        return {"version": 1, "daily": {}, "cursors": {}, "seen": {}}
+        return {"version": HISTORY_VERSION, "daily": {}, "cursors": {}, "seen": {}, "estimated": {}, "system_seen": []}
     with open(path, "r", encoding="utf-8") as f:
         data = json.load(f)
     if not isinstance(data, dict) or not isinstance(data.get("daily"), dict):
         raise ValueError(f"Historico de Tokens invalido: {path}")
     data.setdefault("cursors", {})
     data.setdefault("seen", {})
+    data.setdefault("estimated", {})
+    data.setdefault("system_seen", [])
+    data.setdefault("version", 1)
     return data
 
 
-def update_history(sources: dict[Path, tuple[str, str]], path: Path, today: date) -> dict[str, Any]:
+def update_history(
+    sources: dict[Path, tuple[str, str]],
+    path: Path,
+    today: date,
+    rekey: Callable[[], dict[tuple[str, str], str]] = dict,
+) -> dict[str, Any]:
     """Le o que ha de novo em cada diretorio de logs, aplica a retencao e salva (0600, atomico).
+
+    `rekey` (so chamado se o arquivo ainda for v1) mapeia (provedor, id da Conta) -> identidade.
 
     Um lock ao lado do arquivo evita que coletas simultaneas percam incrementos.
     """
@@ -150,16 +210,25 @@ def update_history(sources: dict[Path, tuple[str, str]], path: Path, today: date
     with open(path.with_suffix(".lock"), "a") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         history = load_history(path)
+        if history["version"] < HISTORY_VERSION:
+            _upgrade_v1(history, rekey())
         first_day = (today - timedelta(days=RETENTION_DAYS - 1)).isoformat()
         cutoff_ts = datetime.combine(date.fromisoformat(first_day), datetime.min.time()).timestamp()
         seen = {d: set(keys) for d, keys in history["seen"].items()}
 
         for log_dir, (provider, account_id) in sources.items():
+            added = 0
             for file in sorted(log_dir.glob(LOG_GLOBS[provider])):
                 try:
-                    _read_new_lines(file, provider, account_id, history, cutoff_ts, seen)
+                    added += _read_new_lines(file, provider, account_id, history, cutoff_ts, seen)
                 except OSError:
                     continue
+            if log_dir == system_log_dir(provider) and provider not in history["system_seen"]:
+                # Primeira leitura do sistema: o acumulado antigo e da identidade ativa, sem como saber (estimado).
+                history["system_seen"].append(provider)
+                est = history["estimated"].setdefault(provider, [])
+                if added and account_id not in est:
+                    est.append(account_id)
 
         history["daily"] = {d: v for d, v in history["daily"].items() if d >= first_day}
         history["seen"] = {d: sorted(k) for d, k in seen.items() if k and d >= first_day}
@@ -168,27 +237,46 @@ def update_history(sources: dict[Path, tuple[str, str]], path: Path, today: date
     return history
 
 
-def build_sources(config: dict[str, Any], status_payload: dict[str, Any]) -> dict[Path, tuple[str, str]]:
-    """Diretorio de logs -> (provedor, Conta). Logs do caminho do sistema vao para a Conta Ativa no Sistema."""
-    # ponytail: atribuicao no momento da leitura; trocas entre coletas podem atribuir a Conta errada.
+def build_sources(config: dict[str, Any], only_system: bool = False) -> dict[Path, tuple[str, str]]:
+    """Diretorio de logs -> (provedor, chave de identidade).
+
+    Logs do caminho do sistema vao para quem esta nele agora; se for desconhecido, nao sao lidos
+    (o cursor nao avanca e o consumo e atribuido na proxima leitura com identidade conhecida).
+    """
     sources: dict[Path, tuple[str, str]] = {}
     for provider in LOG_GLOBS:
         accounts = get_accounts_for_agent(config, provider)
         if not accounts:
             continue
-        for acc in accounts:
-            d = account_log_dir(provider, acc)
-            if d:
-                sources[d] = (provider, str(acc.get("id")))
-        active = next(
-            (a["id"] for a in status_payload["agents"][provider]["accounts"] if a.get("isActive")), None
-        )
-        sys_dir = system_log_dir(provider)
-        if active is not None:
-            sources[sys_dir] = (provider, str(active))
-        else:
-            sources.setdefault(sys_dir, (provider, UNATTRIBUTED_ACCOUNT))
+        if not only_system:
+            for acc in accounts:
+                d = account_log_dir(provider, acc)
+                if d:
+                    sources[d] = (provider, account_key(provider, acc))
+        key = system_key(provider, accounts)
+        if key:
+            sources[system_log_dir(provider)] = (provider, key)
     return sources
+
+
+def rekey_map(config: dict[str, Any]) -> dict[tuple[str, str], str]:
+    """(provedor, id da Conta) -> chave por identidade, para converter o formato v1."""
+    rekey = {}
+    for provider in LOG_GLOBS:
+        accounts = get_accounts_for_agent(config, provider)
+        rekey.update({(provider, str(a.get("id"))): account_key(provider, a) for a in accounts})
+        key = system_key(provider, accounts)
+        if key:
+            rekey[(provider, UNATTRIBUTED_ACCOUNT)] = key
+    return rekey
+
+
+def flush_system_history(config: dict[str, Any], cache_path: str | Path | None, now: datetime) -> None:
+    """Fecha a leitura dos logs do sistema na identidade que esta saindo (chamar antes da Alternancia)."""
+    update_history(
+        build_sources(config, only_system=True), history_path_for(cache_path), now.astimezone().date(),
+        lambda: rekey_map(config),
+    )
 
 
 def _first_of_month(d: date, back: int) -> date:
@@ -197,6 +285,7 @@ def _first_of_month(d: date, back: int) -> date:
 
 
 def summarize(history: dict[str, Any], provider: str, account_id: str, today: date) -> dict[str, Any]:
+    """`account_id` e a chave de identidade da Conta (account_key)."""
     per_day: dict[str, int] = {}
     for day, provs in history["daily"].items():
         total = sum((provs.get(provider, {}).get(account_id) or {}).values())
@@ -210,6 +299,7 @@ def summarize(history: dict[str, Any], provider: str, account_id: str, today: da
     week_start = today - timedelta(days=today.weekday())
     month_start = today.replace(day=1)
     return {
+        "estimated": account_id in history.get("estimated", {}).get(provider, []),
         "today": per_day.get(today.isoformat(), 0),
         "week": between(week_start, today),
         "month": between(month_start, today),
@@ -235,17 +325,27 @@ def apply_token_history(
 ) -> None:
     """Atualiza o history.json e anexa `token_history` (campo opcional) a cada Conta do status."""
     today = now.astimezone().date()
-    history = update_history(build_sources(config, status_payload), history_path_for(cache_path), today)
+    history = update_history(build_sources(config), history_path_for(cache_path), today, lambda: rekey_map(config))
+    accounts = {(p, str(a.get("id"))): a for p in LOG_GLOBS for a in get_accounts_for_agent(config, p)}
     for provider, agent in status_payload["agents"].items():
         for acc in agent["accounts"]:
-            acc["token_history"] = summarize(history, provider, str(acc["id"]), today)
+            cfg_acc = accounts.get((provider, str(acc["id"])))
+            key = account_key(provider, cfg_acc) if cfg_acc else str(acc["id"])
+            acc["token_history"] = summarize(history, provider, key, today)
 
 
-def export_history(cache_path: str | Path | None, fmt: str) -> str:
-    """Historico diario (ate 400 dias) em CSV ou JSON: date, provider, account, model, tokens."""
+def export_history(cache_path: str | Path | None, fmt: str, config: dict[str, Any] | None = None) -> str:
+    """Historico diario (ate 400 dias) em CSV ou JSON: date, provider, account, model, tokens.
+
+    `account` e o id da Conta que hoje tem aquela identidade (ou a propria chave, se nenhuma tem).
+    """
     history = load_history(history_path_for(cache_path))
+    names = {}
+    for p in LOG_GLOBS:
+        for a in get_accounts_for_agent(config or {}, p):
+            names.setdefault((p, account_key(p, a)), str(a.get("id")))
     rows = [
-        {"date": day, "provider": prov, "account": acc, "model": model, "tokens": tokens}
+        {"date": day, "provider": prov, "account": names.get((prov, acc), acc), "model": model, "tokens": tokens}
         for day, provs in sorted(history["daily"].items())
         for prov, accs in sorted(provs.items())
         for acc, models in sorted(accs.items())
