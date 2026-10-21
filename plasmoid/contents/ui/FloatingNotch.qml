@@ -19,7 +19,14 @@ Item {
     readonly property var cfg: FG.config(Plasmoid.configuration)
     readonly property bool useLayer: forceLayer || Qt.platform.pluginName.indexOf("wayland") === 0
     readonly property var screens: Qt.application.screens
-    property string widgetScreenName: fn.Window.window && fn.Window.window.screen ? fn.Window.window.screen.name : ""
+    // Tela do widget. Medido no plasmashell real (painel no 2o monitor): fn.Window.window e nulo e fica nulo
+    // (o item vive fora da janela do painel), entao caia no indice 0 do Qt. A fonte confiavel e a geometria da tela
+    // do containment, casada com Qt.application.screens (a ordem do Qt nao e a do Plasma).
+    readonly property var hostGeometry: Plasmoid.containment ? Plasmoid.containment.screenGeometry : undefined
+    property string widgetScreenName: {
+        var n = FG.screenNameAt(screens, hostGeometry);
+        return n !== "" ? n : (fn.Window.window && fn.Window.window.screen ? fn.Window.window.screen.name : "");
+    }
     readonly property int screenIdx: FG.pickScreen(screens, cfg.screen, FG.pickScreen(screens, widgetScreenName, 0))
     readonly property var screenObj: screens.length > 0 ? screens[screenIdx] : null
     property var screenInfo: screenObj   // geometria usada nas contas (os testes simulam telas pequenas por aqui)

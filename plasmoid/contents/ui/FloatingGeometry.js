@@ -39,6 +39,14 @@ function pickScreen(screens, name, fallback) {
     return fallback >= 0 && fallback < screens.length ? fallback : 0;
 }
 
+// Nome da tela cujo canto (virtualX/virtualY) e o de `geo` (containment.screenGeometry do Plasma); "" se nenhuma
+function screenNameAt(screens, geo) {
+    screens = screens || [];
+    if (!geo) return "";
+    for (var i = 0; i < screens.length; i++) if (screens[i].virtualX === geo.x && screens[i].virtualY === geo.y) return screens[i].name;
+    return "";
+}
+
 function clampOffset(edge, offset, size, scr) {
     var along = vertical(edge) ? scr.h : scr.w, len = vertical(edge) ? size.h : size.w;
     var max = Math.max(0, along - len) / 2;   // limite simétrico a partir do centro

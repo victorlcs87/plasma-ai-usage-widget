@@ -1,5 +1,9 @@
 # Changelog
 
+## Nao lançado
+
+- Notch flutuante: aparecia no monitor errado (indice 0 do Qt) quando o painel do widget ficava em outra tela; a tela agora vem da geometria do containment.
+
 ## 1.1.0
 
 Spec 05 (Visual Notch, Inteligência de Limites e Identidade de Conta). Tudo o que envolve hooks, notificações, Notch flutuante e checagem de versão é opt-in.
