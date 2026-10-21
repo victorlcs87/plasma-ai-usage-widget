@@ -788,7 +788,7 @@ Item {
 
         QQC2.ToolButton {
             objectName: "tabsScrollLeft"
-            readonly property Item strip: configTabBar.contentItem
+            readonly property var strip: configTabBar.strip
             visible: strip.contentWidth > strip.width + 1
             enabled: !strip.atXBeginning
             icon.name: "go-previous"
@@ -805,7 +805,8 @@ Item {
             currentIndex: 0
             Accessible.role: Accessible.PageTabList
             Accessible.name: I18n.tr("Settings sections")
-            onCurrentIndexChanged: contentItem.positionViewAtIndex(currentIndex, ListView.Contain)
+            readonly property var strip: contentItem  // ListView interno do TabBar (var: o tipo estático é Item)
+            onCurrentIndexChanged: strip.positionViewAtIndex(currentIndex, ListView.Contain)
 
             QQC2.TabButton {
                 text: I18n.tr("General")
@@ -846,7 +847,7 @@ Item {
 
         QQC2.ToolButton {
             objectName: "tabsScrollRight"
-            readonly property Item strip: configTabBar.contentItem
+            readonly property var strip: configTabBar.strip
             visible: strip.contentWidth > strip.width + 1
             enabled: !strip.atXEnd
             icon.name: "go-next"
