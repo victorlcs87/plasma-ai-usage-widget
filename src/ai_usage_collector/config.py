@@ -83,17 +83,7 @@ def get_default_config() -> dict[str, Any]:
             # O caminho do sistema nunca e uma Conta (ADR-0008); Contas vem de captura/login.
             "claude": {"accounts": []},
             "codex": {"accounts": []},
-            "gemini": {
-                "accounts": [
-                    {
-                        "id": "default",
-                        "label": "Gemini (Padrão)",
-                        "source": "auto",
-                        "credential_path": "~/.gemini/oauth_creds.json",
-                        "manual_invite_url": None,
-                    }
-                ]
-            },
+            "gemini": {"accounts": []},
         },
     }
 
