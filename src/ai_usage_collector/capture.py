@@ -25,6 +25,7 @@ from ai_usage_collector.config import (
     SUPPORTED_PROVIDERS,
     add_account_to_config,
     config_lock,
+    credential_override,
     ensure_secure_dir,
     ensure_secure_file,
     generate_account_slug,
@@ -83,10 +84,12 @@ def resolve_profile_slug_and_dir(
     return candidate_slug, dir_name
 
 
-def get_active_claude_credentials() -> tuple[dict[str, Any] | None, str]:
+def get_active_claude_credentials(override: Path | None = None) -> tuple[dict[str, Any] | None, str]:
     """Retrieve active Claude credentials from file."""
     env_path = os.environ.get("CLAUDE_CREDENTIALS_PATH")
-    if env_path:
+    if override:
+        p = override
+    elif env_path:
         p = Path(env_path).expanduser().resolve()
     elif os.environ.get("CLAUDE_CONFIG_DIR"):
         p = Path(os.environ["CLAUDE_CONFIG_DIR"]).expanduser().resolve() / ".credentials.json"
@@ -107,10 +110,12 @@ def get_active_claude_credentials() -> tuple[dict[str, Any] | None, str]:
     return None, str(p)
 
 
-def get_active_codex_credentials() -> tuple[dict[str, Any] | None, str]:
+def get_active_codex_credentials(override: Path | None = None) -> tuple[dict[str, Any] | None, str]:
     """Retrieve active Codex credentials from file."""
     env_path = os.environ.get("CODEX_AUTH_PATH")
-    if env_path:
+    if override:
+        p = override
+    elif env_path:
         p = Path(env_path).expanduser().resolve()
     elif os.environ.get("CODEX_HOME"):
         p = Path(os.environ["CODEX_HOME"]).expanduser().resolve() / "auth.json"
@@ -131,9 +136,9 @@ def get_active_codex_credentials() -> tuple[dict[str, Any] | None, str]:
     return None, str(p)
 
 
-def get_active_gemini_credentials() -> tuple[dict[str, Any] | None, str]:
+def get_active_gemini_credentials(override: Path | None = None) -> tuple[dict[str, Any] | None, str]:
     """Retrieve active Gemini credentials from secret-tool keyring or fallback file."""
-    env_path = os.environ.get("GEMINI_CREDENTIALS_PATH")
+    env_path = str(override) if override else os.environ.get("GEMINI_CREDENTIALS_PATH")
     if env_path:
         p = Path(env_path).expanduser().resolve()
         if p.exists() and p.is_file():
@@ -201,6 +206,7 @@ def get_active_gemini_credentials() -> tuple[dict[str, Any] | None, str]:
 
 def inspect_and_validate_active_session(
     provider: str,
+    override: Path | None = None,
 ) -> tuple[bool, str, dict[str, Any] | None, str | None, str]:
     """Inspect and validate the active CLI session for the given provider.
 
@@ -219,7 +225,7 @@ def inspect_and_validate_active_session(
         )
 
     if prov == "claude":
-        creds, path_str = get_active_claude_credentials()
+        creds, path_str = get_active_claude_credentials(override)
         if creds is None:
             return (
                 False,
@@ -259,7 +265,7 @@ def inspect_and_validate_active_session(
         return True, "Sessão Claude ativa validada.", creds, identity, ".credentials.json"
 
     elif prov == "codex":
-        creds, path_str = get_active_codex_credentials()
+        creds, path_str = get_active_codex_credentials(override)
         if creds is None:
             return (
                 False,
@@ -302,7 +308,7 @@ def inspect_and_validate_active_session(
         return True, "Sessão Codex ativa validada.", creds, identity, "auth.json"
 
     elif prov == "gemini":
-        creds, source_info = get_active_gemini_credentials()
+        creds, source_info = get_active_gemini_credentials(override)
         if creds is None:
             return (
                 False,
@@ -370,11 +376,12 @@ def _capture_current_session(
             None,
         )
 
-    valid, err_msg, creds_data, identity, filename = inspect_and_validate_active_session(prov)
+    override = credential_override(prov, config_path)
+    valid, err_msg, creds_data, identity, filename = inspect_and_validate_active_session(prov, override)
     if not valid or creds_data is None:
         return False, err_msg, None
 
-    sys_file = get_system_credential_file(prov)
+    sys_file = get_system_credential_file(prov, override)
     sys_identity = credential_identity(prov, sys_file)
     if sys_identity and sys_identity.email:
         identity = sys_identity.email
@@ -836,9 +843,11 @@ def run_interactive_login(
     )
 
 
-def get_system_credential_file(provider: str) -> Path:
-    """Return default system credentials file path for provider, respecting env overrides."""
+def get_system_credential_file(provider: str, override: Path | None = None) -> Path:
+    """Return default system credentials file path for provider, respecting config and env overrides."""
     prov = provider.lower().strip()
+    if override:
+        return override
     if prov == "claude":
         env_path = os.environ.get("CLAUDE_CREDENTIALS_PATH")
         if env_path:
@@ -966,15 +975,15 @@ def _read_json_dict(path: Path | None) -> dict[str, Any] | None:
         return None
 
 
-def get_active_credentials(provider: str) -> dict[str, Any] | None:
+def get_active_credentials(provider: str, override: Path | None = None) -> dict[str, Any] | None:
     """Credencial atualmente aplicada no sistema para o provedor (ou None)."""
     prov = provider.lower().strip()
     if prov == "claude":
-        return get_active_claude_credentials()[0]
+        return get_active_claude_credentials(override)[0]
     if prov == "codex":
-        return get_active_codex_credentials()[0]
+        return get_active_codex_credentials(override)[0]
     if prov == "gemini":
-        return get_active_gemini_credentials()[0]
+        return get_active_gemini_credentials(override)[0]
     return None
 
 
@@ -1154,12 +1163,13 @@ def _switch_system_account(
     if _read_json_dict(source_file) is None:
         return False, f"Arquivo de credenciais da conta '{account_id}' ausente ou inválido em '{source_file}'.", False
 
-    sys_file = get_system_credential_file(prov)
+    override = credential_override(prov, cfg)
+    sys_file = get_system_credential_file(prov, override)
     if sys_file.is_file() and _read_json_dict(sys_file) is None:
         return False, f"Credencial do sistema em '{sys_file}' está ilegível; troca abortada para não perdê-la.", False
 
     # Passos 1 e 2: backup da credencial atual do sistema
-    sys_creds = get_active_credentials(prov)
+    sys_creds = get_active_credentials(prov, override)
     if sys_creds is not None:
         match = find_matching_account(prov, accounts, sys_creds, sys_file)
         if match is not None:
@@ -1256,9 +1266,10 @@ def _migrate_provider(
     accounts: list[dict[str, Any]],
     config_path: str | Path | None,
     created: list[Path],
+    override: Path | None = None,
 ) -> bool:
     changed = False
-    sys_file = get_system_credential_file(prov)  # sem resolver: symlink define o estado ao lado
+    sys_file = get_system_credential_file(prov, override)  # sem resolver: symlink define o estado ao lado
 
     # 1. Entradas legadas apontando para o caminho do sistema viram Perfil Isolado.
     for acc in list(accounts):
@@ -1343,7 +1354,7 @@ def _migrate_accounts(config_data: dict[str, Any], config_path: str | Path) -> b
                     del acc["active"]
                     changed = True
             if supports_identity(prov) and accounts:
-                changed = _migrate_provider(prov, accounts, config_path, created) or changed
+                changed = _migrate_provider(prov, accounts, config_path, created, credential_override(prov, config_data)) or changed
         if changed:
             save_config(config_data, config_path)
     except Exception:

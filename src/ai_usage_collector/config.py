@@ -17,6 +17,7 @@ import unicodedata
 from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 DEFAULT_CONFIG_DIR = Path("~/.config/plasma-ai-usage").expanduser()
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.json"
@@ -444,3 +445,68 @@ def create_account_entry(
         updated_cfg = add_account_to_config(cfg, prov, account_entry)
         save_config(updated_cfg, config_path)
     return updated_cfg, account_entry
+
+
+_CREDENTIAL_FILENAMES = {"claude": ".credentials.json", "codex": "auth.json", "gemini": "oauth_creds.json"}
+
+
+def credential_override(provider: str, config: dict[str, Any] | str | Path | None = None) -> Path | None:
+    """Caminho de credenciais alternativo do provedor (ticket 38), ou None.
+
+    Aceita arquivo ou pasta (pasta recebe o nome padrao do arquivo). Com `config` caminho/None le o
+    JSON cru, sem migracao nem lock, pois e chamado de dentro deles.
+    """
+    if not isinstance(config, dict):
+        file_path = Path(config).expanduser().resolve() if config else DEFAULT_CONFIG_PATH
+        try:
+            config = json.loads(file_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    agents = config.get("agents") if isinstance(config, dict) else None
+    val = (agents or {}).get(provider, {}).get("credential_path") if isinstance(agents, dict) else None
+    if not val or not isinstance(val, str):
+        return None
+    p = Path(val).expanduser().resolve()
+    return p if p.suffix == ".json" or p.is_file() else p / _CREDENTIAL_FILENAMES[provider]
+
+
+def provider_settings(config: dict[str, Any], provider: str) -> dict[str, Any]:
+    agent = (config.get("agents") or {}).get(provider)
+    return agent if isinstance(agent, dict) else {}
+
+
+def set_provider_settings(
+    provider: str,
+    credential_path: str | None = None,
+    api_base_url: str | None = None,
+    api_key: str | None = None,
+    config_path: str | Path | None = None,
+) -> tuple[bool, str]:
+    """Grava caminho de credenciais (todos os provedores) e URL base/chave de API (so Claude).
+
+    None mantem o valor atual; string vazia remove. A chave fica apenas no config.json (0600).
+    """
+    prov = (provider or "").lower().strip()
+    if prov not in SUPPORTED_PROVIDERS:
+        return False, f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+    if (api_base_url is not None or api_key is not None) and prov != "claude":
+        return False, "URL base e chave de API personalizadas só existem para o Claude."
+    if api_base_url:
+        api_base_url = api_base_url.strip().rstrip("/")
+        parsed = urlsplit(api_base_url)
+        local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+        if not parsed.hostname or parsed.scheme not in ("http", "https") or (parsed.scheme == "http" and not local):
+            return False, "URL base inválida: use https (http só para localhost)."
+    updates = {"credential_path": credential_path, "api_base_url": api_base_url, "api_key": api_key}
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        agent = cfg.setdefault("agents", {}).setdefault(prov, {"accounts": []})
+        for key, value in updates.items():
+            if value is None:
+                continue
+            if value.strip():
+                agent[key] = value.strip()
+            else:
+                agent.pop(key, None)
+        save_config(cfg, config_path)
+    return True, f"Configuração de '{prov}' atualizada."
