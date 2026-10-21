@@ -54,9 +54,9 @@ Item {
     // fora do degradê por comprimento: senão o painel, ao receber menos, nunca mais devolveria o estilo pedido.
     readonly property var effC: PanelStyle.effective(reqOpts, vertical ? width : height)
     readonly property var eff: PanelStyle.effective(reqOpts, vertical ? width : height, vertical ? height : width,
-                                                    function (oo) { return compactRoot.runLength(PanelStyle.layout(oo, vertical ? compactRoot.width : compactRoot.height), oo.style); })
+                                                    function (oo) { return compactRoot.runLength(PanelStyle.layout(oo, vertical ? compactRoot.width : compactRoot.height), oo.style, oo.lean); })
     readonly property string style: eff.style
-    function optsFor(e) { return { style: e.style, mode: panel.mode, center: e.center, vertical: vertical, pad: pad, gap: gap,
+    function optsFor(e) { return { style: e.style, mode: e.mode || panel.mode, lean: e.lean === true, center: e.center, vertical: vertical, pad: pad, gap: gap,
                                    base: ringBase, scale: panel.scale, minUnit: minUnit }; }
     readonly property var geoOpts: optsFor(eff)
     readonly property var geoOptsC: optsFor(effC)
@@ -70,14 +70,15 @@ Item {
     // Selos entram no fluxo da pílula, depois dos itens (num grupo: no Ring, com fundo escuro próprio)
     readonly property int badgeCount: (health !== "" ? 1 : 0) + (cliUpdate ? 1 : 0) + (widgetUpdate ? 1 : 0) + (totalInvites > 0 ? 1 : 0)
     readonly property int badgePad: style === "ring" ? 3 : 0
-    function badgeLengthFor(st) { return badgeCount === 0 ? 0 : badgeInner + 2 * (st === "ring" ? 3 : 0); }
+    readonly property bool lean: eff.lean === true  // sem espaço nem para a pílula completa: sem % e sem selos, antes de encolher
+    function badgeLengthFor(st, lean) { return badgeCount === 0 || lean ? 0 : badgeInner + 2 * (st === "ring" ? 3 : 0); }
     readonly property int badgeInner: gap
         + (health !== "" ? healthDot.implicitWidth + gap : 0)
         + (cliUpdate ? updateDot.implicitWidth + gap : 0)
         + (widgetUpdate ? (vertical ? widgetBadge.implicitHeight : widgetBadge.implicitWidth) + gap : 0)
         + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0) - gap
 
-    function runLength(g, st) { return count * (vertical ? g.h : g.w) + (count - 1) * gap + badgeLengthFor(st) + 2 * pad; }
+    function runLength(g, st, lean) { return count * (vertical ? g.h : g.w) + (count - 1) * gap + badgeLengthFor(st, lean) + 2 * pad; }
 
     // Clique do mouse: abre/fixa/solta (main.qml); teclado: abre/fecha como antes
     function toggle() {
@@ -115,8 +116,8 @@ Item {
         id: pill
         visible: !compactRoot.idle && !compactRoot.marker
         anchors.centerIn: parent
-        width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo, compactRoot.style))
-        height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo, compactRoot.style) : compactRoot.geo.h + 2 * pad)
+        width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo, compactRoot.style, compactRoot.lean))
+        height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo, compactRoot.style, compactRoot.lean) : compactRoot.geo.h + 2 * pad)
         radius: compactRoot.style === "text" || compactRoot.style === "bar"
             ? Math.min(Kirigami.Units.gridUnit * 0.5, Math.min(width, height) / 2) : Math.min(width, height) / 2
         // Ring: sem cápsula comum (cada item tem fundo escuro próprio); a borda segue aparecendo no foco/hover
@@ -141,7 +142,7 @@ Item {
                     Layout.preferredHeight: compactRoot.geo.h
                     m: modelData
                     panelStyle: compactRoot.style
-                    mode: compactRoot.panel.mode
+                    mode: compactRoot.eff.mode || compactRoot.panel.mode
                     center: compactRoot.eff.center
                     remaining: compactRoot.remaining
                     vertical: compactRoot.vertical
@@ -174,7 +175,7 @@ Item {
             // Selos (saúde, atualização, convites): grupo próprio; no Ring leva fundo escuro, já que não há cápsula
             Rectangle {
                 id: badgeGroup
-                visible: compactRoot.badgeCount > 0
+                visible: compactRoot.badgeCount > 0 && !compactRoot.lean
                 Layout.alignment: Qt.AlignCenter
                 implicitWidth: badgeGrid.implicitWidth + 2 * compactRoot.badgePad
                 implicitHeight: badgeGrid.implicitHeight + 2 * compactRoot.badgePad

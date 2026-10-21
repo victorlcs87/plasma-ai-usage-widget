@@ -129,10 +129,15 @@ function effective(o, cross, along, runFn) {
     CHAIN[o.style].forEach(function (st) {
         [o.center, "logo"].forEach(function (c) { if (!cands.some(function (x) { return x.style === st && x.center === c; })) cands.push({ style: st, center: c }); });
     });
+    // Último recurso antes de encolher a escala: pílula só com os anéis (sem % ao lado e sem selos); o chamador
+    // esconde os selos quando `lean`. Texto só com % (mode "pct") não tem anel: mantém o modo.
+    cands.push({ style: "pill", center: "logo", mode: o.mode === "pct" ? "pct" : "ring", lean: true });
     for (var i = 0; i < cands.length; i++) {
         var oo = {};
         for (var k in o) oo[k] = o[k];
         oo.style = cands[i].style; oo.center = cands[i].center;
+        if (cands[i].mode) oo.mode = cands[i].mode;
+        oo.lean = cands[i].lean === true;
         if (cross >= minCross(oo) && !(along > 0 && runFn && runFn(oo) > along)) return cands[i];
     }
     return cands[cands.length - 1];

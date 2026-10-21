@@ -303,7 +303,7 @@ def test_badges_keep_dark_backdrop_on_a_light_theme_and_meet_contrast(tmp_path, 
     for n in "ab":
         (tmp_path / n).mkdir()
     for n, bg in (("a", "#f5f5f5"), ("b", "#1b1e20")):  # janela clara e escura
-        out = render(tmp_path / n, "", THREE, vertical=vertical, invites=3, updates=UPDATES, bg=bg, extra_cfg=OVERLAY,
+        out = render(tmp_path / n, "", THREE, vertical=vertical, invites=3, updates=UPDATES, bg=bg, extra_cfg=OVERLAY, size=(40, 420) if vertical else None,
                      panel={"panelStyle": style, "panelMode": "ringpct"})
         assert len(out["badges"]) == 4
         for b in out["badges"]:
@@ -362,3 +362,16 @@ def test_short_length_degrades_or_shrinks_instead_of_overflowing(tmp_path, style
     big = render(tmp_path / "b", "", THREE, vertical=vertical, invites=3, updates=UPDATES, panel={"panelStyle": style, "panelMode": "ringpct"},
                  size=(40, 600) if vertical else (600, 40), extra_cfg=OVERLAY) if (tmp_path / "b").mkdir() is None else None
     assert big["style"] == style and out["pref"] == big["pref"]
+
+
+@needs_qml
+def test_pill_at_110px_drops_percent_and_badges_before_shrinking(tmp_path):
+    """R2 P3-5: sem espaço para a pílula completa, somem o % e os selos em vez de encolher tudo a ~0,4 (ilegível)."""
+    (tmp_path / "a").mkdir()
+    out = render(tmp_path / "a", "", THREE, invites=3, updates=UPDATES, panel={"panelStyle": "pill", "panelMode": "ringpct"}, size=(110, 40), extra_cfg=OVERLAY)
+    assert out["eff"].get("lean") is True and out["eff"]["mode"] == "ring" and out["badges"] == []
+    for it in out["items"]:
+        assert (it["x2"] - it["x"]) / it["w"] >= 0.9 and it["x"] >= -0.5 and it["x2"] <= 110.5
+    (tmp_path / "b").mkdir()
+    big = render(tmp_path / "b", "", THREE, invites=3, updates=UPDATES, panel={"panelStyle": "pill", "panelMode": "ringpct"}, size=(600, 40), extra_cfg=OVERLAY)
+    assert not big["eff"].get("lean") and len(big["badges"]) == 4  # com espaço, tudo como antes
