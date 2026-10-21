@@ -27,6 +27,14 @@ A classe é o pior nível de alerta entre as Contas Ativas no Sistema (contas in
 
 Notas: `text` pode mostrar o % de uma janela com leitura local enquanto a classe fica `unknown` (leitura local não recebe nível); `percentage` considera só janelas com nível. Percentuais fora de 0..100 são limitados e NaN/Infinity são ignorados. A saída é JSON ASCII (acentos escapados como `\uXXXX`, válido para o Waybar), o tooltip mostra no máximo 20 linhas, e `--waybar` ignora as demais opções (só `--cache-path` vale).
 
+## Onde o widget procura o coletor
+
+O plasmoide chama `ai-usage-collector` pelo shell, nesta ordem: o `PATH`, `~/.local/bin/ai-usage-collector`, o venv do
+pipx (`~/.local/share/pipx/venvs/plasma-ai-usage-collector/bin/`) e, só por último, o caminho da opção **Caminho do
+coletor** (Configuração > Geral; `collectorPath` em `main.xml`, vazio por padrão; aceita `~/`). Se nada for achado, cai em
+`python3 -m ai_usage_collector`. Para um venv de desenvolvimento, preencha o campo com
+`~/caminho/do/repo/.venv/bin/ai-usage-collector`; nenhum caminho pessoal vai no código.
+
 ## Estado da Sessão (Claude Code, opt-in)
 
 `ai-usage-collector --install-hooks` registra hooks no `settings.json` do Claude Code (`CLAUDE_CONFIG_DIR`
