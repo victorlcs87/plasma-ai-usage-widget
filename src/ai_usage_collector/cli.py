@@ -249,6 +249,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdout.write('{"text": "\\u2014", "tooltip": "", "class": "unknown", "alt": "unknown"}\n')
         return 0
 
+    if args.hide_when_not_running is not None and not args.set_visibility_config:
+        sys.stderr.write("Erro: --hide-when-not-running só vale junto de --set-visibility-config.\n")
+        return 1
+
     try:
         if args.export_history:
             sys.stdout.write(export_history(cache_path, args.export_history, load_config(config_path)))

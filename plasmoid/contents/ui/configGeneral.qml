@@ -968,6 +968,14 @@ Item {
                 enabled: !configRoot.isBusy && !configRoot.isSavingHide
                 onClicked: configRoot.saveHideSettings()
             }
+
+            QQC2.Label {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: Kirigami.Theme.disabledTextColor
+                textFormat: Text.PlainText
+                text: configRoot.safeI18n("Para reencontrar o widget oculto: aponte para a fatia fina no painel (ela reabre o monitor e o botão direito leva a Configurar), use o modo de edição do painel, ou, na bandeja do sistema, abra os itens ocultos. O widget nunca some com o popup ou esta janela abertos.")
+            }
         }
 
         // Seção expansível: Adicionar Nova Conta

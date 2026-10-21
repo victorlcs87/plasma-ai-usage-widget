@@ -41,7 +41,7 @@ Item {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.expanded = !compactRoot.plasmoidItem.expanded;
     }
 
-    readonly property int sliver: Kirigami.Units.smallSpacing * 2
+    readonly property int sliver: Kirigami.Units.gridUnit
     Layout.minimumWidth: vertical ? ringMin + 2 * pad : (idle ? sliver : runLength(ringMin))
     Layout.minimumHeight: vertical ? (idle ? sliver : runLength(ringMin)) : ringMin + 2 * pad
     Layout.preferredWidth: vertical ? ringBase + 2 * pad : (idle ? sliver : runLength(ringBase))
@@ -53,7 +53,8 @@ Item {
     Keys.onSpacePressed: toggle()
 
     Accessible.role: Accessible.Button
-    Accessible.name: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : ""
+    Accessible.name: compactRoot.idle ? compactRoot.tr("Monitor de IA oculto: nenhuma CLI em execução. Ative para abrir")
+        : (compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : "")
     Accessible.description: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipSubText : ""
     Accessible.onPressAction: toggle()
 
@@ -152,11 +153,19 @@ Item {
     Rectangle {
         visible: compactRoot.idle
         anchors.centerIn: parent
-        width: vertical ? parent.width * 0.6 : compactRoot.sliver / 2
-        height: vertical ? compactRoot.sliver / 2 : parent.height * 0.6
+        width: vertical ? parent.width * 0.7 : Math.max(4, compactRoot.sliver / 3)
+        height: vertical ? Math.max(4, compactRoot.sliver / 3) : parent.height * 0.7
         radius: Math.min(width, height) / 2
-        color: "#8a9099"
-        opacity: 0.4
+        color: compactRoot.accent
+        opacity: mouseArea.containsMouse ? 1 : 0.8
+    }
+
+    // Histerese: o mouse sobre a fatia/pílula impede reduzir (ver idleWanted em main.qml)
+    Binding {
+        target: compactRoot.plasmoidItem
+        property: "compactHovered"
+        value: mouseArea.containsMouse
+        when: compactRoot.plasmoidItem !== null
     }
 
     MouseArea {

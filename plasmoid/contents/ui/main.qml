@@ -33,13 +33,43 @@ PlasmoidItem {
     property string lastUpdatedFormatted: formatLastUpdated(statusData?.last_updated)
     property int totalInvites: calculateTotalInvites()
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
-    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n)
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, idleProviders: root.confirmedIdle }, safeI18n, root.nowMs)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
+    // Timer de 15 s e a cada status lido, para uma leitura velha deixar de esconder mesmo sem status novo.
+    property double nowMs: Date.now()
+    property bool compactHovered: false  // vem da CompactRepresentation
+    property int idleDelayMs: 20000
     // Opção "ocultar sem o processo da CLI" (modo widget; desligada por padrão). Recuperação: nunca oculta
-    // com o popup aberto nem com a configuração aberta; no painel resta uma fatia clicável (botão direito
-    // abre "Configurar"), e na bandeja o status Passivo mantém o widget na área de itens ocultos.
-    readonly property bool idleHidden: NotchModel.widgetIdle(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders })
-        && !root.expanded && !Plasmoid.userConfiguring
+    // com o popup aberto, o mouse sobre o widget ou a configuração aberta; no painel resta uma fatia clicável
+    // (botão direito abre "Configurar"), e na bandeja o status Passivo mantém o widget nos itens ocultos.
+    // Histerese: some só depois de `idleDelayMs` ininterruptos (sem tremor); reaparece na hora.
+    readonly property bool idleWanted: NotchModel.widgetIdle(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs)
+        && !root.expanded && !Plasmoid.userConfiguring && !root.compactHovered
+    property bool idleHidden: false
+    onIdleWantedChanged: {
+        if (idleWanted) idleDelay.restart();
+        else { idleDelay.stop(); idleHidden = false; }
+    }
+    // Modo "provider": o provedor só some após `idleDelayMs` parado (sem reflow a cada oscilação); volta na hora
+    // string (não array): recalcular sem mudança não reinicia o atraso
+    readonly property string rawIdle: NotchModel.idleProviders(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs).join(",")
+    property var confirmedIdle: []
+    onRawIdleChanged: {
+        var raw = rawIdle === "" ? [] : rawIdle.split(",");
+        confirmedIdle = confirmedIdle.filter(function (k) { return raw.indexOf(k) >= 0; });
+        if (raw.length > confirmedIdle.length) providerIdleDelay.restart(); else providerIdleDelay.stop();
+    }
+    Timer {
+        id: providerIdleDelay
+        interval: root.idleDelayMs
+        onTriggered: root.confirmedIdle = root.rawIdle === "" ? [] : root.rawIdle.split(",")
+    }
+    Timer {
+        id: idleDelay
+        interval: root.idleDelayMs
+        onTriggered: root.idleHidden = root.idleWanted
+    }
     Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
@@ -223,6 +253,7 @@ PlasmoidItem {
         running: NotchModel.hideMode(root.statusData) !== "off"
         triggeredOnStart: true
         onTriggered: {
+            root.nowMs = Date.now();  // antes da chamada: se o coletor falhar, a leitura velha ainda expira
             if (runningDataSource.connectedSources.length === 0)
                 runningDataSource.connectSource(root.buildCollectorCommand(root.shellQuote("--detect-running")));
         }
@@ -260,6 +291,7 @@ PlasmoidItem {
             if (exitCode === 0 && stdout && stdout.trim().length > 0) {
                 try {
                     var parsed = JSON.parse(stdout);
+                    root.nowMs = Date.now();
                     root.statusData = parsed;
                     root.lastError = "";
                 } catch (e) {
@@ -290,6 +322,8 @@ PlasmoidItem {
     }
 
     Component.onCompleted: {
+        if (root.idleWanted) idleDelay.restart();
+        if (root.rawIdle !== "") providerIdleDelay.restart();
         root.loadStatus();
     }
 

@@ -70,7 +70,6 @@ def test_flags_reflect_strict_process_match(env):
     ("python3", "-m", "ai_usage_collector", "--refresh", "claude"),
     ("nvim", "/home/u/claude/notes.md"),
     ("/usr/bin/plasmashell", "--claude"),
-    ("node", "--inspect", "claude"),
     ("node", "/home/u/projects/claude/server.js"),
     ("claudette",),
     ("my claude",),
@@ -80,7 +79,56 @@ def test_false_positives_are_not_running(env, argv):
     env.spawn(20, *argv)
     env.clock["now"] += timedelta(minutes=1)
     main(["--detect-running", *env.base])
-    assert env.flags()["claude"] is False
+    # nunca True; citar o nome em algum argumento rebaixa para "desconhecido" (lado seguro)
+    assert env.flags()["claude"] is not True
+
+
+@pytest.mark.parametrize("argv", [("claude-code-widget",), ("claudette",), ("/usr/bin/plasmashell", "--claude"),
+                                  ("ai-usage-collector", "--detect-running")])
+def test_unrelated_processes_stay_definitely_false(env, argv):
+    env.spawn(21, *argv)
+    env.clock["now"] += timedelta(minutes=1)
+    main(["--detect-running", *env.base])
+    assert env.flags() == {"claude": False, "codex": False, "gemini": False}
+
+
+@pytest.mark.parametrize("provider,argv", [
+    ("claude", ("node", "--no-warnings", "/usr/bin/claude")),
+    ("gemini", ("node", "--max-old-space-size=4096", "/usr/lib/node_modules/@google/gemini-cli/dist/index.js")),
+    ("claude", ("/usr/bin/env", "node", "/x/claude")),
+    ("claude", ("/bin/sh", "/usr/bin/claude")),
+    ("codex", ("python3", "/usr/bin/codex")),
+    ("codex", ("node22", "/x/codex")),
+    ("claude", ("claude --resume abc",)),
+    ("claude", ("node", "--inspect", "claude")),
+])
+def test_wrapped_and_retitled_launches_are_running(env, provider, argv):
+    env.spawn(22, *argv)
+    env.clock["now"] += timedelta(minutes=1)
+    main(["--detect-running", *env.base])
+    assert env.flags()[provider] is True or env.flags()[provider] is None
+    if provider != "gemini":  # gemini-cli/dist/index.js so e citado por segmento: cai na rede de seguranca
+        assert env.flags()[provider] is True
+
+
+def test_versioned_native_binary_via_comm_and_safety_net(env):
+    env.spawn(23, "/home/u/.local/share/claude/versions/2.1.50")
+    env.clock["now"] += timedelta(minutes=1)
+    main(["--detect-running", *env.base])
+    assert env.flags()["claude"] is None  # sem comm: o caminho cita claude, entao nunca False
+    (env.proc / "23" / "comm").write_text("claude\n")
+    env.clock["now"] += timedelta(minutes=1)
+    main(["--detect-running", *env.base])
+    assert env.flags()["claude"] is True
+    env.spawn(24, "node", "/x/dist/index.js", "--tool", "gemini-cli")
+    env.clock["now"] += timedelta(minutes=1)
+    main(["--detect-running", *env.base])
+    assert env.flags()["gemini"] is None
+
+
+def test_hide_flag_without_set_visibility_is_a_clear_error(env, capsys):
+    assert main(["--hide-when-not-running", "widget", *env.base]) == 1
+    assert "--set-visibility-config" in capsys.readouterr().err
 
 
 def test_only_own_processes_count(env, monkeypatch):
@@ -215,34 +263,60 @@ def _qml_eval(tmp_path, expr):
     return json.loads(out.split("OUT ", 1)[1].splitlines()[0])
 
 
-@pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary not available")
+NOW = datetime(2026, 10, 20, 12, 0, tzinfo=timezone.utc)
+NOW_MS = int(NOW.timestamp() * 1000)
+CFG = {"providerOrder": "claude,codex,gemini", "hiddenProviders": ""}
+ALL_STOPPED = {"claude": False, "codex": False, "gemini": False}
+
+
+def _st(mode, flags, age_s=1):
+    checked = None if age_s is None else (NOW - timedelta(seconds=age_s)).isoformat()
+    return {"visibility": {"hide_when_not_running": mode}, "running_checked_at": checked,
+            "agents": {p: {"name": p, "accounts": [], **({} if v == "ausente" else {"running": v})} for p, v in flags.items()}}
+
+
+needs_qml = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary not available")
+
+
+@needs_qml
 def test_notch_hides_only_on_explicit_false_and_fresh(tmp_path):
-    fresh = datetime.now(timezone.utc).isoformat()
-    old = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
-
-    def st(mode, flags, checked=fresh):
-        return {"visibility": {"hide_when_not_running": mode}, "running_checked_at": checked,
-                "agents": {p: {"name": p, "accounts": [], **({} if v == "ausente" else {"running": v})} for p, v in flags.items()}}
-
-    cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": ""}
-    f = {"claude": False, "codex": False, "gemini": False}
     cases = {
-        "off": st("off", f), "widget_all_false": st("widget", f), "widget_one_true": st("widget", {**f, "codex": True}),
-        "widget_null": st("widget", {**f, "codex": None}), "widget_absent": st("widget", {**f, "codex": "ausente"}),
-        "widget_stale": st("widget", f, old), "widget_nodate": st("widget", f, None),
+        "off": _st("off", ALL_STOPPED), "widget_all_false": _st("widget", ALL_STOPPED),
+        "widget_one_true": _st("widget", {**ALL_STOPPED, "codex": True}),
+        "widget_null": _st("widget", {**ALL_STOPPED, "codex": None}),
+        "widget_absent": _st("widget", {**ALL_STOPPED, "codex": "ausente"}),
+        "widget_stale": _st("widget", ALL_STOPPED, 600), "widget_nodate": _st("widget", ALL_STOPPED, None),
+        "widget_future": _st("widget", ALL_STOPPED, -3600),  # relogio errado nao esconde
     }
-    got = _qml_eval(tmp_path, "(function(){ var r={}; var c=%s; var cfg=%s; for (var k in c) r[k]=N.widgetIdle(c[k], cfg); "
-                              "r.nodata = N.widgetIdle(null, cfg); return r })()" % (json.dumps(cases), json.dumps(cfg)))
+    got = _qml_eval(tmp_path, "(function(){ var r={}; var c=%s; for (var k in c) r[k]=N.widgetIdle(c[k], %s, %d); "
+                              "r.nodata = N.widgetIdle(null, %s, %d); return r })()"
+                    % (json.dumps(cases), json.dumps(CFG), NOW_MS, json.dumps(CFG), NOW_MS))
     assert got == {"off": False, "widget_all_false": True, "widget_one_true": False, "widget_null": False,
-                   "widget_absent": False, "widget_stale": False, "widget_nodate": False, "nodata": False}
-    only_claude = {**cfg, "hiddenProviders": "codex,gemini"}
-    prov = st("provider", {**f, "codex": True})
-    names = _qml_eval(tmp_path, "N.buildModel(%s, %s, function(t){return t}).map(function(m){return m.provider})"
-                      % (json.dumps(prov), json.dumps(cfg)))
-    assert names == ["codex"]  # provedor parado some, o que roda fica
-    assert _qml_eval(tmp_path, "N.widgetIdle(%s, %s)" % (json.dumps(st("widget", f)), json.dumps(only_claude))) is True
-    assert _qml_eval(tmp_path, "N.buildModel(%s, %s, function(t){return t}).length"
-                     % (json.dumps({**prov, "running_checked_at": old}), json.dumps(cfg))) == 3
+                   "widget_absent": False, "widget_stale": False, "widget_nodate": False, "widget_future": False,
+                   "nodata": False}
+    only_claude = {**CFG, "hiddenProviders": "codex,gemini"}
+    assert _qml_eval(tmp_path, "N.widgetIdle(%s, %s, %d)" % (json.dumps(_st("widget", ALL_STOPPED)), json.dumps(only_claude), NOW_MS)) is True
+
+
+@needs_qml
+def test_reading_expires_with_the_clock_without_new_status(tmp_path):
+    """A1: a mesma leitura (178 s) deixa de esconder quando so o relogio avanca (185 s)."""
+    st = _st("widget", ALL_STOPPED, 178)
+    prov = _st("provider", {**ALL_STOPPED, "codex": True}, 178)
+    for later_ms, hidden, names in ((NOW_MS, True, ["codex"]), (NOW_MS + 7000, False, ["claude", "codex", "gemini"])):
+        assert _qml_eval(tmp_path, "N.widgetIdle(%s, %s, %d)" % (json.dumps(st), json.dumps(CFG), later_ms)) is hidden
+        assert _qml_eval(tmp_path, "N.buildModel(%s, %s, function(t){return t}, %d).map(function(m){return m.provider})"
+                         % (json.dumps(prov), json.dumps(CFG), later_ms)) == names
+
+
+@needs_qml
+def test_provider_mode_and_confirmed_idle_override(tmp_path):
+    prov = _st("provider", {**ALL_STOPPED, "codex": True})
+    build = "N.buildModel(%s, %s, function(t){return t}, %d).map(function(m){return m.provider})"
+    assert _qml_eval(tmp_path, build % (json.dumps(prov), json.dumps(CFG), NOW_MS)) == ["codex"]
+    # lista confirmada pelo chamador (debounce) manda: ainda nao confirmado => continua visivel
+    assert _qml_eval(tmp_path, build % (json.dumps(prov), json.dumps({**CFG, "idleProviders": []}), NOW_MS)) == ["claude", "codex", "gemini"]
+    assert _qml_eval(tmp_path, "N.idleProviders(%s, %s, %d)" % (json.dumps(prov), json.dumps(CFG), NOW_MS)) == ["claude", "gemini"]
 
 
 def test_plasmoid_wiring_and_recovery_path():
@@ -252,4 +326,8 @@ def test_plasmoid_wiring_and_recovery_path():
     assert "!root.expanded && !Plasmoid.userConfiguring" in main  # abrir popup/configuracao sempre mostra
     assert '"--detect-running"' in main and 'NotchModel.hideMode(root.statusData) !== "off"' in main
     assert "sliver" in compact and "MouseArea" in compact  # no painel resta um alvo para o botao direito
+    assert "Date.now()" in main and "nowMs" in main and "root.nowMs = Date.now();  // antes da chamada" in main
+    assert "compactHovered" in main and "compactHovered" in compact and "idleDelay" in main  # histerese
+    assert "Accessible.name: compactRoot.idle" in compact
+    assert "reencontrar o widget oculto" in config
     assert '"--set-visibility-config"' in config and '"--hide-when-not-running"' in config
