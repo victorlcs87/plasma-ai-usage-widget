@@ -141,7 +141,7 @@ def get_active_gemini_credentials(override: Path | None = None) -> tuple[dict[st
     """Retrieve active Gemini credentials from secret-tool keyring or fallback file."""
     env_path = str(override) if override else os.environ.get("GEMINI_CREDENTIALS_PATH")
     if env_path:
-        p = Path(env_path).expanduser().resolve()
+        p = override if override else Path(env_path).expanduser().resolve()  # override preserva symlink
         if p.exists() and p.is_file():
             try:
                 with open(p, "r", encoding="utf-8") as f:
@@ -1311,7 +1311,7 @@ def _migrate_provider(
     for acc in list(accounts):
         if account_credential_file(prov, acc) != sys_file.resolve():
             continue
-        sys_creds = get_active_credentials(prov) if prov == "gemini" else _read_json_dict(sys_file)  # chaveiro prevalece
+        sys_creds = get_active_credentials(prov, override) if prov == "gemini" else _read_json_dict(sys_file)  # chaveiro prevalece
         if sys_creds is None and sys_file.is_file():
             continue  # ilegivel (transitorio?): adia a migracao em vez de apagar a entrada
         changed = True

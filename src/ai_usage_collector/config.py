@@ -457,6 +457,8 @@ def credential_override(provider: str, config: dict[str, Any] | str | Path | Non
     if not val or not isinstance(val, str):
         return None
     p = Path(val).expanduser()
+    if not p.is_absolute():
+        return None  # edicao manual com caminho relativo: ignorado (a CLI grava sempre absoluto)
     if not (p.suffix == ".json" or p.is_file()):
         p = p / _CREDENTIAL_FILENAMES[provider]
     return p.parent.resolve() / p.name  # preserva symlink do arquivo, como no caminho por env
@@ -466,7 +468,7 @@ def validate_base_url(url: str) -> str:
     """Normaliza e valida a URL base do gateway; levanta ValueError se insegura ou malformada."""
     url = (url or "").strip()
     msg = "URL base inválida: use https (http só para localhost), sem usuário, query ou fragmento."
-    if not url or any(c.isspace() or ord(c) < 32 for c in url) or "?" in url or "#" in url:
+    if not url or url.split("//", 1)[-1].split("/", 1)[0].endswith(":") or any(c.isspace() or ord(c) < 32 for c in url) or "?" in url or "#" in url:
         raise ValueError(msg)
     try:
         parsed = urlsplit(url)

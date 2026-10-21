@@ -232,3 +232,29 @@ def test_b_warnings(tmp_path, capsys):
     run(tmp_path, "--set-provider-config", "claude", "--credential-path", str(tmp_path / "nope"), "--api-key-stdin", stdin=KEY)
     out = capsys.readouterr().out
     assert "ainda não existe" in out and "URL base" in out and KEY not in out
+
+
+def test_migration_with_gemini_override_never_calls_keyring(tmp_path, monkeypatch):
+    for k in ("GEMINI_CREDENTIALS_PATH", "GEMINI_CONFIG_DIR"):
+        monkeypatch.delenv(k, raising=False)
+    alt = tmp_path / "alt" / "oauth_creds.json"
+    save_secure_json({"access_token": "FILE", "refresh_token": "r"}, alt)
+    cfg = {"version": 1, "agents": {"claude": {"accounts": []}, "codex": {"accounts": []},
+           "gemini": {"credential_path": str(alt),
+                      "accounts": [{"id": "default", "label": "G", "credential_path": str(alt)}]}}}
+    save_config(cfg, tmp_path / "cfg" / "config.json")
+
+    with patch("subprocess.run") as sp:
+        from ai_usage_collector.config import load_config
+        accs = load_config(tmp_path / "cfg" / "config.json")["agents"]["gemini"]["accounts"]
+    sp.assert_not_called()  # um chaveiro real traria outro token
+    assert json.loads(open(accs[0]["credential_path"]).read())["access_token"] == "FILE"
+
+
+def test_relative_manual_credential_path_ignored(tmp_path):
+    from ai_usage_collector.config import credential_override
+    base_cfg(tmp_path)
+    c = read_cfg(tmp_path)
+    c["agents"]["claude"]["credential_path"] = "rel/dir"
+    (tmp_path / "cfg" / "config.json").write_text(json.dumps(c))
+    assert credential_override("claude", tmp_path / "cfg" / "config.json") is None
