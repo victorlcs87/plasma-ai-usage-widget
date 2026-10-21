@@ -272,7 +272,10 @@ def fetch_codex_usage_api(
     if account_id:
         headers["ChatGPT-Account-Id"] = account_id
     req = urllib.request.Request(url, headers=headers, method="GET")
-    return refresh.fetch_json("codex", f"{access_token}|{account_id or ''}", req, timeout)
+    return refresh.fetch_json(
+        "codex", f"{access_token}|{account_id or ''}", req, timeout,
+        valid=lambda d: isinstance(d.get("rate_limit"), dict) or "primary_window" in d,
+    )
 
 
 def parse_codex_credits(api_data: dict[str, Any] | None) -> dict[str, Any] | None:

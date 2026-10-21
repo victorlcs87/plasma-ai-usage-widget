@@ -342,12 +342,17 @@ def main(argv: Sequence[str] | None = None) -> int:
             invalid = [p for p in providers if p not in SUPPORTED_PROVIDERS]
             if invalid:
                 sys.stderr.write(f"Erro: Provedor inválido: {', '.join(invalid)}\n")
-                return 1
+                return 2
+            try:
+                intervals = parse_intervals(args.refresh_interval)
+            except ValueError as e:
+                sys.stderr.write(f"Erro: {e}\n")
+                return 2
             status_data = collect_and_save(
                 config_path=config_path,
                 cache_path=cache_path,
                 providers=providers or None,
-                intervals=parse_intervals(args.refresh_interval),
+                intervals=intervals,
             )
 
         if should_output_status:

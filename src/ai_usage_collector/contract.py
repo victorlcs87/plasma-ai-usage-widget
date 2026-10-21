@@ -13,7 +13,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 
 # v2: optional per-account "usage_details" (absent when nothing was collected)
 # v3: optional per-agent/account "fetched_at", "stale", "next_check_at"; per-account
-#     "fetch_error" {kind, message, retry_at} and "no_data" (ADR-0007, refresh.py)
+#     "fetch_error" {kind, message, retry_at}, "no_data", "credential_fingerprint" (hash);
+#     window usage_percentage may be None when that window has no reliable basis (ADR-0007)
 CONTRACT_VERSION = 3
 
 AGENT_NAMES: dict[str, str] = {
@@ -168,7 +169,8 @@ def validate_status_contract(data: Any) -> bool:
             ww = acc.get("weekly_window")
             if not isinstance(ww, dict):
                 return False
-            if "usage_percentage" not in ww or not isinstance(ww["usage_percentage"], (int, float)):
+            # v3: None = janela sem base confiavel (ADR-0007, refresh.apply_outcome)
+            if "usage_percentage" not in ww or not isinstance(ww["usage_percentage"], (int, float, type(None))):
                 return False
             if ww.get("total_capacity") is not None and not isinstance(ww["total_capacity"], int):
                 return False

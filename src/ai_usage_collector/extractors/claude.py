@@ -374,7 +374,10 @@ def fetch_claude_usage_api(
         },
         method="GET",
     )
-    return refresh.fetch_json("claude", access_token, req, timeout)
+    return refresh.fetch_json(
+        "claude", access_token, req, timeout,
+        valid=lambda d: isinstance(d.get("five_hour"), dict) or isinstance(d.get("seven_day"), dict),
+    )
 
 
 def extract_claude_status(

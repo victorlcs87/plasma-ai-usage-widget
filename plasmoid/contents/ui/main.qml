@@ -148,6 +148,28 @@ PlasmoidItem {
                 root.lastError = safeI18n("Erro ao executar coletor: %1", errMsg);
             }
             disconnectSource(sourceName);
+            root.runPendingRemoval();
+        }
+    }
+
+    property var pendingRemovals: []
+
+    function runPendingRemoval() {
+        var next = root.pendingRemovals.shift();
+        if (next) root.removeAccount(next[0], next[1]);
+    }
+
+    // Segurança: coletor travado não pode bloquear as próximas execuções para sempre
+    Timer {
+        id: refreshWatchdog
+        interval: 120000
+        running: root.isRefreshing
+        onTriggered: {
+            var stuck = collectorDataSource.connectedSources.slice();
+            for (var i = 0; i < stuck.length; i++) collectorDataSource.disconnectSource(stuck[i]);
+            root.isRefreshing = false;
+            root.lastError = root.safeI18n("O coletor não respondeu em 120 s; nova tentativa no próximo ciclo.");
+            root.runPendingRemoval();
         }
     }
 
@@ -204,6 +226,11 @@ PlasmoidItem {
         var provClean = String(provider).toLowerCase().trim();
         if (["claude", "codex", "gemini"].indexOf(provClean) === -1) return;
 
+        // Coletor já em execução: enfileira a remoção para quando ele terminar
+        if (root.isRefreshing) {
+            root.pendingRemovals.push([provClean, accountId]);
+            return;
+        }
         root.isRefreshing = true;
         root.lastError = "";
         var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(accountId);

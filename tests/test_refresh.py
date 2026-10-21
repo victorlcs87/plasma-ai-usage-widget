@@ -241,3 +241,182 @@ def test_plasmoid_config_has_per_provider_interval_with_minimum():
         assert entry.find("{*}min").text == "60"
     main_qml = (root / "ui" / "main.qml").read_text(encoding="utf-8")
     assert "--refresh-interval" in main_qml and "--provider" in main_qml
+    # Revisao: remocao enfileirada durante execucao e watchdog de 120 s para isRefreshing preso
+    assert "pendingRemovals.push" in main_qml and "interval: 120000" in main_qml
+    card = (root / "ui" / "AccountCard.qml").read_text(encoding="utf-8")
+    assert "usage_percentage === null" in card and "dados desatualizados" in card
+
+
+# --- Revisao do ticket 23 -------------------------------------------------------
+
+def write_claude_history(profile, *moments):
+    from pathlib import Path
+
+    lines = [json.dumps({"timestamp": m.timestamp() * 1000}) for m in moments]
+    (Path(profile["claude_dir"]) / "history.jsonl").write_text("\n".join(lines) + "\n")
+
+
+def renew_claude_token(profile, token):
+    future = (T0 + timedelta(days=5)).isoformat()
+    with open(profile["credential_path"], "w", encoding="utf-8") as f:
+        json.dump({"claudeAiOauth": {"accessToken": token, "expiresAt": future}}, f)
+
+
+def test_window_without_own_history_has_no_percentage(env, tmp_path):
+    """A1: historico so na janela semanal; a de 5h nao pode exibir 0% inventado."""
+    from ai_usage_collector.contract import validate_status_contract
+
+    prof = make_profile(tmp_path, "claude", "a")
+    write_claude_history(prof, *(T0 - timedelta(days=2, seconds=i) for i in range(3)))
+    configure(env, tmp_path, {"claude": [prof]})
+    status = env["run"](http=FakeHttp(claude=[http_error(429, "226")]))
+
+    acc = acc_of(status, "claude")
+    nw, ww = acc["native_window"], acc["weekly_window"]
+    assert nw["usage_percentage"] is None
+    assert nw["used_capacity"] is None and nw["available_capacity"] is None
+    assert nw["release_time"] is None
+    assert isinstance(ww["usage_percentage"], float) and ww["messages_used"] == 3
+    assert "no_data" not in acc
+    assert validate_status_contract(status)
+
+
+@pytest.mark.parametrize(
+    "retry_after, expected_seconds",
+    [
+        ("inf", refresh.BACKOFF_BASE_SECONDS),
+        ("nan", refresh.BACKOFF_BASE_SECONDS),
+        ("-5", refresh.BACKOFF_BASE_SECONDS),
+        ("abc", refresh.BACKOFF_BASE_SECONDS),
+        ("1e20", refresh.MAX_PAUSE_SECONDS),
+        ("99999999999", refresh.MAX_PAUSE_SECONDS),
+        ("Tue, 20 Oct 2026 15:10:00 GMT", 600),
+        ("Tue, 20 Oct 2026 15:10:00 -0000", 600),
+    ],
+)
+def test_hostile_retry_after_is_bounded(env, tmp_path, retry_after, expected_seconds):
+    """A2: retry-after infinito/gigante/invalido nunca derruba a coleta nem pausa para sempre."""
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    status = env["run"](http=FakeHttp(claude=[http_error(429, retry_after)]))
+    retry_at = datetime.fromisoformat(acc_of(status, "claude")["fetch_error"]["retry_at"])
+    assert retry_at == T0 + timedelta(seconds=expected_seconds)
+
+
+def test_pause_survives_token_renewal(env, tmp_path):
+    """M1: a pausa e da Conta, nao do token; o Claude Code renova o token com frequencia."""
+    prof = make_profile(tmp_path, "claude", "a", token="tok-1")
+    configure(env, tmp_path, {"claude": [prof]})
+    http = FakeHttp(claude=[http_error(429, "226"), API_OK["claude"]])
+    env["run"](http=http)
+
+    renew_claude_token(prof, "tok-2")
+    env["clock"]["now"] = T0 + timedelta(seconds=60)
+    status = env["run"](http=http)
+    assert http.calls["claude"] == 1
+    assert acc_of(status, "claude")["fetch_error"]["kind"] == "rate_limited"
+
+
+def test_cache_from_other_identity_is_not_served(env, tmp_path):
+    """M2: o perfil passou a outro login; o cache da conta anterior nao pode aparecer."""
+    prof = make_profile(tmp_path, "claude", "a", token="tok-1")
+    configure(env, tmp_path, {"claude": [prof]})
+    http = FakeHttp(claude=[{"five_hour": {"utilization": 88.0}, "seven_day": {"utilization": 77.0}}, http_error(429, "60")])
+    env["run"](http=http)
+
+    renew_claude_token(prof, "tok-OTHER")
+    env["clock"]["now"] = T0 + timedelta(seconds=400)
+    acc = acc_of(env["run"](http=http), "claude")
+    assert acc["no_data"] is True
+    assert acc["native_window"]["usage_percentage"] is None
+    assert "fetched_at" not in acc
+
+
+def test_cache_of_same_identity_survives_token_renewal(env, tmp_path):
+    """M2: mesma Identidade da Conta (identity.py) com token renovado continua usando o cache."""
+    prof = make_profile(tmp_path, "claude", "a", token="tok-1")
+    from pathlib import Path
+    (Path(prof["claude_dir"]) / ".claude.json").write_text(json.dumps({"oauthAccount": {"accountUuid": "uuid-a"}}))
+    configure(env, tmp_path, {"claude": [prof]})
+    http = FakeHttp(claude=[{"five_hour": {"utilization": 88.0}, "seven_day": {"utilization": 77.0}}, http_error(429, "60")])
+    env["run"](http=http)
+
+    renew_claude_token(prof, "tok-2")
+    env["clock"]["now"] = T0 + timedelta(seconds=400)
+    acc = acc_of(env["run"](http=http), "claude")
+    assert acc["stale"] is True
+    assert acc["native_window"]["usage_percentage"] == 88.0
+    assert acc["fetched_at"] == T0.isoformat()
+
+
+@pytest.mark.parametrize("provider, body", [
+    ("claude", {"unexpected": True}),
+    ("codex", {"unexpected": True}),
+    ("gemini", {"unexpected": True}),
+])
+def test_200_without_expected_fields_is_invalid_response(env, tmp_path, provider, body):
+    """M3: 200 sem os campos de uso nao e dado fresco."""
+    configure(env, tmp_path, {provider: [make_profile(tmp_path, provider, "a")]})
+    acc = acc_of(env["run"](http=FakeHttp(**{provider: [body]})), provider)
+    assert acc["fetch_error"]["kind"] == "invalid_response"
+    assert acc["stale"] is True
+    assert acc["no_data"] is True
+    assert "fetched_at" not in acc
+
+
+@pytest.mark.parametrize("state", [
+    "[]",
+    "garbage",
+    '{"credentials": {"x": "str"}}',
+    '{"credentials": {"claude:a": {"paused_until": "abc"}}}',
+    '{"credentials": {"claude:a": {"paused_until": "inf", "failures": "x"}}}',
+    '{"credentials": []}',
+])
+def test_corrupt_refresh_state_is_ignored(env, tmp_path, state):
+    """M4: estado invalido e descartado em vez de derrubar a coleta."""
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    env["cache"].parent.mkdir(parents=True, exist_ok=True)
+    env["cache"].with_name(refresh.STATE_FILENAME).write_text(state)
+    http = FakeHttp(claude=[API_OK["claude"]])
+    status = env["run"](http=http)
+    assert http.calls["claude"] == 1
+    assert acc_of(status, "claude")["stale"] is False
+
+
+def test_remove_account_waits_for_running_cycle(env, tmp_path):
+    """M5: remocao usa o mesmo lock do ciclo de coleta."""
+    import threading
+
+    from ai_usage_collector.collector import remove_account
+
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    env["run"](http=FakeHttp(claude=[API_OK["claude"]]))
+    state_path = env["cache"].with_name(refresh.STATE_FILENAME)
+
+    done = threading.Event()
+    with refresh.status_lock(state_path):
+        worker = threading.Thread(
+            target=lambda: (remove_account("claude", "a", env["config"], env["cache"]), done.set())
+        )
+        worker.start()
+        assert not done.wait(0.3)
+    worker.join(5)
+    assert done.is_set()
+    assert json.loads(env["cache"].read_text())["agents"]["claude"]["accounts"] == []
+
+
+@pytest.mark.parametrize("value", ["claude=abc", "foo=100", "claude", "=100"])
+def test_invalid_refresh_interval_is_rejected_with_rc_2(env, tmp_path, value, capsys):
+    """B1: valor ou provedor invalido gera mensagem amigavel e rc 2."""
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    rc = main(["--config-path", str(env["config"]), "--cache-path", str(env["cache"]),
+               "--refresh", "--refresh-interval", value])
+    assert rc == 2
+    assert "intervalo" in capsys.readouterr().err.lower()
+    assert not env["cache"].exists()
+
+
+def test_refresh_interval_maximum_is_enforced(env, tmp_path):
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    status = env["run"]("--refresh-interval", "claude=99999999999999", http=FakeHttp(claude=[API_OK["claude"]]))
+    expected = T0 + timedelta(seconds=refresh.MAX_INTERVAL_SECONDS)
+    assert acc_of(status, "claude")["next_check_at"] == expected.isoformat()

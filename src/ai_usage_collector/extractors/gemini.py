@@ -354,7 +354,9 @@ def fetch_gemini_quota_api(
         },
         method="POST",
     )
-    return refresh.fetch_json("gemini", token, req, timeout)
+    return refresh.fetch_json(
+        "gemini", token, req, timeout, valid=lambda d: any(parse_gemini_quota_buckets(d))
+    )
 
 
 def parse_gemini_quota_buckets(

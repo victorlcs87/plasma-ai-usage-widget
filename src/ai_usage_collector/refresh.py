@@ -1,10 +1,12 @@
 """Atualizacao periodica por provedor (ADR-0007).
 
-- Uma unica consulta HTTP por credencial em cada ciclo de coleta.
-- HTTP 429 pausa a credencial ate `retry-after`, com backoff exponencial; a pausa
-  persiste em `refresh_state.json` (0600, ao lado do status.json; so hashes, nunca tokens).
-- Falha de consulta serve o ultimo resultado valido (status.json anterior) marcado como
-  desatualizado; sem cache e sem historico local, a Conta fica "sem dados" (nunca 0% inventado).
+- Uma unica consulta HTTP por credencial (hash do token) em cada ciclo de coleta.
+- HTTP 429 pausa a Conta (`provedor:id`) ate `retry-after`, com backoff exponencial; a pausa
+  persiste em `refresh_state.json` (0600, ao lado do status.json; nunca guarda tokens) e
+  sobrevive a renovacao do token.
+- Falha de consulta serve o ultimo resultado valido (status.json anterior) da mesma
+  Identidade da Conta, marcado como desatualizado. Sem esse cache, cada janela sem
+  historico local proprio fica sem porcentagem (nunca 0% inventado); sem nenhuma, "sem dados".
 """
 
 from __future__ import annotations
@@ -13,29 +15,36 @@ import copy
 import fcntl
 import hashlib
 import json
+import math
 import urllib.error
 import urllib.request
 from contextlib import contextmanager
 from datetime import datetime, timezone
 from email.utils import parsedate_to_datetime
 from pathlib import Path
-from typing import Any, Iterator, Sequence
+from typing import Any, Callable, Iterator, Sequence
 
-from ai_usage_collector.config import ensure_secure_dir, save_secure_json
+from ai_usage_collector.config import SUPPORTED_PROVIDERS, ensure_secure_dir, save_secure_json
 
 STATE_FILENAME = "refresh_state.json"
 MIN_INTERVAL_SECONDS = 60
+MAX_INTERVAL_SECONDS = 86400
 DEFAULT_INTERVAL_SECONDS = 300
 BACKOFF_BASE_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
+MAX_PAUSE_SECONDS = 86400
 
 MESSAGES = {
     "rate_limited": "Limite de requisições do provedor atingido (HTTP 429); aguardando a pausa pedida.",
     "auth": "Login expirado ou revogado no provedor; faça login novamente.",
-    "network": "Falha ao consultar o provedor (rede indisponível ou resposta inválida).",
+    "network": "Falha ao consultar o provedor (rede indisponível).",
+    "invalid_response": "O provedor respondeu sem os dados de uso esperados.",
 }
 # Ordem de gravidade quando a mesma Conta acumula mais de um resultado no ciclo
-_SEVERITY = {"ok": 0, "network": 1, "auth": 2, "rate_limited": 3}
+_SEVERITY = {"ok": 0, "network": 1, "invalid_response": 1, "auth": 2, "rate_limited": 3}
+_WINDOW_RESET_FIELDS = {"native_window": "release_time", "weekly_window": "cycle_reset_time"}
+
+Validator = Callable[[dict[str, Any]], bool]
 
 
 def utcnow() -> datetime:
@@ -47,14 +56,26 @@ def _iso(ts: float) -> str:
     return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
 
 
+def _hash(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()[:16]
+
+
 def parse_intervals(values: Sequence[str] | None) -> dict[str, int]:
-    """Converte ['claude=300', ...] em segundos, aplicando o minimo de 60 s."""
+    """Converte ['claude=300', ...] em segundos, limitando a [60, 86400]."""
     intervals: dict[str, int] = {}
     for raw in values or []:
         prov, sep, secs = str(raw).partition("=")
-        if not sep:
-            raise ValueError(f"Intervalo inválido '{raw}'. Use PROVEDOR=SEGUNDOS.")
-        intervals[prov.strip().lower()] = max(MIN_INTERVAL_SECONDS, int(secs))
+        prov = prov.strip().lower()
+        if not sep or prov not in SUPPORTED_PROVIDERS:
+            raise ValueError(
+                f"Intervalo de Atualização inválido '{raw}'. Use PROVEDOR=SEGUNDOS, "
+                f"com PROVEDOR em {', '.join(SUPPORTED_PROVIDERS)}."
+            )
+        try:
+            seconds = int(secs)
+        except ValueError:
+            raise ValueError(f"Intervalo de Atualização inválido '{raw}': segundos devem ser um número inteiro.") from None
+        intervals[prov] = min(MAX_INTERVAL_SECONDS, max(MIN_INTERVAL_SECONDS, seconds))
     return intervals
 
 
@@ -66,80 +87,128 @@ class FetchError(Exception):
 
 
 def _retry_after_seconds(headers: Any, now: datetime) -> float | None:
+    """Segundos pedidos pelo provedor, limitados a [0, 1 dia]; None se ausente ou invalido."""
     value = headers.get("Retry-After") if headers is not None else None
     if not value:
         return None
     try:
-        return max(0.0, float(value))
+        seconds = float(value)
     except ValueError:
-        pass
-    try:
-        return max(0.0, (parsedate_to_datetime(value) - now).total_seconds())
-    except (TypeError, ValueError):
+        try:
+            when = parsedate_to_datetime(value)
+        except (TypeError, ValueError, IndexError):
+            return None
+        if when.tzinfo is None:
+            when = when.replace(tzinfo=timezone.utc)
+        seconds = (when - now).total_seconds()
+    if not math.isfinite(seconds) or seconds < 0:
         return None
+    return min(seconds, MAX_PAUSE_SECONDS)
 
 
-def request_json(request: urllib.request.Request, timeout: float, now: datetime | None = None) -> dict[str, Any]:
+def request_json(
+    request: urllib.request.Request,
+    timeout: float,
+    now: datetime | None = None,
+    valid: Validator | None = None,
+) -> dict[str, Any]:
     """Executa a requisicao e devolve o JSON; erros viram FetchError classificado."""
     try:
         with urllib.request.urlopen(request, timeout=timeout) as resp:
             status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
-            if status in (200, 201):
-                body = resp.read()
-                data = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
-                if isinstance(data, dict):
-                    return data
+            if status not in (200, 201):
+                raise FetchError("invalid_response")
+            body = resp.read()
+            data = json.loads(body.decode("utf-8") if isinstance(body, bytes) else body)
     except urllib.error.HTTPError as e:
         if e.code == 429:
             raise FetchError("rate_limited", _retry_after_seconds(e.headers, now or utcnow())) from None
         raise FetchError("auth" if e.code in (401, 403) else "network") from None
-    except (OSError, ValueError):  # URLError, timeout, JSON invalido
+    except ValueError:  # JSON invalido
+        raise FetchError("invalid_response") from None
+    except OSError:  # URLError, timeout
         raise FetchError("network") from None
-    raise FetchError("network")
+    if not isinstance(data, dict) or (valid is not None and not valid(data)):
+        raise FetchError("invalid_response")
+    return data
+
+
+def _finite(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if math.isfinite(number) else None
+
+
+def _load_state(path: Path) -> dict[str, dict[str, Any]]:
+    """Pausas validas do arquivo de estado; entradas corrompidas sao descartadas."""
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+    creds = loaded.get("credentials") if isinstance(loaded, dict) else None
+    state: dict[str, dict[str, Any]] = {}
+    for key, entry in (creds.items() if isinstance(creds, dict) else []):
+        paused_until = _finite(entry.get("paused_until")) if isinstance(entry, dict) else None
+        if paused_until is None:
+            continue
+        failures = _finite(entry.get("failures"))
+        state[str(key)] = {"paused_until": paused_until, "failures": int(failures) if failures and failures > 0 else 0}
+    return state
 
 
 class RefreshCycle:
-    """Estado de um ciclo de coleta: memo por credencial e pausas persistidas."""
+    """Estado de um ciclo de coleta: memo por credencial e pausas por Conta."""
 
     def __init__(self, state_path: Path, now: datetime) -> None:
         self.state_path = state_path
         self.now = now
-        self.state: dict[str, Any] = {}
-        try:
-            loaded = json.loads(state_path.read_text(encoding="utf-8"))
-            if isinstance(loaded.get("credentials"), dict):
-                self.state = loaded["credentials"]
-        except (OSError, ValueError, AttributeError):
-            pass
+        self.state = _load_state(state_path)
         self._memo: dict[str, tuple[dict[str, Any] | None, dict[str, Any]]] = {}
         self._pending: list[dict[str, Any]] = []
+        self._account_key: str | None = None
 
-    def fetch(self, provider: str, secret: str, request: urllib.request.Request, timeout: float) -> dict[str, Any] | None:
-        key = f"{provider}:{hashlib.sha256(secret.encode('utf-8')).hexdigest()[:16]}"
-        if key not in self._memo:
-            self._memo[key] = self._fetch_uncached(key, request, timeout)
-        data, outcome = self._memo[key]
-        self._pending.append(outcome)
+    def begin_account(self, provider: str, account_id: str) -> None:
+        """Associa as proximas consultas a esta Conta (chave da pausa)."""
+        self._account_key = f"{provider}:{account_id}"
+        self._pending = []
+
+    def fetch(
+        self,
+        provider: str,
+        secret: str,
+        request: urllib.request.Request,
+        timeout: float,
+        valid: Validator | None = None,
+    ) -> dict[str, Any] | None:
+        credential = f"{provider}:{_hash(secret)}"
+        pause_key = self._account_key or credential
+        now_ts = self.now.timestamp()
+        entry = self.state.get(pause_key) or {}
+        if entry.get("paused_until", 0) > now_ts:
+            data, outcome = None, {"kind": "rate_limited", "retry_at": entry["paused_until"]}
+        else:
+            if credential not in self._memo:
+                self._memo[credential] = self._request(request, timeout, valid, int(entry.get("failures") or 0))
+            data, outcome = self._memo[credential]
+            if outcome["kind"] == "rate_limited":
+                self.state[pause_key] = {"paused_until": outcome["retry_at"], "failures": outcome["failures"]}
+            elif outcome["kind"] == "ok":
+                self.state.pop(pause_key, None)
+        self._pending.append({**outcome, "credential": credential})
         return copy.deepcopy(data)
 
-    def _fetch_uncached(self, key: str, request: urllib.request.Request, timeout: float):
-        now_ts = self.now.timestamp()
-        entry = self.state.get(key) or {}
-        paused_until = float(entry.get("paused_until") or 0)
-        if paused_until > now_ts:
-            return None, {"kind": "rate_limited", "retry_at": paused_until}
+    def _request(self, request: urllib.request.Request, timeout: float, valid: Validator | None, failures: int):
         try:
-            data = request_json(request, timeout, self.now)
+            return request_json(request, timeout, self.now, valid), {"kind": "ok"}
         except FetchError as e:
             if e.kind != "rate_limited":
                 return None, {"kind": e.kind}
-            failures = int(entry.get("failures") or 0) + 1
+            failures += 1
             backoff = min(BACKOFF_MAX_SECONDS, BACKOFF_BASE_SECONDS * 2 ** (failures - 1))
-            paused_until = now_ts + max(backoff, e.retry_after or 0)
-            self.state[key] = {"paused_until": paused_until, "failures": failures}
-            return None, {"kind": "rate_limited", "retry_at": paused_until}
-        self.state.pop(key, None)
-        return data, {"kind": "ok"}
+            paused_until = self.now.timestamp() + max(backoff, e.retry_after or 0)
+            return None, {"kind": "rate_limited", "retry_at": paused_until, "failures": failures}
 
     def take_outcome(self) -> dict[str, Any] | None:
         """Resultado mais grave das consultas feitas desde a chamada anterior (None se nenhuma)."""
@@ -147,10 +216,19 @@ class RefreshCycle:
         return max(pending, key=lambda o: _SEVERITY[o["kind"]]) if pending else None
 
     def save(self) -> None:
-        # Descarta pausas vencidas ha mais de um dia (tokens renovados deixam chaves orfas)
+        # Descarta pausas vencidas ha mais de um dia (Contas removidas deixam chaves orfas)
         cutoff = self.now.timestamp() - 86400
-        creds = {k: v for k, v in self.state.items() if float(v.get("paused_until") or 0) > cutoff}
-        save_secure_json({"version": 1, "credentials": creds}, self.state_path, prefix="refresh_")
+        creds = {k: v for k, v in self.state.items() if v["paused_until"] > cutoff}
+        save_secure_json({"version": 2, "credentials": creds}, self.state_path, prefix="refresh_")
+
+
+@contextmanager
+def status_lock(state_path: Path) -> Iterator[None]:
+    """Lock exclusivo (flock) que serializa quem regrava status.json e o estado de pausa."""
+    ensure_secure_dir(state_path.parent)
+    with open(state_path.with_suffix(".lock"), "a") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        yield
 
 
 _current: RefreshCycle | None = None
@@ -158,11 +236,9 @@ _current: RefreshCycle | None = None
 
 @contextmanager
 def cycle(state_path: Path, now: datetime) -> Iterator[RefreshCycle]:
-    """Ativa um ciclo de coleta; serializa coletores concorrentes com flock."""
+    """Ativa um ciclo de coleta sob o lock do status.json."""
     global _current
-    ensure_secure_dir(state_path.parent)
-    with open(state_path.with_suffix(".lock"), "a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with status_lock(state_path):
         # ponytail: ciclo global por processo; o coletor e um CLI de execucao unica
         _current = RefreshCycle(state_path, now)
         try:
@@ -172,18 +248,20 @@ def cycle(state_path: Path, now: datetime) -> Iterator[RefreshCycle]:
             _current = None
 
 
-def fetch_json(provider: str, secret: str, request: urllib.request.Request, timeout: float) -> dict[str, Any] | None:
+def fetch_json(
+    provider: str,
+    secret: str,
+    request: urllib.request.Request,
+    timeout: float,
+    valid: Validator | None = None,
+) -> dict[str, Any] | None:
     """Ponto unico de consulta HTTP dos extratores; fora de um ciclo, falhas viram None."""
     if _current is not None:
-        return _current.fetch(provider, secret, request, timeout)
+        return _current.fetch(provider, secret, request, timeout, valid)
     try:
-        return request_json(request, timeout)
+        return request_json(request, timeout, valid=valid)
     except FetchError:
         return None
-
-
-def _has_local_history(entry: dict[str, Any]) -> bool:
-    return any((entry.get(w) or {}).get("messages_used") for w in ("native_window", "weekly_window"))
 
 
 def apply_outcome(
@@ -192,10 +270,17 @@ def apply_outcome(
     previous: dict[str, Any] | None,
     now: datetime,
     interval: int,
+    identity_key: str | None = None,
 ) -> dict[str, Any]:
-    """Acrescenta fetched_at/stale/next_check_at a uma Conta e trata falhas de consulta."""
+    """Acrescenta fetched_at/stale/next_check_at a uma Conta e trata falhas de consulta.
+
+    `identity_key` (Identidade da Conta, identity.py) define de quem e o cache; sem ela,
+    vale o hash da credencial consultada.
+    """
     if outcome is None:  # nenhuma consulta a API (sem token ou login invalido): contrato inalterado
         return entry
+    fingerprint = _hash(identity_key) if identity_key else outcome["credential"]
+    entry["credential_fingerprint"] = fingerprint
     retry_at = outcome.get("retry_at")
     entry["next_check_at"] = _iso(max(now.timestamp() + interval, retry_at or 0))
     if outcome["kind"] == "ok":
@@ -212,16 +297,32 @@ def apply_outcome(
     if outcome["kind"] == "auth":
         entry["health"] = {**entry.get("health", {}), "status": "session_expired", "message": MESSAGES["auth"]}
 
-    if previous and previous.get("fetched_at"):
+    if previous and previous.get("fetched_at") and previous.get("credential_fingerprint") == fingerprint:
         for key in ("native_window", "weekly_window", "usage_details", "fetched_at"):
             if key in previous:
                 entry[key] = previous[key]
             else:
                 entry.pop(key, None)
-    elif not _has_local_history(entry):
+        return entry
+
+    # Sem cache da mesma Identidade: so vale a heuristica da janela com historico local proprio
+    with_history = 0
+    for window, reset_field in _WINDOW_RESET_FIELDS.items():
+        data = entry.get(window)
+        if not isinstance(data, dict):
+            continue
+        if data.get("messages_used"):
+            with_history += 1
+            continue
+        data.update({
+            "usage_percentage": None,
+            "used_capacity": None,
+            "available_capacity": None,
+            reset_field: None,
+            "seconds_remaining": None,
+        })
+    if not with_history:
         entry["no_data"] = True
-        for w in ("native_window", "weekly_window"):
-            entry[w].update({"used_capacity": None, "available_capacity": None})
     return entry
 
 

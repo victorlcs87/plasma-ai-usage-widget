@@ -33,6 +33,7 @@ from ai_usage_collector.contract import (
     get_current_iso_timestamp,
 )
 from ai_usage_collector.discovery import discover_account
+from ai_usage_collector.identity import credential_identity
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -143,7 +144,7 @@ def _collect(
             manual_invite = acc.get("manual_invite_url")
             manual_invite_count = acc.get("manual_invite_count")
 
-            cyc.take_outcome()  # discard anything not fetched for this account
+            cyc.begin_account(agent_id, str(acc_id))
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None
@@ -196,8 +197,11 @@ def _collect(
                 is_active=is_active,
                 usage_details=usage_details,
             )
+            outcome = cyc.take_outcome()
+            identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
             refresh.apply_outcome(
-                acc_status, cyc.take_outcome(), previous_accounts.get(str(acc_id)), now_dt, interval
+                acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
+                identity_key=identity.key if identity else None,
             )
             account_statuses.append(acc_status)
 
@@ -300,6 +304,15 @@ def remove_account(
     if not cfg_file.exists():
         return False, f"Arquivo de configuração não encontrado: {cfg_file}"
 
+    c_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    # Mesmo lock do ciclo de coleta: um ciclo em andamento nao regrava a conta removida
+    with refresh.status_lock(c_file.with_name(refresh.STATE_FILENAME)):
+        return _remove_account_locked(prov, acc_id, account_id, provider, cfg_file, c_file)
+
+
+def _remove_account_locked(
+    prov: str, acc_id: str, account_id: str, provider: str, cfg_file: Path, c_file: Path
+) -> tuple[bool, str]:
     try:
         config_data = load_config(cfg_file)
     except Exception as e:
@@ -313,7 +326,6 @@ def remove_account(
     save_config(updated_cfg, cfg_file)
 
     # Sync cache if exists
-    c_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
     if c_file.exists():
         cache_data = load_status_cache(c_file)
         if cache_data is not None:

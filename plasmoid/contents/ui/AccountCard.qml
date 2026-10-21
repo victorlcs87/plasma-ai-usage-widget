@@ -20,6 +20,8 @@ Kirigami.AbstractCard {
     // ADR-0007: dados desatualizados (servidos do cache) ou ausentes (sem cache nem histórico local)
     readonly property bool isStale: cardRoot.accountData?.stale === true
     readonly property bool hasNoData: cardRoot.accountData?.no_data === true
+    readonly property bool nativeUnknown: cardRoot.hasNoData || cardRoot.accountData?.native_window?.usage_percentage === null
+    readonly property bool weeklyUnknown: cardRoot.hasNoData || cardRoot.accountData?.weekly_window?.usage_percentage === null
 
     signal accountSwitched()
 
@@ -479,7 +481,7 @@ Kirigami.AbstractCard {
                 QQC2.Label {
                     id: activeWindowPercentageLabel
                     property double pct: cardRoot.accountData?.native_window?.usage_percentage || 0.0
-                    text: cardRoot.hasNoData ? "—" : cardRoot.formatPercentage(pct)
+                    text: cardRoot.nativeUnknown ? "—" : cardRoot.formatPercentage(pct)
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
                     color: cardRoot.getUsageColor(pct)
@@ -543,7 +545,13 @@ Kirigami.AbstractCard {
                     elide: Text.ElideRight
                     text: {
                         var nw = cardRoot.accountData?.native_window;
-                        if (cardRoot.hasNoData) return cardRoot.safeI18n("Sem dados");
+                        if (cardRoot.nativeUnknown) return cardRoot.safeI18n("Sem dados");
+                        if (cardRoot.isStale) {
+                            var staleRelease = cardRoot.formatTime(nw ? (nw.release_time || nw.resets_at) : null);
+                            return staleRelease.length > 0
+                                ? cardRoot.safeI18n("Liberação prevista às %1 (dados desatualizados)", staleRelease)
+                                : cardRoot.safeI18n("Dados desatualizados");
+                        }
                         var parts = [];
                         if (nw && nw.tokens_used !== null && nw.tokens_used !== undefined && nw.tokens_used > 0) {
                             parts.push(cardRoot.safeI18n("%1 tokens", cardRoot.formatNumber(nw.tokens_used)));
@@ -591,7 +599,7 @@ Kirigami.AbstractCard {
                     property double weeklyPct: (cardRoot.accountData?.weekly_window?.usage_percentage !== undefined && cardRoot.accountData?.weekly_window?.usage_percentage !== null)
                         ? cardRoot.accountData.weekly_window.usage_percentage
                         : 0.0
-                    text: cardRoot.hasNoData ? "—" : cardRoot.formatPercentage(weeklyPct)
+                    text: cardRoot.weeklyUnknown ? "—" : cardRoot.formatPercentage(weeklyPct)
                     font.bold: true
                     font.pointSize: Kirigami.Theme.defaultFont.pointSize
                     color: cardRoot.getUsageColor(weeklyPct)
@@ -655,7 +663,7 @@ Kirigami.AbstractCard {
                     elide: Text.ElideRight
                     text: {
                         var ww = cardRoot.accountData?.weekly_window;
-                        if (cardRoot.hasNoData) return cardRoot.safeI18n("Sem dados");
+                        if (cardRoot.weeklyUnknown) return cardRoot.safeI18n("Sem dados");
                         if (!ww) return cardRoot.safeI18n("Ciclo semanal regular");
                         var parts = [];
                         if (ww.tokens_used !== null && ww.tokens_used !== undefined && ww.tokens_used > 0) {
@@ -663,6 +671,11 @@ Kirigami.AbstractCard {
                         }
                         var resetIso = ww.resets_at || ww.cycle_reset_time;
                         var dateStr = cardRoot.formatDateTime(resetIso);
+                        if (cardRoot.isStale) {
+                            return dateStr.length > 0
+                                ? cardRoot.safeI18n("Virada prevista: %1 (dados desatualizados)", dateStr)
+                                : cardRoot.safeI18n("Dados desatualizados");
+                        }
                         var countdownStr = cardRoot.formatCountdown(cardRoot.liveWeeklySecondsRemaining);
                         if (cardRoot.liveWeeklySecondsRemaining > 0 && dateStr.length > 0) {
                             parts.push(cardRoot.safeI18n("Virada: %1 (%2)", dateStr, countdownStr));
