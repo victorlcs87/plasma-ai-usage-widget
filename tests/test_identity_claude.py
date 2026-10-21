@@ -305,22 +305,76 @@ def test_stale_identity_never_loses_profile_credential(env):
     env.save_cfg([_legacy_default(env), _acc("a", pa, label="A"), _acc("b", pb, label="B")])
     env.system(_creds("tok-b-new", "ref-b-new"), "uuid-a")
 
-    load_config(env.config)
+    accs = load_config(env.config)["agents"]["claude"]["accounts"]
+    # Sem rede nao ha como distinguir "A rotacionou" de "e a B": casa por identidade (A),
+    # mas a credencial anterior de A fica preservada no .bak e B continua intacta.
+    assert [a["id"] for a in accs] == ["a", "b"]
+    assert _read(pa / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-b-new"
     baks = _baks(pa)
     assert len(baks) == 1
     assert _read(baks[0])["claudeAiOauth"]["refreshToken"] == "ref-a-old"
     assert stat.S_IMODE(os.stat(baks[0]).st_mode) == 0o600
+    assert _read(pb / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-b-old"
 
 
-def test_profile_backups_keep_only_last_three(env):
+def test_stale_identity_is_not_propagated_to_token_matched_profile(env):
+    # Layout real com ~/.claude.json defasado (signatus) e tokens do sistema == cga (sem identidade).
+    ps = env.profile("claude-signatus", _creds("tok-s", "ref-s"), "uuid-s", "s@signatus")
+    pc = env.profile("claude-cga", _creds("tok-c", "ref-c"), None)
+    env.save_cfg([_legacy_default(env), _acc("claude-signatus", ps, label="Signatus"),
+                  _acc("claude-cga", pc, label="CGA")])
+    env.system(_creds("tok-c", "ref-c"), "uuid-s", "s@signatus")
+
+    cfg = load_config(env.config)
+    assert [(a["id"], a["label"]) for a in cfg["agents"]["claude"]["accounts"]] == [
+        ("claude-signatus", "Signatus"), ("claude-cga", "CGA")]
+    assert _read(ps / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-s"
+    assert _read(pc / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-c"
+    assert not (pc / ".claude.json").exists()
+    assert _baks(ps) == [] and _baks(pc) == []
+    assert env.active_ids() == ["claude-cga"]
+    assert load_config(env.config) == cfg
+
+
+def test_switch_to_already_active_account_reports_it(env, capsys):
+    pa = env.profile("a", _creds("tok-a", "ref-a"), "uuid-a")
+    pb = env.profile("b", _creds("tok-b", "ref-b"), "uuid-b")
+    env.save_cfg([_acc("a", pa, label="A"), _acc("b", pb, label="B")])
+    env.system(_creds("tok-a2", "ref-a2"), "uuid-a")
+    capsys.readouterr()
+    assert env.run("--switch-account", "claude", "a") == 0
+    out = capsys.readouterr().out
+    assert "já está ativa" in out and "ativada com sucesso" not in out
+
+
+def test_concurrent_loads_migrate_legacy_default_once(env):
+    import subprocess
+    import sys
+
+    env.system(_creds("tok-x", "ref-x"), "uuid-x", "x@x.com")
+    env.save_cfg([_legacy_default(env)])
+    code = f"from ai_usage_collector.config import load_config; load_config({str(env.config)!r})"
+    procs = [subprocess.Popen([sys.executable, "-c", code], env=dict(os.environ)) for _ in range(4)]
+    assert all(p.wait() == 0 for p in procs)
+
+    accs = load_config(env.config)["agents"]["claude"]["accounts"]
+    assert len(accs) == 1
+    assert [p.name for p in (env.config.parent / "profiles").iterdir()] == [Path(accs[0]["claude_dir"]).name]
+    lock = env.config.parent / "config.lock"
+    assert stat.S_IMODE(os.stat(lock).st_mode) == 0o600
+
+
+def test_profile_backups_keep_only_last_five(env):
     pa = env.profile("a", _creds("tok-0", "ref-0"), "uuid-a")
     pb = env.profile("b", _creds("tok-b", "ref-b"), "uuid-b")
     env.save_cfg([_acc("a", pa), _acc("b", pb)])
-    for i in range(1, 6):
+    for i in range(1, 9):
         env.system(_creds(f"tok-{i}", f"ref-{i}"), "uuid-a")
         assert env.run("--switch-account", "claude", "b") == 0
         assert env.run("--switch-account", "claude", "a") == 0
-    assert len(_baks(pa)) == 3
+    baks = _baks(pa)
+    assert len(baks) == 5
+    assert all(stat.S_IMODE(os.stat(b).st_mode) == 0o600 for b in baks)
 
 
 def test_legacy_default_merges_by_tokens_into_profiles_without_identity(env):

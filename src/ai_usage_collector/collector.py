@@ -519,22 +519,23 @@ def switch_account(
         return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
 
     # Steps 2-4: backup/capture current system credential, apply target (rollback on failure)
-    ok, msg = switch_system_account(prov, acc_id, config_path)
+    ok, msg, already_active = switch_system_account(prov, acc_id, config_path)
     if not ok:
         return False, msg, None
 
     # Step 4: Collect and save updated status
     target_label = target_acc.get("label") or target_acc.get("name") or acc_id
+    done = (
+        f"Conta '{target_label}' já está ativa no sistema; credencial sincronizada no Perfil Isolado."
+        if already_active
+        else f"Conta '{target_label}' ativada com sucesso no sistema!"
+    )
     try:
         status_payload = collect_and_save(config_path=config_path, cache_path=cache_path)
     except Exception as e:
-        return (
-            True,
-            f"Conta '{target_label}' ativada com sucesso no sistema, mas falhou ao sincronizar status: {e}",
-            None,
-        )
+        return True, f"{done} (Aviso: falhou ao sincronizar status: {e})", None
 
-    return True, f"Conta '{target_label}' ativada com sucesso no sistema!", status_payload
+    return True, done, status_payload
 
 
 

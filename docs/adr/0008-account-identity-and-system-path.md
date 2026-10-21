@@ -12,3 +12,11 @@ Decidimos:
 2. **Caminho do sistema:** o caminho padrao do sistema nunca e uma Conta. Contas legadas que apontam para ele sao migradas para Perfil Isolado. Se ja existir uma Conta com a mesma identidade, as duas sao fundidas, e prevalece o rotulo renomeado pelo usuario.
 3. **Backup na troca:** antes de sobrescrever o sistema, a credencial atual sempre volta ao Perfil Isolado da Conta de mesma identidade. Se nenhuma Conta corresponder, ela e capturada como Conta nova, e nenhum login e descartado.
 4. **Perfis Orfaos:** sao listados ao usuario, com opcao de reimportar ou excluir mediante confirmacao. Nunca sao apagados automaticamente.
+
+## Consequences
+
+- **Identidade do Claude so por `~/.claude.json`:** o `.credentials.json` nao traz a conta, e sem rede nao ha como distinguir "a Conta A rotacionou os tokens" de "a credencial do sistema e da Conta B com `oauthAccount` defasado". Por isso a igualdade exata de refresh/access token prevalece sobre a identidade, a identidade de outra Conta nunca e propagada para um perfil casado so por token, e todo perfil sobrescrito com credencial diferente guarda antes uma copia `.credentials.json.bak-<timestamp>` (0600, as 5 ultimas). No caso residual (identidade defasada e nenhum token coincide) o perfil indicado pela identidade recebe a credencial do sistema e a anterior fica apenas no `.bak`.
+- **Claude Code em execucao:** nao ha como travar o `~/.claude.json`. A gravacao e relida logo depois e uma alteracao concorrente aciona o rollback, mas uma escrita entre a releitura e o rollback e sobrescrita.
+- **Credencial do sistema como symlink:** as gravacoes seguem o link e escrevem no alvo real. Se o link apontar para um Perfil Isolado, esse perfil e sobrescrito na troca (a credencial anterior fica no `.bak`).
+- **Concorrencia:** migracao, troca e captura sao serializadas por `flock` em `config.lock` (0600) no diretorio da configuracao. As demais escritas da configuracao (renomear, adicionar, remover) ainda nao usam esse lock.
+- **Codex e Gemini:** ate os tickets 19 e 20 registrarem seus adaptadores de identidade, mantem o comportamento anterior (a entrada `default` no caminho do sistema continua sendo detectada como ativa).

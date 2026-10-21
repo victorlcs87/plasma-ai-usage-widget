@@ -24,6 +24,7 @@ from ai_usage_collector.config import (
     DEFAULT_CONFIG_PATH,
     SUPPORTED_PROVIDERS,
     add_account_to_config,
+    config_lock,
     ensure_secure_dir,
     ensure_secure_file,
     generate_account_slug,
@@ -350,6 +351,17 @@ def capture_current_session(
     Returns:
         tuple[bool, str, dict[str, Any] | None]: (success, status_message, new_account_entry)
     """
+    with config_lock(config_path):
+        return _capture_current_session(provider, label, invite_url, total_capacity, config_path)
+
+
+def _capture_current_session(
+    provider: str,
+    label: str | None,
+    invite_url: str | None,
+    total_capacity: int | None,
+    config_path: str | Path | None,
+) -> tuple[bool, str, dict[str, Any] | None]:
     prov = provider.lower().strip()
     if prov not in SUPPORTED_PROVIDERS:
         return (
@@ -985,15 +997,17 @@ def find_matching_account(
     Ordem: (1) igualdade exata de refresh/access token com um Perfil Isolado, que prevalece
     sobre metadados de identidade possivelmente defasados; (2) Identidade da Conta;
     (3) assinatura por email/token, so para Contas sem identidade conhecida.
-    A propria `cred_file` nunca e considerada uma Conta.
+    Nos provedores com Identidade da Conta, a propria `cred_file` nunca e uma Conta; os
+    demais (Codex/Gemini ate os tickets 19 e 20) mantem o comportamento anterior.
     """
     prov = provider.lower().strip()
     target = cred_file.expanduser().resolve()
+    exclude_system = supports_identity(prov)
     sig = _extract_credential_signature(prov, creds) if creds else {}
     candidates = []
     for acc in accounts:
         f = account_credential_file(prov, acc)
-        if f is not None and f != target and f.is_file():
+        if f is not None and f.is_file() and not (exclude_system and f == target):
             candidates.append((acc, f, _extract_credential_signature(prov, _read_json_dict(f))))
 
     for acc, _, acc_sig in candidates:
@@ -1016,30 +1030,63 @@ def find_matching_account(
     return None
 
 
-def _store_into_profile(provider: str, creds: dict[str, Any], src_file: Path, profile_file: Path) -> None:
+def _identity_owned_by_other(
+    provider: str,
+    accounts: list[dict[str, Any]],
+    src_file: Path,
+    match: dict[str, Any],
+) -> bool:
+    """A identidade de `src_file` ja pertence a outra Conta cadastrada que nao `match`?"""
+    ident = credential_identity(provider, src_file)
+    if ident is None:
+        return False
+    for acc in accounts:
+        if acc is match:
+            continue
+        acc_ident = credential_identity(provider, account_credential_file(provider, acc))
+        if acc_ident and acc_ident.key == ident.key:
+            return True
+    return False
+
+
+def _store_into_profile(
+    provider: str,
+    creds: dict[str, Any],
+    src_file: Path,
+    profile_file: Path,
+    propagate_identity: bool = True,
+) -> bool:
     """Grava a credencial e seus metadados de identidade no Perfil Isolado.
 
     Se o perfil ja tinha outra credencial, ela e preservada antes em `.bak-<timestamp>`.
+    A identidade so e propagada se `propagate_identity` e se nao diverge da do perfil
+    (casamento por token com identidade da origem possivelmente defasada).
+
+    Returns:
+        bool: True se o perfil recebeu identidade que antes nao tinha.
     """
     _backup_profile_credential(profile_file, creds)
     save_secure_json(creds, profile_file, prefix="backup_")
     src_ident = credential_identity(provider, src_file)
     dst_ident = credential_identity(provider, profile_file)
-    # Casada por token com identidade divergente: a da origem pode estar defasada; preserva a do perfil.
-    if not (src_ident and dst_ident and src_ident.key != dst_ident.key):
+    gained = False
+    if propagate_identity and not (src_ident and dst_ident and src_ident.key != dst_ident.key):
         copy_identity_state(provider, src_file, profile_file)
+        gained = dst_ident is None and src_ident is not None
     enforce_profile_security_permissions(profile_file.parent)
+    return gained
 
 
-PROFILE_BACKUPS_KEPT = 3
+PROFILE_BACKUPS_KEPT = 5
 
 
 def _backup_profile_credential(profile_file: Path, new_creds: dict[str, Any]) -> None:
     if not profile_file.is_file() or _read_json_dict(profile_file) == new_creds:
         return
     bak = profile_file.with_name(f"{profile_file.name}.bak-{time.time_ns()}")
-    shutil.copyfile(profile_file, bak)
-    os.chmod(bak, 0o600)
+    fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # nasce 0600
+    with os.fdopen(fd, "wb") as f:
+        f.write(profile_file.read_bytes())
     for old in sorted(profile_file.parent.glob(f"{profile_file.name}.bak-*"))[:-PROFILE_BACKUPS_KEPT]:
         old.unlink(missing_ok=True)
 
@@ -1079,58 +1126,74 @@ def switch_system_account(
     provider: str,
     account_id: str,
     config_path: str | Path | None = None,
-) -> tuple[bool, str]:
+) -> tuple[bool, str, bool]:
     """Alternancia de Conta (ADR-0008), com rollback do sistema em caso de falha.
 
     1. Le a credencial do sistema e obtem sua identidade.
     2. Faz backup no Perfil Isolado da Conta correspondente ou a captura como Conta nova.
     3. Aplica a credencial da Conta escolhida no sistema (0600) junto de sua identidade.
 
+    Serializado com as demais escritas da configuracao por `config_lock`.
+
     Returns:
-        tuple[bool, str]: (success, status_message)
+        tuple[bool, str, bool]: (success, status_message, already_active)
     """
+    with config_lock(config_path):
+        return _switch_system_account(provider, account_id, config_path)
+
+
+def _switch_system_account(
+    provider: str,
+    account_id: str,
+    config_path: str | Path | None,
+) -> tuple[bool, str, bool]:
     prov = provider.lower().strip() if provider else ""
     if prov not in SUPPORTED_PROVIDERS:
-        return False, f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+        return False, f"Provedor '{provider}' não suportado. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}", False
 
     acc_id = str(account_id).strip() if account_id is not None else ""
     cfg = load_config(config_path)
     accounts = get_accounts_for_agent(cfg, prov)
     target_acc = next((a for a in accounts if str(a.get("id")) == acc_id), None)
     if not target_acc:
-        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
+        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", False
 
     source_file = account_credential_file(prov, target_acc)
     if source_file is None:
-        return False, f"Caminho de credenciais não configurado para a conta '{account_id}'."
+        return False, f"Caminho de credenciais não configurado para a conta '{account_id}'.", False
     if _read_json_dict(source_file) is None:
-        return False, f"Arquivo de credenciais da conta '{account_id}' ausente ou inválido em '{source_file}'."
+        return False, f"Arquivo de credenciais da conta '{account_id}' ausente ou inválido em '{source_file}'.", False
 
     sys_file = get_system_credential_file(prov)
     if sys_file.is_file() and _read_json_dict(sys_file) is None:
-        return False, f"Credencial do sistema em '{sys_file}' está ilegível; troca abortada para não perdê-la."
+        return False, f"Credencial do sistema em '{sys_file}' está ilegível; troca abortada para não perdê-la.", False
 
     # Passos 1 e 2: backup da credencial atual do sistema
     sys_creds = get_active_credentials(prov)
     if sys_creds is not None:
         match = find_matching_account(prov, accounts, sys_creds, sys_file)
         if match is not None:
-            try:
-                _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
-            except Exception as e:
-                return False, f"Falha ao realizar backup da conta ativa no sistema para '{match.get('id')}': {e}"
+            match_file = account_credential_file(prov, match)
+            if match_file != sys_file.resolve():  # conta legada no proprio caminho (Codex/Gemini)
+                try:
+                    _store_into_profile(
+                        prov, sys_creds, sys_file, match_file,
+                        propagate_identity=not _identity_owned_by_other(prov, accounts, sys_file, match),
+                    )
+                except Exception as e:
+                    return False, f"Falha ao realizar backup da conta ativa no sistema para '{match.get('id')}': {e}", False
             if match is target_acc:
                 # Conta ja ativa: reaplicar o perfil gravaria tokens possivelmente ja rotacionados.
-                return True, f"Conta '{account_id}' já está ativa no sistema; credencial sincronizada no Perfil Isolado."
+                return True, f"Conta '{account_id}' já está ativa no sistema; credencial sincronizada no Perfil Isolado.", True
         else:
             ok, msg, _ = capture_current_session(prov, config_path=config_path)
             if not ok:
-                return False, f"Credencial desconhecida no sistema não pôde ser capturada antes da troca: {msg}"
+                return False, f"Credencial desconhecida no sistema não pôde ser capturada antes da troca: {msg}", False
 
     # Passo 3: aplicar a Conta escolhida (lida apos o backup), restaurando o sistema em falha
     target_creds = _read_json_dict(source_file)
     if target_creds is None:
-        return False, f"Arquivo de credenciais da conta '{account_id}' ausente ou inválido em '{source_file}'."
+        return False, f"Arquivo de credenciais da conta '{account_id}' ausente ou inválido em '{source_file}'.", False
     snapshot = _snapshot([sys_file, identity_state_file(prov, sys_file)])
     try:
         save_secure_json(target_creds, sys_file, prefix=f"{prov}_sys_")
@@ -1141,8 +1204,8 @@ def switch_system_account(
             return False, (
                 f"Falha ao aplicar a conta '{account_id}' no sistema: {e}. "
                 f"ATENÇÃO: não foi possível restaurar {', '.join(failed)}."
-            )
-        return False, f"Falha ao aplicar a conta '{account_id}' no sistema (estado anterior restaurado): {e}"
+            ), False
+        return False, f"Falha ao aplicar a conta '{account_id}' no sistema (estado anterior restaurado): {e}", False
 
     # For Gemini, update system keyring via secret-tool
     if prov == "gemini":
@@ -1167,7 +1230,7 @@ def switch_system_account(
         except Exception:
             pass
 
-    return True, f"Conta '{account_id}' ativada com sucesso no sistema para '{provider}'."
+    return True, f"Conta '{account_id}' ativada com sucesso no sistema para '{provider}'.", False
 
 
 def _auto_label(provider: str, cred_file: Path | None) -> str:
@@ -1209,6 +1272,7 @@ def _migrate_provider(
 ) -> bool:
     changed = False
     sys_file = get_system_credential_file(prov)  # sem resolver: symlink define o estado ao lado
+    fresh: set[int] = set()  # Contas que receberam identidade nesta execucao
 
     # 1. Entradas legadas apontando para o caminho do sistema viram Perfil Isolado.
     for acc in list(accounts):
@@ -1223,7 +1287,9 @@ def _migrate_provider(
         match = find_matching_account(prov, others, sys_creds, sys_file)
         if match is not None:
             _merge_label(prov, match, acc)  # antes do backup: compara com o rotulo gerado do perfil
-            _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
+            propagate = not _identity_owned_by_other(prov, others, sys_file, match)
+            if _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match), propagate):
+                fresh.add(id(match))
             accounts.remove(acc)
             continue
         ident = credential_identity(prov, sys_file)
@@ -1237,6 +1303,7 @@ def _migrate_provider(
         created.append(profile_dir)
         profile_file = profile_dir / _CREDENTIAL_FILENAMES[prov]
         _store_into_profile(prov, sys_creds, sys_file, profile_file)
+        fresh.add(id(acc))
         acc.pop("credentials_path", None)
         acc["credential_path"] = str(profile_file)
         acc[f"{prov}_dir"] = str(profile_dir)
@@ -1253,6 +1320,8 @@ def _migrate_provider(
             seen[ident.key] = acc
             continue
         keep_file = account_credential_file(prov, keep)
+        if (id(acc) in fresh or id(keep) in fresh) and _refresh_token(prov, f) != _refresh_token(prov, keep_file):
+            continue  # identidade recem-propagada nao e evidencia suficiente para fundir
         if f.is_file() and keep_file and keep_file.is_file() and f.stat().st_mtime > keep_file.stat().st_mtime:
             creds = _read_json_dict(f)
             if creds is not None:
@@ -1262,6 +1331,10 @@ def _migrate_provider(
         changed = True
 
     return changed
+
+
+def _refresh_token(provider: str, cred_file: Path | None) -> Any:
+    return _extract_credential_signature(provider, _read_json_dict(cred_file)).get("refresh_token")
 
 
 def migrate_accounts(config_data: dict[str, Any], config_path: str | Path) -> bool:
@@ -1274,6 +1347,11 @@ def migrate_accounts(config_data: dict[str, Any], config_path: str | Path) -> bo
     Returns:
         bool: True se a configuracao foi alterada e salva.
     """
+    with config_lock(config_path):
+        return _migrate_accounts(config_data, config_path)
+
+
+def _migrate_accounts(config_data: dict[str, Any], config_path: str | Path) -> bool:
     changed = False
     created: list[Path] = []
     try:

@@ -6,12 +6,15 @@ Handles loading, saving, and ensuring Unix 0600 permissions for config files.
 from __future__ import annotations
 
 import copy
+import fcntl
 import json
 import os
 import re
 import stat
 import tempfile
+import threading
 import unicodedata
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
 
@@ -42,6 +45,34 @@ def ensure_secure_file(file_path: str | Path) -> Path:
         if current_mode != 0o600:
             os.chmod(path, 0o600)
     return path
+
+
+_lock_state = threading.local()
+
+
+@contextmanager
+def config_lock(config_path: str | Path | None = None):
+    """Lock exclusivo (flock em `config.lock`, 0600) que serializa migracao, troca e captura.
+
+    Reentrante na mesma thread: chamadas aninhadas reaproveitam o lock ja obtido.
+    """
+    file_path = Path(config_path).expanduser().resolve() if config_path else DEFAULT_CONFIG_PATH
+    lock_path = ensure_secure_dir(file_path.parent) / "config.lock"
+    held: set[Path] = getattr(_lock_state, "held", None) or set()
+    _lock_state.held = held
+    if lock_path in held:
+        yield
+        return
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        held.add(lock_path)
+        try:
+            yield
+        finally:
+            held.discard(lock_path)
+    finally:
+        os.close(fd)  # fechar libera o flock
 
 
 def get_default_config() -> dict[str, Any]:
@@ -111,6 +142,12 @@ def save_config(config_data: dict[str, Any], path: str | Path | None = None) -> 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     """Load configuration from file, creating default if not found."""
     file_path = Path(path).expanduser().resolve() if path else DEFAULT_CONFIG_PATH
+    # Leitura e migracao sob o lock: leitores concorrentes nao migram a mesma entrada legada.
+    with config_lock(file_path):
+        return _load_config_locked(file_path)
+
+
+def _load_config_locked(file_path: Path) -> dict[str, Any]:
     if not file_path.exists():
         default_cfg = get_default_config()
         save_config(default_cfg, file_path)
