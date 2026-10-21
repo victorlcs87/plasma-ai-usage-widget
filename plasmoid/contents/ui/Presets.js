@@ -1,6 +1,8 @@
 .pragma library
 
 // Predefinições da cor de destaque do Notch (os nomes traduzidos ficam em configGeneral.qml). "plasma" = cor de realce do Plasma (padrão).
+// Aviso: o acento "red"/"orange" pode coincidir com a cor de alerta (crítico/atenção); quem desambigua é a forma do nível
+// (ícone/marca do nível), nunca só a cor.
 var accents = [
     { key: "plasma", color: "" },
     { key: "pink", color: "#ff5fa2" },

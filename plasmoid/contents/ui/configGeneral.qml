@@ -788,76 +788,76 @@ Item {
             Layout.fillWidth: true
             spacing: 0
 
-        QQC2.ToolButton {
-            objectName: "tabsScrollLeft"
-            readonly property var strip: configTabBar.strip
-            visible: strip.contentWidth > strip.width + 1
-            enabled: !strip.atXBeginning
-            icon.name: "go-previous"
-            Accessible.name: I18n.tr("Show previous tabs")
-            QQC2.ToolTip.text: Accessible.name
-            QQC2.ToolTip.visible: hovered
-            onClicked: strip.contentX = Math.max(strip.originX, strip.contentX - strip.width / 2)
-        }
+            QQC2.ToolButton {
+                objectName: "tabsScrollLeft"
+                readonly property var strip: configTabBar.strip
+                visible: strip.contentWidth > strip.width + 1
+                enabled: !strip.atXBeginning
+                icon.name: "go-previous"
+                Accessible.name: I18n.tr("Show previous tabs")
+                QQC2.ToolTip.text: Accessible.name
+                QQC2.ToolTip.visible: hovered
+                onClicked: strip.contentX = Math.max(strip.originX, strip.contentX - strip.width / 2)
+            }
 
-        QQC2.TabBar {
-            id: configTabBar
-            objectName: "configTabBar"
-            Layout.fillWidth: true
-            currentIndex: 0
-            Accessible.role: Accessible.PageTabList
-            Accessible.name: I18n.tr("Settings sections")
-            readonly property var strip: contentItem  // ListView interno do TabBar (var: o tipo estático é Item)
-            onCurrentIndexChanged: strip.positionViewAtIndex(currentIndex, ListView.Contain)
+            QQC2.TabBar {
+                id: configTabBar
+                objectName: "configTabBar"
+                Layout.fillWidth: true
+                currentIndex: 0
+                Accessible.role: Accessible.PageTabList
+                Accessible.name: I18n.tr("Settings sections")
+                readonly property var strip: contentItem  // ListView interno do TabBar (var: o tipo estático é Item)
+                onCurrentIndexChanged: strip.positionViewAtIndex(currentIndex, ListView.Contain)
 
-            QQC2.TabButton {
-                text: I18n.tr("General")
-                activeFocusOnTab: true
-                Accessible.role: Accessible.PageTab
-                Accessible.name: I18n.tr("General")
-                Accessible.description: I18n.tr("General settings: refresh, alerts, hiding without a CLI and version checks")
+                QQC2.TabButton {
+                    text: I18n.tr("General")
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: I18n.tr("General")
+                    Accessible.description: I18n.tr("General settings: refresh, alerts, hiding without a CLI and version checks")
+                }
+                QQC2.TabButton {
+                    text: I18n.tr("Panel")
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: I18n.tr("Panel")
+                    Accessible.description: I18n.tr("Appearance of the compact Notch in the panel")
+                }
+                QQC2.TabButton {
+                    text: I18n.tr("Popup")
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: I18n.tr("Popup")
+                    Accessible.description: I18n.tr("Popup: opening, display, opacity and providers")
+                }
+                QQC2.TabButton {
+                    text: I18n.tr("Accounts")
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: I18n.tr("Accounts")
+                    Accessible.description: I18n.tr("Registered accounts, creation, capture and orphan profiles")
+                }
+                QQC2.TabButton {
+                    text: I18n.tr("Notifications")
+                    activeFocusOnTab: true
+                    Accessible.role: Accessible.PageTab
+                    Accessible.name: I18n.tr("Notifications")
+                    Accessible.description: I18n.tr("Session state, notifications and sounds")
+                }
             }
-            QQC2.TabButton {
-                text: I18n.tr("Panel")
-                activeFocusOnTab: true
-                Accessible.role: Accessible.PageTab
-                Accessible.name: I18n.tr("Panel")
-                Accessible.description: I18n.tr("Appearance of the compact Notch in the panel")
-            }
-            QQC2.TabButton {
-                text: I18n.tr("Popup")
-                activeFocusOnTab: true
-                Accessible.role: Accessible.PageTab
-                Accessible.name: I18n.tr("Popup")
-                Accessible.description: I18n.tr("Popup: opening, display, opacity and providers")
-            }
-            QQC2.TabButton {
-                text: I18n.tr("Accounts")
-                activeFocusOnTab: true
-                Accessible.role: Accessible.PageTab
-                Accessible.name: I18n.tr("Accounts")
-                Accessible.description: I18n.tr("Registered accounts, creation, capture and orphan profiles")
-            }
-            QQC2.TabButton {
-                text: I18n.tr("Notifications")
-                activeFocusOnTab: true
-                Accessible.role: Accessible.PageTab
-                Accessible.name: I18n.tr("Notifications")
-                Accessible.description: I18n.tr("Session state, notifications and sounds")
-            }
-        }
 
-        QQC2.ToolButton {
-            objectName: "tabsScrollRight"
-            readonly property var strip: configTabBar.strip
-            visible: strip.contentWidth > strip.width + 1
-            enabled: !strip.atXEnd
-            icon.name: "go-next"
-            Accessible.name: I18n.tr("Show next tabs")
-            QQC2.ToolTip.text: Accessible.name
-            QQC2.ToolTip.visible: hovered
-            onClicked: strip.contentX = Math.min(strip.originX + strip.contentWidth - strip.width, strip.contentX + strip.width / 2)
-        }
+            QQC2.ToolButton {
+                objectName: "tabsScrollRight"
+                readonly property var strip: configTabBar.strip
+                visible: strip.contentWidth > strip.width + 1
+                enabled: !strip.atXEnd
+                icon.name: "go-next"
+                Accessible.name: I18n.tr("Show next tabs")
+                QQC2.ToolTip.text: Accessible.name
+                QQC2.ToolTip.visible: hovered
+                onClicked: strip.contentX = Math.min(strip.originX + strip.contentWidth - strip.width, strip.contentX + strip.width / 2)
+            }
         }
 
         Shortcut { sequences: ["Ctrl+Tab"]; onActivated: configTabBar.currentIndex = (configTabBar.currentIndex + 1) % configTabBar.count }

@@ -1,5 +1,7 @@
 # ADR 0006: Alternância Dinâmica de Conta Ativa e Renomeação no Plasmoid
 
+Status: accepted. A detecção da Conta Ativa descrita aqui (comparação de tokens) foi corrigida pela ADR 0008 (Identidade da Conta).
+
 ## Contexto
 
 Com a implementação dos perfis isolados (ADR 0005), o usuário pode registrar múltiplas contas para Claude, Codex e Gemini. No entanto, duas limitações de usabilidade foram identificadas no uso real do widget:
