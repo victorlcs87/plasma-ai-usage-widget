@@ -204,6 +204,14 @@ def validate_status_contract(data: Any) -> bool:
     if not isinstance(agents, dict):
         return False
 
+    alerts = data.get("alerts")
+    if alerts is not None and not (
+        isinstance(alerts, dict)
+        and alerts.get("mode") in ("pace", "threshold")
+        and all(isinstance(alerts.get(k), (int, float)) and not isinstance(alerts.get(k), bool) for k in ("warning", "critical"))
+    ):
+        return False
+
     orphans = data.get("orphan_profiles")
     if orphans is not None and not (isinstance(orphans, list) and all(isinstance(o, dict) for o in orphans)):
         return False
@@ -252,6 +260,9 @@ def validate_status_contract(data: Any) -> bool:
                     if win.get("alert_level") not in (None, "normal", "warning", "critical"):
                         return False
                     if win.get("forecast") is not None and not isinstance(win["forecast"], dict):
+                        return False
+                    pace = win.get("pace")
+                    if pace is not None and (isinstance(pace, bool) or not isinstance(pace, (int, float))):
                         return False
 
             ww = acc.get("weekly_window")

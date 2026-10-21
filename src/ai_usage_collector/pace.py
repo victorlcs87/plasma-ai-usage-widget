@@ -19,8 +19,15 @@ from ai_usage_collector.config import save_secure_json
 SAMPLES_FILENAME = "samples.json"
 LOOKBACK_SECONDS = {"native": 30 * 60, "weekly": 24 * 3600}
 _WINDOWS = {"native": ("native_window", "release_time"), "weekly": ("weekly_window", "cycle_reset_time")}
-MIN_SPAN_SECONDS = 60  # abaixo disso a inclinacao e ruido
-MIN_ELAPSED_FRACTION = 0.02  # logo apos o reset o ritmo oscila demais para valer
+# Previsao exige base e amostras minimas: 2 pontos em 1 min (10% -> 11%) extrapolam ruido
+MIN_SPAN_SECONDS = 300
+MIN_SAMPLES = 3
+# Ritmo so vale depois de 5% da janela (logo apos o reset 3% consumido em 2% decorrido e ruido)
+# e o aviso exige margem de 10% (ritmo > 1.1), para nao oscilar em torno de 1.0
+MIN_ELAPSED_FRACTION = 0.05
+PACE_MARGIN = 1.1
+# No modo ritmo o critico e fixo em 90%; `critical` das configuracoes so vale no modo limiar
+PACE_CRITICAL_PCT = 90
 CYCLE_TOLERANCE_SECONDS = 300  # o provedor oscila o horario de liberacao em alguns segundos
 MAX_SAMPLES = 2000
 DEFAULT_ALERTS = {"mode": "pace", "warning": 70.0, "critical": 90.0}
@@ -92,7 +99,7 @@ def _update_samples(entry: dict[str, Any], pct: float, release: float, window_s:
 
 def _forecast(samples: list[tuple[float, float]], now: float, release: float) -> dict[str, Any] | None:
     span = samples[-1][0] - samples[0][0]
-    if len(samples) < 2 or span < MIN_SPAN_SECONDS:
+    if len(samples) < MIN_SAMPLES or span < MIN_SPAN_SECONDS:
         return None
     pct, rise = samples[-1][1], samples[-1][1] - samples[0][1]
     if pct >= 100:
@@ -119,9 +126,28 @@ def _level(pct: float, pace: float | None, settings: dict[str, Any]) -> str | No
         return "critical"
     if pace is None:
         return None
-    if pace > 1:
-        return "critical" if pct >= 90 else "warning"
+    if pace > PACE_MARGIN:
+        return "critical" if pct >= PACE_CRITICAL_PCT else "warning"
     return "normal"
+
+
+def set_level(acc: dict[str, Any], win: dict[str, Any], release_key: str, settings: dict[str, Any]) -> None:
+    """Define `alert_level` da janela; so leitura da API fresca, com liberacao conhecida, recebe nivel."""
+    win.pop("alert_level", None)
+    pct = _num(win.get("usage_percentage"))
+    if acc.get("stale") or acc.get("no_data") or pct is None or win.get("source") != "api" or _ts(win.get(release_key)) is None:
+        return
+    win["alert_level"] = _level(pct, _num(win.get("pace")), settings)
+
+
+def reapply_levels(status: dict[str, Any], settings: dict[str, Any]) -> None:
+    """Recalcula so os niveis de um status ja coletado (mudanca de modo/limiares), sem consultar provedores."""
+    status["alerts"] = settings
+    for agent in status["agents"].values():
+        for acc in agent.get("accounts") or []:
+            for field, release_key in (v for v in _WINDOWS.values()):
+                if isinstance(acc.get(field), dict):
+                    set_level(acc, acc[field], release_key, settings)
 
 
 def apply_pace(status: dict[str, Any], config: Any, cache_file: Path, now: datetime, collected: set[str]) -> None:
@@ -146,18 +172,18 @@ def apply_pace(status: dict[str, Any], config: Any, cache_file: Path, now: datet
                         series[key] = old[key]
                     continue
                 release = _ts(win.get(release_key))
-                reliable = win.get("source") == "api" and release is not None  # local nunca prevê
+                reliable = win.get("source") == "api" and release is not None  # local nunca preve nem alerta
                 pace = None
                 elapsed = _num(win.get("elapsed_fraction"))
                 if reliable and elapsed is not None and elapsed >= MIN_ELAPSED_FRACTION:
                     pace = round(pct / 100 / elapsed, 2)
                     win["pace"] = pace
-                if reliable:
+                if reliable and 0 <= pct <= 100:  # leitura fora de 0..100 nunca vira amostra
                     entry = old.get(key, {})
                     samples = _update_samples(entry, pct, release, _num(win.get("window_seconds")),
                                               LOOKBACK_SECONDS[name], now_s)
                     series[key] = entry
                     if fc := _forecast(samples, now_s, release):
                         win["forecast"] = fc
-                win["alert_level"] = _level(pct, pace, settings)
+                set_level(acc, win, release_key, settings)
     save_secure_json({"version": 1, "series": series}, path, prefix="samples_")

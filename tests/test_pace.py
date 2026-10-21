@@ -24,7 +24,7 @@ def env(tmp_path, monkeypatch):
     cache_path = tmp_path / "cache" / "status.json"
     clock = {"now": T0}
     # pct/release por janela; release None = 5h/7d a partir de T0
-    state = {"native": 10.0, "weekly": 10.0, "source": "api", "release_native": T0 + timedelta(hours=5),
+    state = {"native": 10.0, "weekly": 10.0, "source": "api", "calls": 0, "release_native": T0 + timedelta(hours=5),
              "release_weekly": T0 + timedelta(days=7), "health": "valid"}
 
     def win(kind):
@@ -33,8 +33,11 @@ def env(tmp_path, monkeypatch):
         return {"window_seconds": total, key: rel.isoformat(), "usage_percentage": state[kind],
                 "seconds_remaining": max(0, int((rel - clock["now"]).total_seconds())), "source": state["source"]}
 
-    monkeypatch.setattr(collector, "extract_claude_status", lambda acc, initial_health=None, now=None, **kw: {
-        "health": {"status": state["health"]}, "native_window": win("native"), "weekly_window": win("weekly")})
+    def extract(acc, initial_health=None, now=None, **kw):
+        state["calls"] += 1
+        return {"health": {"status": state["health"]}, "native_window": win("native"), "weekly_window": win("weekly")}
+
+    monkeypatch.setattr(collector, "extract_claude_status", extract)
     monkeypatch.setattr(collector, "apply_token_history", lambda *a, **k: None)
     monkeypatch.setattr(refresh, "utcnow", lambda: clock["now"])
 
@@ -73,6 +76,13 @@ def test_weekly_pace_normal_when_slow(env):
     assert acc["weekly_window"]["pace"] == 0.34 and acc["weekly_window"]["alert_level"] == "normal"
 
 
+def test_pace_warning_needs_margin_and_min_elapsed(env):
+    assert env(minutes=3, native=5.0)["native_window"]["alert_level"] is None  # 1% decorrido: cedo demais
+    acc = env(minutes=30, native=11.0)  # 10% decorrido, 11% consumido => ritmo 1.1, sem margem
+    assert acc["native_window"]["pace"] == 1.1 and acc["native_window"]["alert_level"] == "normal"
+    assert env(minutes=30, native=12.0)["native_window"]["alert_level"] == "warning"
+
+
 def test_pace_critical_when_near_limit_and_exhausting(env):
     assert env(minutes=60, native=92.0)["native_window"]["alert_level"] == "critical"
 
@@ -94,15 +104,25 @@ def test_forecast_native_uses_last_30_minutes(env):
 def test_forecast_drops_samples_older_than_lookback(env):
     env(minutes=0, native=10.0)
     env(minutes=40, native=20.0)
-    # a amostra de 0 min (>30 min) cai: so restam as de 40 e 60 min
+    env(minutes=50, native=30.0)
+    # a amostra de 0 min (>30 min) cai: restam 40, 50 e 60 min
     fc = env(minutes=60, native=40.0)["native_window"]["forecast"]
     assert fc["basis_seconds"] == 1200 and fc["seconds_until"] == 60 * 60
 
 
 def test_weekly_forecast_uses_24h(env):
     env(minutes=0, weekly=10.0)
+    env(minutes=6 * 60, weekly=25.0)
     fc = env(minutes=12 * 60, weekly=40.0)["weekly_window"]["forecast"]
     assert fc["basis_seconds"] == 12 * 3600 and fc["before_release"] is True
+
+
+def test_noisy_short_series_has_no_forecast(env):
+    # 10% -> 11% em 61 s extrapolaria "esgota em 1h30" ao lado de nivel normal
+    env(minutes=0, native=10.0)
+    env(minutes=0.5, native=10.5)
+    acc = env(minutes=61 / 60, native=11.0)
+    assert "forecast" not in acc["native_window"]
 
 
 def test_single_sample_has_no_forecast(env):
@@ -112,6 +132,7 @@ def test_single_sample_has_no_forecast(env):
 
 def test_idle_consumption_forecast_never_exhausts(env):
     env(minutes=0, native=10.0)
+    env(minutes=10, native=10.0)
     fc = env(minutes=20, native=10.0)["native_window"]["forecast"]
     assert fc["exhausts_at"] is None and fc["seconds_until"] is None and fc["before_release"] is False
 
@@ -131,6 +152,7 @@ def test_cycle_reset_in_middle_discards_samples(env):
 
 def test_release_jitter_keeps_cycle(env):
     env(minutes=0, native=10.0)
+    env(minutes=5, native=15.0)
     jitter = env.state["release_native"] + timedelta(seconds=7)
     assert "forecast" in env(minutes=10, native=20.0, release_native=jitter)["native_window"]
 
@@ -156,7 +178,7 @@ def test_clock_going_backwards_discards_future_samples(env):
 def test_corrupted_samples_file_is_tolerated(env, garbage):
     env(minutes=0, native=10.0)
     env.samples.write_text(garbage)
-    assert env(minutes=10, native=20.0)["native_window"]["alert_level"] in ("normal", "warning")
+    assert env(minutes=30, native=20.0)["native_window"]["alert_level"] in ("normal", "warning")
     assert json.loads(env.samples.read_text())["series"]  # regravado sao
 
 
@@ -175,6 +197,7 @@ def test_no_forecast_when_stale_or_no_data(env, monkeypatch):
 
 def test_stale_previous_values_are_not_carried_over(env, monkeypatch):
     env(minutes=0, native=10.0)
+    env(minutes=5, native=15.0)
     assert "forecast" in env(minutes=10, native=20.0)["native_window"]
     # 429: o ciclo serve a janela anterior (com a previsao antiga) marcada obsoleta
     def serve_previous(entry, outcome, previous, *a, **k):
@@ -185,11 +208,12 @@ def test_stale_previous_values_are_not_carried_over(env, monkeypatch):
     assert acc["stale"] and not {"pace", "forecast", "alert_level"} & acc["native_window"].keys()
 
 
-def test_local_source_has_no_forecast_or_pace(env):
-    env(minutes=0, native=10.0, source="local")
-    acc = env(minutes=10, native=20.0, source="local")
-    assert "forecast" not in acc["native_window"] and "pace" not in acc["native_window"]
-    assert acc["native_window"]["alert_level"] is None  # modo ritmo sem ritmo => sem nivel
+@pytest.mark.parametrize("mode", ["pace", "threshold"])
+def test_local_source_has_no_forecast_pace_or_level(env, mode):
+    assert main(["--set-alert-config", "--alert-mode", mode, *env.base]) == 0
+    env(minutes=0, native=100.0, source="local")
+    acc = env(minutes=10, native=100.0, source="local")
+    assert not {"pace", "forecast", "alert_level"} & acc["native_window"].keys()
 
 
 def test_unknown_usage_has_no_level(env):
@@ -204,10 +228,33 @@ def test_threshold_mode_default_70_90(env):
     assert env(minutes=60, native=90.0)["native_window"]["alert_level"] == "critical"
 
 
-def test_threshold_mode_custom_values_and_local_source(env):
+def test_threshold_mode_custom_values(env):
     assert main(["--set-alert-config", "--alert-mode", "threshold", "--alert-warning", "40", "--alert-critical", "50", *env.base]) == 0
-    acc = env(minutes=60, native=45.0, source="local")
-    assert acc["native_window"]["alert_level"] == "warning" and "forecast" not in acc["native_window"]
+    assert env(minutes=60, native=45.0)["native_window"]["alert_level"] == "warning"
+
+
+def test_out_of_range_usage_is_not_stored_as_sample(env):
+    env(minutes=0, native=120.0)
+    stored = json.loads(env.samples.read_text())["series"]
+    assert "claude:a:native" not in stored and "claude:a:weekly" in stored
+
+
+def test_set_alert_config_without_changes_does_not_recollect(env):
+    env(minutes=60, native=30.0)
+    before, calls = env.cache_path.read_text(), env.state["calls"]
+    assert main(["--set-alert-config", *env.base]) == 0
+    assert main(["--set-alert-config", "--alert-mode", "pace", "--alert-warning", "70", *env.base]) == 0
+    assert env.state["calls"] == calls and env.cache_path.read_text() == before
+
+
+def test_set_alert_config_reapplies_levels_on_cache_without_collecting(env):
+    env(minutes=60, native=75.0)  # ritmo 3.75 => critico? 75% < 90 => warning
+    calls = env.state["calls"]
+    assert main(["--set-alert-config", "--alert-mode", "threshold", "--alert-warning", "80", "--alert-critical", "95", *env.base]) == 0
+    acc = json.loads(env.cache_path.read_text())
+    assert env.state["calls"] == calls
+    assert acc["alerts"] == {"mode": "threshold", "warning": 80.0, "critical": 95.0}
+    assert acc["agents"]["claude"]["accounts"][0]["native_window"]["alert_level"] == "normal"
 
 
 @pytest.mark.parametrize("args", [

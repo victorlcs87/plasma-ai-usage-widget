@@ -9,7 +9,7 @@
 **Status:** ready-for-agent
 
 - [ ] Anel Duplo por provedor visível no painel horizontal e vertical.
-- [ ] Cores vindas do nível de alerta do contrato; destaque configurável com predefinições.
+- [ ] A pílula compacta (hoje em limiares fixos 70/90 em main.qml/CompactRepresentation) passa a usar `alert_level` do contrato (ticket 24); cores vindas do nível de alerta do contrato; destaque configurável com predefinições.
 - [ ] Ordem e visibilidade de provedores configuráveis e lembradas.
 - [ ] Testes estruturais/sintaxe QML atualizados; verificação visual com plasmoidviewer; `impeccable` aplicado.
 - [ ] Testes do coletor passando (`.venv/bin/pytest`), sem regressão nas funcionalidades existentes.

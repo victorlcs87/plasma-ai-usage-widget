@@ -11,6 +11,7 @@ Kirigami.AbstractCard {
     property var accountData: ({})
     property var plasmoidItem: null
     property int liveSecondsRemaining: 0
+    property double nowMs: Date.now()  // atualizado pelo countdownTimer: faz a previsão andar com o relógio
     property int liveWeeklySecondsRemaining: 0
     property bool copiedFeedback: false
     property bool isSwitching: false
@@ -179,6 +180,7 @@ Kirigami.AbstractCard {
 
     // Compute live countdowns for both active window and weekly cycle
     function updateCountdown() {
+        nowMs = Date.now();
         if (!accountData) {
             liveSecondsRemaining = 0;
             liveWeeklySecondsRemaining = 0;
@@ -352,13 +354,15 @@ Kirigami.AbstractCard {
         var fc = win?.forecast;
         if (cardRoot.isStale || cardRoot.hasNoData || !fc) return "";
         if (!fc.exhausts_at) return safeI18n("Sem esgotamento previsto");
-        var sec = fc.seconds_until;
+        // exhausts_at - agora (seconds_until congela entre coletas)
+        if (isNaN(new Date(fc.exhausts_at).getTime())) return "";
+        var sec = Math.max(0, Math.round((new Date(fc.exhausts_at).getTime() - cardRoot.nowMs) / 1000));
         var when = sec <= 0 ? safeI18n("agora")
             : sec >= 86400 ? safeI18n("%1d %2h", Math.floor(sec / 86400), Math.floor((sec % 86400) / 3600))
             : sec >= 3600 ? safeI18n("%1h %2min", Math.floor(sec / 3600), Math.floor((sec % 3600) / 60))
             : safeI18n("%1 min", Math.max(1, Math.round(sec / 60)));
         var at = formatTime(fc.exhausts_at);
-        var text = at.length > 0 && fc.seconds_until > 0 ? safeI18n("Esgota em %1 (%2)", when, at) : safeI18n("Esgota %1", when);
+        var text = at.length > 0 && sec > 0 ? safeI18n("Esgota em %1 (%2)", when, at) : safeI18n("Esgota %1", when);
         return fc.before_release ? text : safeI18n("%1, após a liberação", text);
     }
 

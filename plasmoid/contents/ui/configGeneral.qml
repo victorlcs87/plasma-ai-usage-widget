@@ -25,6 +25,7 @@ Item {
     property int alertWarning: 70
     property int alertCritical: 90
     property bool isSavingAlerts: false
+    property bool alertsDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
 
     property var statusData: null
     property bool isLoading: false
@@ -216,7 +217,7 @@ Item {
                 try {
                     configRoot.statusData = JSON.parse(stdout);
                     var al = configRoot.statusData.alerts;
-                    if (al && !configRoot.isSavingAlerts) {
+                    if (al && !configRoot.isSavingAlerts && !configRoot.alertsDirty) {
                         configRoot.alertMode = al.mode === "threshold" ? "threshold" : "pace";
                         configRoot.alertWarning = Math.round(Number(al.warning)) || 70;
                         configRoot.alertCritical = Math.round(Number(al.critical)) || 90;
@@ -250,6 +251,7 @@ Item {
             var stdout = (data["stdout"] || "").trim();
             var stderr = (data["stderr"] || "").trim();
             if (data["exit code"] === 0) {
+                configRoot.alertsDirty = false;
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
@@ -624,7 +626,7 @@ Item {
         }
 
         // Alertas: cor por ritmo de uso (padrão) ou por limiares fixos
-        RowLayout {
+        Flow {
             Layout.fillWidth: true
             spacing: Kirigami.Units.smallSpacing
 
@@ -641,7 +643,7 @@ Item {
                     { value: "threshold", text: configRoot.safeI18n("Limiar fixo") }
                 ]
                 currentIndex: configRoot.alertMode === "threshold" ? 1 : 0
-                onActivated: configRoot.alertMode = currentValue
+                onActivated: { configRoot.alertMode = currentValue; configRoot.alertsDirty = true; }
                 Accessible.name: configRoot.safeI18n("Modo de alerta")
             }
 
@@ -656,7 +658,7 @@ Item {
                 editable: true
                 enabled: configRoot.alertMode === "threshold"
                 value: configRoot.alertWarning
-                onValueModified: configRoot.alertWarning = value
+                onValueModified: { configRoot.alertWarning = value; configRoot.alertsDirty = true; }
                 Accessible.name: configRoot.safeI18n("Limiar de aviso em porcentagem")
             }
 
@@ -671,7 +673,7 @@ Item {
                 editable: true
                 enabled: configRoot.alertMode === "threshold"
                 value: configRoot.alertCritical
-                onValueModified: configRoot.alertCritical = value
+                onValueModified: { configRoot.alertCritical = value; configRoot.alertsDirty = true; }
                 Accessible.name: configRoot.safeI18n("Limiar crítico em porcentagem")
             }
 

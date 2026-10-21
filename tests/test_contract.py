@@ -272,3 +272,17 @@ def test_contract_v5_alert_fields_validated():
     assert validate_status_contract(status)
     acc["native_window"]["alert_level"] = "red"
     assert not validate_status_contract(status)
+
+
+def test_contract_v5_validates_pace_and_alerts_types():
+    status = build_empty_status_contract()
+    status["alerts"] = {"mode": "pace", "warning": 70.0, "critical": 90.0}
+    acc = build_agent_account_status("claude", "a", "A", "manual", {"status": "valid"}, native_window={"pace": 1.2})
+    status["agents"]["claude"]["accounts"].append(acc)
+    assert validate_status_contract(status)
+    acc["native_window"]["pace"] = "fast"
+    assert not validate_status_contract(status)
+    acc["native_window"]["pace"] = 1.2
+    for bad in ({"mode": "x", "warning": 1, "critical": 2}, {"mode": "pace", "warning": "a", "critical": 2}, "pace"):
+        status["alerts"] = bad
+        assert not validate_status_contract(status)

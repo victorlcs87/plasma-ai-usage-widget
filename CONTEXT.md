@@ -58,6 +58,7 @@ _Avoid_: reset time, data de expiracao, horario de refresh
 
 **Ritmo de Uso**:
 Relacao entre a fracao do limite ja consumida e a fracao da janela ja decorrida; indica se, mantido o ritmo atual, o limite se esgota antes do Tempo de Liberacao.
+No modo ritmo o aviso exige ritmo acima de 1,1 e ao menos 5% da janela decorrida, e o nivel critico e fixo em 90% de consumo; os limiares configuraveis (padrao 70/90) so valem no modo limiar. Leitura local nunca recebe nivel de alerta.
 _Avoid_: velocidade, taxa de consumo
 
 **Previsao de Esgotamento**:

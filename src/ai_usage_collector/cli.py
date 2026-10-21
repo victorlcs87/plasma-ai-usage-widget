@@ -14,6 +14,7 @@ from ai_usage_collector.collector import (
     collect_and_save,
     interactive_login_account,
     load_status_cache,
+    reapply_alert_levels,
     remove_account,
     rename_account,
     switch_account,
@@ -26,6 +27,7 @@ from ai_usage_collector.config import (
     set_alert_settings,
     set_provider_settings,
 )
+from ai_usage_collector.pace import alert_settings
 from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
 from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
@@ -231,9 +233,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0 if ok else 1
 
         if args.set_alert_config:
+            before = alert_settings(load_config(config_path))
             ok, message = set_alert_settings(args.alert_mode, args.alert_warning, args.alert_critical, config_path)
-            if ok:
-                collect_and_save(config_path=config_path, cache_path=cache_path)
+            if ok and alert_settings(load_config(config_path)) != before:
+                reapply_alert_levels(config_path, cache_path)  # so recalcula niveis; sem consulta aos provedores
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
             return 0 if ok else 1
 

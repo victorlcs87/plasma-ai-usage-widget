@@ -305,3 +305,10 @@ def test_config_general_exposes_alert_mode_and_thresholds():
     cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
     for needle in ("--set-alert-config", "--alert-mode", "--alert-warning", "--alert-critical", "alertModeCombo"):
         assert needle in cfg
+
+
+def test_forecast_text_follows_the_clock_and_alert_row_wraps():
+    card = (UI_DIR / "AccountCard.qml").read_text(encoding="utf-8")
+    assert "nowMs" in card and "fc.exhausts_at" in card and "fc.seconds_until" not in card
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    assert "Flow {" in cfg and "alertsDirty" in cfg
