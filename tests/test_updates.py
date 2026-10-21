@@ -6,7 +6,7 @@ import urllib.error
 
 import pytest
 
-from ai_usage_collector import refresh, updates
+from ai_usage_collector import __version__, refresh, updates
 from ai_usage_collector.cli import main
 from ai_usage_collector.contract import CONTRACT_VERSION, validate_status_contract
 from test_pace import env  # noqa: F401  (fixture)
@@ -85,7 +85,7 @@ def test_uses_the_no_redirect_opener():
 def test_available_updates_compare_with_local_versions(env, net):  # noqa: F811
     env()
     got = items(env)
-    assert got["widget"] == {"latest": "9.0.0", "current": "0.1.0", "available": True, "url": GOOD_URL}
+    assert got["widget"] == {"latest": "9.0.0", "current": __version__, "available": True, "url": GOOD_URL}
     assert got["claude"] == {"latest": "2.1.0", "current": "2.0.0", "available": True}
     assert got["codex"] == {"latest": "0.9.0", "current": None, "available": False}  # local desconhecida
     assert got["gemini"] == {"latest": "0.5.0", "current": "0.9.0", "available": False}  # local mais nova
@@ -200,7 +200,7 @@ def test_unexpected_release_url_is_not_exposed(env, net):  # noqa: F811
         env.state.update(calls=0)
         env.cache_path.with_name(updates.STATE_FILENAME).unlink(missing_ok=True)
         env()
-        assert items(env)["widget"] == {"latest": "9.0.0", "current": "0.1.0", "available": True}, bad
+        assert items(env)["widget"] == {"latest": "9.0.0", "current": __version__, "available": True}, bad
 
 
 def test_wrong_package_name_is_ignored(env, net):  # noqa: F811
