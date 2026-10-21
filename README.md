@@ -24,3 +24,5 @@ A classe é o pior nível de alerta entre as Contas Ativas no Sistema (contas in
 #custom-ai-usage.critical { color: #f38ba8; }
 #custom-ai-usage.stale, #custom-ai-usage.unknown { opacity: 0.6; }
 ```
+
+Notas: `text` pode mostrar o % de uma janela com leitura local enquanto a classe fica `unknown` (leitura local não recebe nível); `percentage` considera só janelas com nível. Percentuais fora de 0..100 são limitados e NaN/Infinity são ignorados. A saída é JSON ASCII (acentos escapados como `\uXXXX`, válido para o Waybar), o tooltip mostra no máximo 20 linhas, e `--waybar` ignora as demais opções (só `--cache-path` vale).

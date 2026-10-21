@@ -217,8 +217,11 @@ def main(argv: Sequence[str] | None = None) -> int:
     config_path = args.config_path
     cache_path = args.cache_path
 
-    if args.waybar:  # fora do try: sempre uma linha JSON valida e exit 0, mesmo sem cache
-        sys.stdout.write(waybar_line(load_status_cache(cache_path)))
+    if args.waybar:  # fora do try: sempre uma linha JSON valida e exit 0; ignora as demais opcoes
+        try:
+            sys.stdout.write(waybar_line(cache_path))
+        except Exception:
+            sys.stdout.write('{"text": "\\u2014", "tooltip": "", "class": "unknown", "alt": "unknown"}\n')
         return 0
 
     try:

@@ -1,6 +1,7 @@
 """Saida --waybar pela CLI: cache falso, sem rede e sem coleta."""
 
 import json
+import unicodedata
 import subprocess
 import sys
 
@@ -87,3 +88,56 @@ def test_waybar_never_collects(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(collector, "collect_and_save", lambda *a, **k: pytest.fail("coletou"))
     assert main(["--waybar", "--cache-path", str(tmp_path / "nope.json"), "--config-path", str(tmp_path / "c.json")]) == 0
     assert json.loads(capsys.readouterr().out)["text"] == "—"
+
+
+def raw_cache(tmp_path, claude_acc, name="Claude"):
+    cache = tmp_path / "s.json"
+    cache.write_text(json.dumps({"agents": {"claude": {"name": name, "accounts": claude_acc}}}))
+    return run(tmp_path, raw=cache.read_text())
+
+
+def test_lone_surrogate_label(tmp_path):
+    out = raw_cache(tmp_path, [acc("\ud800x", True, (10, "normal"))])
+    assert out["class"] == "normal" and "x" in out["tooltip"]
+
+
+def test_control_and_bidi_stripped(tmp_path):
+    out = raw_cache(tmp_path, [acc("a\x00\x1b‮b⁦c\x85d", True, (10, "normal"))])
+    assert "a" in out["tooltip"] and not any(unicodedata.category(c) == "Cf" or ord(c) < 32 and c != "\n" for c in out["tooltip"])
+    assert "abc d" in out["tooltip"]
+
+
+def test_nan_inf_ignored_only_bad_value(tmp_path):
+    raw = json.dumps({"agents": {"claude": {"name": "C", "accounts": [
+        acc("A", True, (50, "warning"), (0, None)), acc("B", True)]}}})
+    raw = raw.replace('"usage_percentage": 0', '"usage_percentage": NaN')
+    out = run(tmp_path, raw=raw)
+    assert out["class"] == "warning" and out["percentage"] == 50
+    out = run(tmp_path / "i" if (tmp_path / "i").mkdir() else tmp_path, raw=raw.replace("NaN", "Infinity"))
+    assert out["class"] == "warning" and out["percentage"] == 50
+
+
+def test_absurd_percentage_clamped(tmp_path):
+    out = raw_cache(tmp_path, [acc("A", True, (1e300, "critical"), (-5, "normal"))])
+    assert out["text"] == "Claude 100%" and "-5" not in out["tooltip"] and "janela: 100%" in out["tooltip"]
+
+
+def test_bad_cache_path_tilde_user(tmp_path):
+    res = subprocess.run([sys.executable, "-m", "ai_usage_collector.cli", "--waybar", "--cache-path", "~nouser_zz/x"],
+                         capture_output=True, text=True)
+    assert res.returncode == 0 and json.loads(res.stdout)["class"] == "unknown"
+
+
+def test_non_str_agent_name_uses_provider(tmp_path):
+    out = raw_cache(tmp_path, [acc("A", True, (10, "normal"))], name=["x"])
+    assert out["text"] == "claude 10%"
+
+
+def test_tooltip_line_limit(tmp_path):
+    out = raw_cache(tmp_path, [acc(f"L{i}", True, (10, "normal")) for i in range(30)])
+    assert len(out["tooltip"].split("\n")) == 21
+
+
+def test_two_active_accounts_same_agent_keep_agent_name(tmp_path):
+    out = raw_cache(tmp_path, [acc("A", True, (10, "normal")), acc("B", True, (20, "normal"))])
+    assert out["text"] == "Claude 10% · Claude 20%"
