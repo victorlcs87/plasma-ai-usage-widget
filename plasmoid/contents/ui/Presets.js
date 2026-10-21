@@ -54,3 +54,23 @@ function levelColor(level, accent) {
     if (level === "normal") return accent;
     return neutral;
 }
+
+// Contraste (WCAG) das marcas de atualização sobre a pílula escura: o glifo usa a cor da pílula e o
+// preenchimento é clareado até chegar a 4,5:1 contra ela (vale também para o ponto, só forma/cor).
+var PILL_RGB = [0x15 / 255, 0x17 / 255, 0x1b / 255];
+function _chan(v) { return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); }
+function luminance(rgb) { return 0.2126 * _chan(rgb[0]) + 0.7152 * _chan(rgb[1]) + 0.0722 * _chan(rgb[2]); }
+function contrast(a, b) {
+    var la = luminance(a), lb = luminance(b);
+    return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+}
+function _hex(rgb) {
+    return "#" + rgb.map(function (v) { var h = Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16); return h.length < 2 ? "0" + h : h; }).join("");
+}
+// r,g,b em 0..1 (Qt color); devolve "#rrggbb" com >= 4,5:1 sobre a pílula
+function onPill(r, g, b) {
+    var c = [r, g, b];
+    for (var i = 0; i < 20 && contrast(c, PILL_RGB) < 4.5; i++)
+        c = c.map(function (v) { return v + (1 - v) * 0.1; });
+    return _hex(c);
+}

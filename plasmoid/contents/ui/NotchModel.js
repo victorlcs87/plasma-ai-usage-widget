@@ -104,7 +104,7 @@ function sessionWord(state, tr) {
 }
 
 // Atualizações (ticket 39): texto do status.json é não confiável, então só versão curta e URL da release do widget
-var RELEASE_URL = /^https:\/\/github\.com\/victorlcs87\/plasma-ai-usage-widget\/releases\/[A-Za-z0-9._~\/%+-]{0,200}$/;
+var RELEASE_URL = /^https:\/\/github\.com\/victorlcs87\/plasma-ai-usage-widget\/releases\/(?:[A-Za-z0-9._~\/+-]|%[0-9A-Fa-f]{2}){0,200}$/;
 var URL_FORBIDDEN = /\.\.|%2e|%2f|%5c/i;  // igual ao coletor (updates.py)
 function validReleaseUrl(u) { return typeof u === "string" && RELEASE_URL.test(u) && !URL_FORBIDDEN.test(u); }
 var CLI_NAMES = { claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI" };

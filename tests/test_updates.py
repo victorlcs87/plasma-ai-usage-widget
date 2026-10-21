@@ -195,7 +195,7 @@ def test_unexpected_release_url_is_not_exposed(env, net):  # noqa: F811
                 "https://github.com/victorlcs87/plasma-ai-usage-widget.evil.com/x", "javascript:alert(1)",
                 "https://github.com/outro/repo/releases/v9", GOOD_URL + "../../x",
                 GOOD_URL + "/%2e%2e/x", GOOD_URL + "/..%2fx", GOOD_URL + "%2Fx", GOOD_URL + "%5cx",
-                "https://github.com/victorlcs87/plasma-ai-usage-widget/tree/main", GOOD_URL + " x", GOOD_URL + "\n<b>", 5, None):
+                "https://github.com/victorlcs87/plasma-ai-usage-widget/tree/main", GOOD_URL + "%zz", GOOD_URL + "100%", GOOD_URL + " x", GOOD_URL + "\n<b>", 5, None):
         net.routes[W] = {"tag_name": "v9.0.0", "html_url": bad}
         env.state.update(calls=0)
         env.cache_path.with_name(updates.STATE_FILENAME).unlink(missing_ok=True)
@@ -406,3 +406,35 @@ def test_local_version_caps_output_and_kills_the_whole_group(tmp_path, monkeypat
 
 def test_semver_is_ascii_only():
     assert updates.parse_version("1.2.3") and not updates.parse_version("\u0661.\u0662.\u0663")
+
+
+def test_version_is_found_on_any_output_line(tmp_path, monkeypatch):
+    f = tmp_path / "bin" / "claude"
+    f.parent.mkdir()
+    f.write_text("#!/bin/sh\necho 'Welcome to the tool'\necho 'tool 2.3.4-rc.1 (build)'\n")
+    f.chmod(0o755)
+    monkeypatch.setenv("PATH", str(f.parent))
+    assert updates.local_version("claude") == "2.3.4-rc.1"
+
+
+def test_vanished_binary_keeps_known_version_until_the_daily_check(env, net):  # noqa: F811
+    env()
+    net.sig["claude"], net.local["claude"] = None, None  # nao achado no PATH deste ciclo
+    env(minutes=5)
+    assert items(env)["claude"]["current"] == "2.0.0"
+    env(minutes=25 * 60)
+    assert items(env)["claude"]["current"] is None
+
+
+def test_enabled_follows_the_config_even_if_turned_off_during_the_query(env, net):  # noqa: F811
+    real_open, done = net.open, []
+
+    def open_then_disable(request, timeout=None):
+        if not done:
+            done.append(main(["--set-update-config", "--update-check", "off", *env.base]))
+        return real_open(request, timeout)
+
+    net.open = open_then_disable
+    env()
+    assert done == [0]
+    assert json.loads(env.cache_path.read_text())["updates"] == {"enabled": False, "items": {}}

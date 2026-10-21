@@ -50,7 +50,7 @@ CHUNK = 4096
 MAX_VERSION_OUTPUT = 4096
 
 _REPO = "victorlcs87/plasma-ai-usage-widget"
-_RELEASE_URL = re.compile(rf"https://github\.com/{re.escape(_REPO)}/releases/[A-Za-z0-9._~/%+-]{{0,200}}", re.ASCII)
+_RELEASE_URL = re.compile(rf"https://github\.com/{re.escape(_REPO)}/releases/(?:[A-Za-z0-9._~/+-]|%[0-9A-Fa-f]{{2}}){{0,200}}", re.ASCII)
 _URL_FORBIDDEN = re.compile(r"\.\.|%2e|%2f|%5c", re.I)
 # fonte -> (URL fixa, chave da versao na resposta, nome esperado no npm)
 SOURCES: dict[str, tuple[str, str, str | None]] = {
@@ -192,9 +192,10 @@ def local_version(binary: str) -> str | None:
         _kill_group(proc)
         proc.wait()
         proc.stdout.close()
-    lines = out.decode("utf-8", "replace").strip().splitlines()
-    parsed = parse_version(lines[0], search=True) if status and lines else None
-    return parsed[0] if parsed else None
+    for line in out.decode("utf-8", "replace").splitlines() if status else []:  # banner antes da versao e comum
+        if parsed := parse_version(line, search=True):
+            return parsed[0]
+    return None
 
 
 def _number(value: Any) -> float | None:
@@ -313,6 +314,9 @@ def merge_results(cache_file: Path, results: dict[str, dict[str, Any]], locals_:
         if results.get(source, {}).get("got"):
             e["latest"], e["url"] = results[source]["got"]
         if source in locals_:
-            e["bin"], e["local"] = locals_[source]
+            sig, version = locals_[source]
+            if sig is None and e["bin"] and source not in results:
+                continue  # binario "sumiu" fora da consulta diaria (PATH diferente?): mantem o conhecido
+            e["bin"], e["local"] = sig, version
     _save(path, state)
     return _items(state) if update_check_enabled(config) else {}

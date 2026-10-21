@@ -116,10 +116,12 @@ def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache
     try:
         results, local = updates.run_plan(plan, cache_file)
         with refresh.status_lock(cache_file.with_name(refresh.STATE_FILENAME)):
-            items = updates.merge_results(cache_file, results, local, load_config(config_path))
+            config = load_config(config_path)
+            items = updates.merge_results(cache_file, results, local, config)
             status = load_status_cache(cache_file)
-            if isinstance(status, dict) and isinstance(status.get("updates"), dict) and status["updates"].get("enabled") is True:
-                status["updates"]["items"] = items
+            if isinstance(status, dict) and isinstance(status.get("updates"), dict):
+                # enabled sempre da configuracao atual (pode ter sido desligada durante a consulta)
+                status["updates"] = {"enabled": updates.update_check_enabled(config), "items": items}
                 save_status_cache(status, cache_file)
                 payload["updates"] = status["updates"]
     except Exception as e:  # verificacao de atualizacao e opcional; falha de rede nunca chega aqui (e silenciosa)

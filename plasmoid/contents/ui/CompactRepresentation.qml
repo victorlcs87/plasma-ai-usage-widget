@@ -22,6 +22,7 @@ Item {
     readonly property string health: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.worstHealthStatus : ""
 
     readonly property bool widgetUpdate: !!(compactRoot.plasmoidItem && compactRoot.plasmoidItem.updateInfo && compactRoot.plasmoidItem.updateInfo.widget)
+    readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
     readonly property bool cliUpdate: rings.some(function (r) { return !!r.update; })
 
     // Tamanho-base do anel e folga da pílula; o anel encolhe até o mínimo (cabe a inicial em 8 px)
@@ -150,7 +151,7 @@ Item {
                 implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
                 implicitHeight: implicitWidth
                 radius: implicitWidth / 2
-                color: Kirigami.Theme.highlightColor  // sobre a pílula escura (#15171b) passa de 4,5:1 nos temas Breeze
+                color: compactRoot.updateColor  // >= 4,5:1 sobre a pílula, qualquer realce (Presets.onPill)
                 Accessible.role: Accessible.Indicator
                 Accessible.name: compactRoot.tr("Nova versão de CLI disponível")
                 HoverHandler { id: updateDotHover }
@@ -166,7 +167,7 @@ Item {
                 implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
                 implicitWidth: implicitHeight
                 radius: implicitHeight / 2
-                color: Kirigami.Theme.highlightColor
+                color: compactRoot.updateColor
                 Accessible.role: Accessible.Indicator
                 Accessible.name: compactRoot.tr("Nova versão do widget disponível")
 
@@ -174,8 +175,8 @@ Item {
                     anchors.centerIn: parent
                     text: "\u2191"
                     font.bold: true
-                    font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
-                    color: Kirigami.Theme.highlightedTextColor
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.1
+                    color: "#15171b"  // cor da pílula sobre o realce clareado: >= 4,5:1
                     textFormat: Text.PlainText
                 }
             }
