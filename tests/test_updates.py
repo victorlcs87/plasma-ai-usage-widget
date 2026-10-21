@@ -6,7 +6,7 @@ import urllib.error
 
 import pytest
 
-from ai_usage_collector import updates
+from ai_usage_collector import refresh, updates
 from ai_usage_collector.cli import main
 from ai_usage_collector.contract import CONTRACT_VERSION, validate_status_contract
 from test_pace import env  # noqa: F401  (fixture)
@@ -20,9 +20,12 @@ class Resp:
 
     def __init__(self, body):
         self.body = body if isinstance(body, bytes) else json.dumps(body).encode()
+        self.pos = 0
 
     def read(self, n=-1):
-        return self.body if n < 0 else self.body[:n]
+        end = len(self.body) if n < 0 else self.pos + n
+        chunk, self.pos = self.body[self.pos:end], min(end, len(self.body))
+        return chunk
 
     def __enter__(self):
         return self
@@ -63,6 +66,8 @@ def net(env, monkeypatch):  # noqa: F811
         return opener.local[binary]
 
     monkeypatch.setattr(updates, "local_version", local)
+    opener.sig = {b: [f"/bin/{b}", 1, 1] for b in ("claude", "codex", "gemini")}
+    monkeypatch.setattr(updates, "_signature", lambda b: opener.sig[b])
     return opener
 
 
@@ -71,9 +76,10 @@ def items(env):  # noqa: F811
 
 
 def test_uses_the_no_redirect_opener():
-    from ai_usage_collector.extractors.claude import _NO_REDIRECT
+    from ai_usage_collector.extractors import claude
 
-    assert updates._OPENER is _NO_REDIRECT
+    assert updates._OPENER is refresh.NO_REDIRECT_OPENER
+    assert not hasattr(claude, "_NO_REDIRECT")
 
 
 def test_available_updates_compare_with_local_versions(env, net):  # noqa: F811
@@ -187,7 +193,9 @@ def test_huge_response_is_rejected(env, net):  # noqa: F811
 def test_unexpected_release_url_is_not_exposed(env, net):  # noqa: F811
     for bad in ("https://evil.example/releases/v9", "http://github.com/victorlcs87/plasma-ai-usage-widget/x",
                 "https://github.com/victorlcs87/plasma-ai-usage-widget.evil.com/x", "javascript:alert(1)",
-                "https://github.com/outro/repo/releases/v9", GOOD_URL + " x", GOOD_URL + "\n<b>", 5, None):
+                "https://github.com/outro/repo/releases/v9", GOOD_URL + "../../x",
+                GOOD_URL + "/%2e%2e/x", GOOD_URL + "/..%2fx", GOOD_URL + "%2Fx", GOOD_URL + "%5cx",
+                "https://github.com/victorlcs87/plasma-ai-usage-widget/tree/main", GOOD_URL + " x", GOOD_URL + "\n<b>", 5, None):
         net.routes[W] = {"tag_name": "v9.0.0", "html_url": bad}
         env.state.update(calls=0)
         env.cache_path.with_name(updates.STATE_FILENAME).unlink(missing_ok=True)
@@ -229,17 +237,101 @@ def test_corrupt_state_is_tolerated_and_rewritten_0600(env, net, junk):  # noqa:
     assert saved["widget"]["url"] == GOOD_URL and "evil" not in path.read_text()
 
 
-def test_cli_is_only_run_while_an_update_is_pending(env, net):  # noqa: F811
+def test_version_is_only_rerun_when_the_binary_changes(env, net):  # noqa: F811
     env()
     assert net.local_calls == ["claude", "codex", "gemini"]
     env(minutes=5)
-    assert net.local_calls.count("claude") == 2 and net.local_calls.count("gemini") == 1  # claude ainda pendente
-    net.local["claude"] = "2.1.0"
     env(minutes=10)
-    assert items(env)["claude"]["available"] is False  # atualizou: o selo some sem esperar o dia
-    n = len(net.local_calls)
+    assert len(net.local_calls) == 3  # atualizacao pendente, mas o binario nao mudou: nada e executado
+    net.local["claude"] = "2.1.0"
+    net.sig["claude"] = ["/bin/claude", 2, 1]  # o CLI foi atualizado
     env(minutes=15)
-    assert len(net.local_calls) == n
+    assert net.local_calls[3:] == ["claude"] and items(env)["claude"]["available"] is False  # selo some sem esperar o dia
+    env(minutes=20)
+    assert len(net.local_calls) == 4
+
+
+def test_lock_is_free_while_the_network_runs(env, net):  # noqa: F811
+    import fcntl
+
+    lock_path = env.cache_path.with_name("refresh_state.lock")
+    free = []
+    real_open = net.open
+
+    def open_checking_lock(request, timeout=None):
+        with open(lock_path, "a") as f:
+            try:
+                fcntl.flock(f, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                free.append(True)
+            except BlockingIOError:
+                free.append(False)
+        return real_open(request, timeout)
+
+    net.open = open_checking_lock
+    env()
+    assert free == [True] * 4 and items(env)["claude"]["latest"] == "2.1.0"
+
+
+def test_slow_server_respects_the_total_budget(env, net, monkeypatch):  # noqa: F811
+    import http.client
+    import threading
+    import time
+    from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+
+    class Slow(BaseHTTPRequestHandler):
+        def do_GET(self):
+            self.send_response(200)
+            self.send_header("Content-Length", "100000")
+            self.end_headers()
+            try:
+                for _ in range(100):
+                    self.wfile.write(b" ")
+                    self.wfile.flush()
+                    time.sleep(1)
+            except OSError:
+                pass
+
+        def log_message(self, *a):
+            pass
+
+    server = ThreadingHTTPServer(("127.0.0.1", 0), Slow)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+
+    class LocalOpener:
+        def open(self, request, timeout=None):
+            conn = http.client.HTTPConnection("127.0.0.1", server.server_port, timeout=timeout)
+            conn.request("GET", "/")
+            return conn.getresponse()
+
+    monkeypatch.setattr(updates, "_OPENER", LocalOpener())
+    monkeypatch.setattr(updates, "NETWORK_BUDGET", 1.0)
+    try:
+        start = time.monotonic()
+        env()
+        elapsed = time.monotonic() - start
+    finally:
+        server.shutdown()
+    assert elapsed < 2.5, elapsed  # 4 fontes a 1 byte/s: orcamento TOTAL, nao por fonte
+    assert items(env) == {}
+
+
+def test_hanging_dns_or_connect_is_abandoned_at_the_budget(env, net, monkeypatch):  # noqa: F811
+    import threading
+    import time
+
+    release = threading.Event()
+
+    class Hang:
+        def open(self, request, timeout=None):
+            release.wait(10)
+            raise OSError("preso")
+
+    monkeypatch.setattr(updates, "_OPENER", Hang())
+    monkeypatch.setattr(updates, "NETWORK_BUDGET", 0.5)
+    start = time.monotonic()
+    env()
+    release.set()
+    assert time.monotonic() - start < 2.5 and items(env) == {}
 
 
 def test_contract_stays_v5_and_validates_updates(env, net):  # noqa: F811
@@ -273,3 +365,44 @@ def test_local_version_runs_binary_with_args_list_and_timeout(tmp_path, monkeypa
     assert updates.local_version("inexistente") is None
     monkeypatch.setenv("PATH", "relativo")
     assert updates.local_version("claude") is None
+
+
+def test_local_version_caps_output_and_kills_the_whole_group(tmp_path, monkeypatch):
+    import os
+    import time
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    pidfile = tmp_path / "pid"
+    scripts = {
+        "claude": "yes AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA",  # despeja sem parar
+        "codex": f"sleep 30 &\necho $! > {pidfile}\nsleep 30",  # neto sobrevive ao timeout do filho
+        "gemini": f"sleep 30 &\necho $! > {pidfile}\necho 0.7.1",  # neto sobrevive a saida normal
+    }
+    for name, body in scripts.items():
+        f = bin_dir / name
+        f.write_text(f"#!/bin/sh\n{body}\n")
+        f.chmod(0o755)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    monkeypatch.setattr(updates, "VERSION_TIMEOUT", 0.5)
+
+    def gone(pid):
+        for _ in range(50):
+            try:
+                os.kill(pid, 0)
+            except ProcessLookupError:
+                return True
+            time.sleep(0.05)
+        return False
+
+    start = time.monotonic()
+    assert updates.local_version("claude") is None
+    assert time.monotonic() - start < 2
+    assert updates.local_version("codex") is None
+    assert gone(int(pidfile.read_text()))
+    assert updates.local_version("gemini") == "0.7.1"
+    assert gone(int(pidfile.read_text()))
+
+
+def test_semver_is_ascii_only():
+    assert updates.parse_version("1.2.3") and not updates.parse_version("\u0661.\u0662.\u0663")

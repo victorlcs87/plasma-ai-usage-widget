@@ -228,10 +228,12 @@ def validate_status_contract(data: Any) -> bool:
         isinstance(upd, dict)
         and isinstance(upd.get("enabled"), bool)
         and isinstance(upd.get("items"), dict)
+        and set(upd["items"]) <= {"widget", "claude", "codex", "gemini"}
         and all(
-            isinstance(i, dict) and isinstance(i.get("latest"), str) and isinstance(i.get("available"), bool)
-            and (i.get("current") is None or isinstance(i["current"], str))
-            and (i.get("url") is None or isinstance(i["url"], str))
+            isinstance(i, dict) and isinstance(i.get("latest"), str) and len(i["latest"]) <= 64
+            and isinstance(i.get("available"), bool)
+            and (i.get("current") is None or (isinstance(i["current"], str) and len(i["current"]) <= 64))
+            and (i.get("url") is None or (isinstance(i["url"], str) and len(i["url"]) <= 300))
             for i in upd["items"].values()
         )
     ):

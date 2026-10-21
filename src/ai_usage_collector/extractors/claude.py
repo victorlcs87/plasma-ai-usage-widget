@@ -358,16 +358,6 @@ def resolve_tier_capacity(account: dict[str, Any], health: dict[str, Any]) -> in
     return DEFAULT_FALLBACK_CAPACITY
 
 
-class _NoRedirect(urllib.request.HTTPRedirectHandler):
-    """Nunca segue redirects: o Authorization nao pode ser reenviado a outro host."""
-
-    def redirect_request(self, *args, **kwargs):
-        return None
-
-
-_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
-
-
 def fetch_claude_usage_api(
     access_token: str,
     timeout: float = 3.0,
@@ -390,7 +380,7 @@ def fetch_claude_usage_api(
         method="GET",
     )
     return refresh.fetch_json(
-        "claude", access_token, req, timeout, opener=_NO_REDIRECT,
+        "claude", access_token, req, timeout, opener=refresh.NO_REDIRECT_OPENER,
         # valor nulo = conta ociosa (resposta valida); valor de outro tipo = resposta invalida
         valid=lambda d: ("five_hour" in d or "seven_day" in d)
         and all(d.get(k) is None or isinstance(d[k], dict) for k in ("five_hour", "seven_day") if k in d),

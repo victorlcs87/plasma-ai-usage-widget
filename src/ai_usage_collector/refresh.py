@@ -143,6 +143,17 @@ def request_json(
     return data
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Nunca segue redirects: credenciais nao podem ser reenviadas a outro host."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+# Opener compartilhado (Claude e verificacao de atualizacao): 3xx vira HTTPError
+NO_REDIRECT_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
 def _finite(value: Any) -> float | None:
     try:
         number = float(value)

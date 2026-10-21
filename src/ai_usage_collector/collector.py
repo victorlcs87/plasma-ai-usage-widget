@@ -99,11 +99,29 @@ def collect_and_save(
     cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
     now_dt = now or refresh.utcnow()
     outbox: list[dict[str, Any]] = []
+    update_plan: dict[str, bool] = {}
     with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
-        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox)
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan)
         save_status_cache(status_payload, cache_file)
     deliver(outbox, cache_file)  # fora do lock: D-Bus lento nao segura o status.json
+    if update_plan:
+        _finish_updates(update_plan, config_path, cache_file, status_payload)  # idem: rede e --version fora do lock
     return status_payload
+
+
+def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache_file: Path, payload: dict[str, Any]) -> None:
+    """Rede e `--version` sem o lock; depois mescla so a chave `updates` do status.json atual, sob o lock."""
+    try:
+        results, local = updates.run_plan(plan, cache_file)
+        with refresh.status_lock(cache_file.with_name(refresh.STATE_FILENAME)):
+            items = updates.merge_results(cache_file, results, local, load_config(config_path))
+            status = load_status_cache(cache_file)
+            if isinstance(status, dict) and isinstance(status.get("updates"), dict) and status["updates"].get("enabled") is True:
+                status["updates"]["items"] = items
+                save_status_cache(status, cache_file)
+                payload["updates"] = status["updates"]
+    except Exception as e:  # verificacao de atualizacao e opcional; falha de rede nunca chega aqui (e silenciosa)
+        sys.stderr.write(f"Aviso: Verificacao de atualizacao nao processada: {e}\n")
 
 
 def _collect(
@@ -114,6 +132,7 @@ def _collect(
     intervals: dict[str, int],
     cyc: refresh.RefreshCycle,
     outbox: list[dict[str, Any]],
+    update_plan: dict[str, bool] | None = None,
 ) -> dict[str, Any]:
     config = load_config(config_path)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
@@ -263,7 +282,9 @@ def _collect(
         sys.stderr.write(f"Aviso: Notificacoes de limite nao processadas: {e}\n")
 
     try:
-        updates.apply_updates(status_payload, config, cache_file, now_dt)
+        plan = updates.plan_updates(status_payload, config, cache_file, now_dt)
+        if update_plan is not None:
+            update_plan.update(plan)
     except Exception as e:  # verificacao de atualizacao e opcional; nunca impede o status (falha de rede e silenciosa)
         sys.stderr.write(f"Aviso: Verificacao de atualizacao nao processada: {e}\n")
 
@@ -279,7 +300,7 @@ def reapply_alert_levels(config_path: str | Path | None = None, cache_path: str 
             config = load_config(config_path)
             reapply_levels(status, alert_settings(config))
             status["notifications"] = notify_settings(config)  # a tela de configuracao le daqui
-            updates.apply_updates(status, config, cache_file, refresh.utcnow(), online=False)  # idem; sem rede
+            updates.apply_updates(status, config, cache_file)  # idem; sem rede
             save_status_cache(status, cache_file)
 
 
