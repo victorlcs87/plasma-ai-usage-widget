@@ -9,7 +9,7 @@ from typing import Sequence
 
 from ai_usage_collector import __version__
 from ai_usage_collector.claude_hooks import HooksError, install_hooks, uninstall_hooks
-from ai_usage_collector.session_state import session_states, state_dir_for
+from ai_usage_collector.session_state import live_states, state_dir_for
 from ai_usage_collector.collector import (
     add_account_entry,
     capture_current_account,
@@ -66,7 +66,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--install-hooks",
         action="store_true",
-        help="Registra no settings.json do Claude Code (CLAUDE_CONFIG_DIR ou ~/.claude) os hooks do Estado da Sessão; idempotente",
+        help="Registra no settings.json do Claude Code (CLAUDE_CONFIG_DIR, absoluto, ou ~/.claude) os hooks do Estado da Sessão: UserPromptSubmit (ocupada), PostToolUse (ocupada; batimento e fim da espera), Stop (ociosa) e Notification (aguardando); idempotente. Perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil",
     )
     parser.add_argument(
         "--uninstall-hooks",
@@ -76,7 +76,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--session-state",
         action="store_true",
-        help="Imprime em JSON o Estado da Sessão por Conta Claude (le o cache e os hooks; nao coleta)",
+        help="Imprime em JSON o Estado da Sessão por Conta Claude (le o mapa do último refresh e os hooks; nao coleta)",
     )
     parser.add_argument(
         "--switch-account",
@@ -272,8 +272,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 0
 
         if args.session_state:
-            status = load_status_cache(cache_path) or {}
-            sys.stdout.write(json.dumps({"claude": session_states(status, load_config(config_path), state_dir_for(cache_path))}) + "\n")
+            sys.stdout.write(json.dumps({"claude": live_states(cache_path)}) + "\n")
             return 0
 
         if args.list_orphans:

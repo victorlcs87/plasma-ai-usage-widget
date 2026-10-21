@@ -25,6 +25,18 @@ PlasmoidItem {
     Plasmoid.title: safeI18n("Monitor de Uso de IA")
     toolTipMainText: Plasmoid.title || ""
     toolTipSubText: getSummaryToolTip() || ""
+    toolTipTextFormat: Text.PlainText
+
+    // Abrir por hover (~300 ms) e fixar com clique (ticket 34); sem hover, só o clique
+    readonly property bool hoverOpen: Plasmoid.configuration.hoverOpen !== false
+    property bool pinned: false
+    property bool pillHovered: false
+    property bool popupHovered: false
+    property double now: Date.now()
+    // Só fecha por hover o popup que o hover abriu (ou que foi solto); atalho/ação externa nunca
+    property bool openedByHover: false
+    // Com o mouse na pílula o press tira o foco do popup: não pode fechá-lo antes do clique fixar
+    hideOnWindowDeactivate: !pinned && !pillHovered
 
     property var statusData: null
     property string lastError: ""
@@ -89,11 +101,71 @@ PlasmoidItem {
         if (!statusData || !statusData.agents) {
             return safeI18n("Nenhum dado coletado ainda.");
         }
-        var lines = compactModel.map(function (m) { return m.name + ": " + m.description; });
+        var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n, now)];
         if (totalInvites > 0) {
             lines.push(safeI18n("%1 convites disponíveis", totalInvites));
         }
         return lines.join("\n");
+    }
+
+    function setPillHovered(h) {
+        pillHovered = h;
+        if (h) {
+            now = Date.now();
+            if (hoverOpen && !expanded) hoverOpenTimer.restart();
+        } else {
+            hoverOpenTimer.stop();
+            scheduleHoverClose();
+        }
+    }
+
+    function scheduleHoverClose() {
+        if (hoverOpen && expanded && openedByHover && !pinned && !pillHovered && !popupHovered) hoverCloseTimer.restart();
+    }
+
+    function setPopupHovered(h) {
+        popupHovered = h;
+        if (h) hoverCloseTimer.stop();
+        else scheduleHoverClose();
+    }
+
+    // Clique: fecha/abre como antes; com hover ligado, clicar no popup aberto por hover o fixa, e de novo o solta
+    function pillClicked() {
+        hoverOpenTimer.stop();
+        if (!hoverOpen) { expanded = !expanded; return; }
+        if (!expanded) { pinned = true; expanded = true; }
+        else {
+            pinned = !pinned;
+            if (!pinned) { openedByHover = true; scheduleHoverClose(); }  // solto: volta a fechar ao sair
+        }
+    }
+
+    function closePopup() {
+        pinned = false;
+        expanded = false;
+    }
+
+    // Abre depois de ~300 ms com o mouse sobre a pílula
+    Timer {
+        id: hoverOpenTimer
+        interval: 300
+        onTriggered: if (root.hoverOpen && root.pillHovered && !root.expanded) { root.openedByHover = true; root.expanded = true; }
+    }
+
+    // Atraso curto de saída: o mouse transita pílula -> popup sem piscar
+    Timer {
+        id: hoverCloseTimer
+        interval: 250
+        onTriggered: if (root.hoverOpen && root.openedByHover && !root.pinned && !root.pillHovered && !root.popupHovered) root.expanded = false
+    }
+
+    // Contagem regressiva da dica: só enquanto o mouse está na pílula com o popup fechado
+    Timer {
+        id: tooltipTick
+        interval: 1000
+        repeat: true
+        running: root.pillHovered && !root.expanded
+        onTriggered: root.now = Date.now()
     }
 
     function shellQuote(str) {
@@ -106,6 +178,14 @@ PlasmoidItem {
                "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
                "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
                "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
+    }
+
+    // Caminho leve do Estado da Sessão: não importa o coletor inteiro (~60 ms contra ~240 ms)
+    function buildSessionCommand() {
+        return "bash -c 'if command -v ai-usage-session-state >/dev/null 2>&1; then ai-usage-session-state; " +
+               "elif [ -x \"$HOME/.local/bin/ai-usage-session-state\" ]; then \"$HOME/.local/bin/ai-usage-session-state\"; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-session-state\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-session-state\"; " +
+               "else python3 -m ai_usage_collector.session_state --states; fi'";
     }
 
     // Executor assíncrono de comandos do coletor (refresh / remoção)
@@ -265,9 +345,11 @@ PlasmoidItem {
         if (fired) root.sessionAttention();
     }
 
-    // Abre o Notch por 5 s (se estava fechado) e toca o som, só se o usuário ligou cada opção
+    // Abre o Notch por 5 s e toca o som, só se o usuário ligou cada opção. Não abre se o popup já está
+    // aberto (nem fixado) e não altera pinned. Limitação: abrir o popup pode roubar o foco do teclado do
+    // terminal onde o usuário digita; por isso a abertura automática é desligável (sessionAutoOpen).
     function sessionAttention() {
-        if (Plasmoid.configuration.sessionAutoOpen !== false && !root.expanded) {
+        if (Plasmoid.configuration.sessionAutoOpen !== false && !root.expanded && !root.pinned) {
             root.autoOpened = true;
             root.expanded = true;
             sessionCloseTimer.restart();
@@ -277,13 +359,16 @@ PlasmoidItem {
         }
     }
 
+    // Fim dos 5 s: fixado ou com o mouse em cima, não fecha (o hover normal assume e fecha ao sair)
     Timer {
         id: sessionCloseTimer
         interval: 5000
         onTriggered: {
-            var close = root.autoOpened;  // fechado antes pelo usuário: nada a fechar
+            var mine = root.autoOpened && root.expanded;
             root.autoOpened = false;
-            if (close) root.expanded = false;
+            if (!mine || root.pinned) return;
+            if (root.pillHovered || root.popupHovered) { root.openedByHover = true; return; }
+            root.expanded = false;
         }
     }
 
@@ -308,14 +393,14 @@ PlasmoidItem {
     }
 
     Timer {
-        interval: 3000
+        interval: 5000
         repeat: true
-        running: Plasmoid.configuration.sessionState === true
+        running: Plasmoid.configuration.sessionState === true && root.visible
         triggeredOnStart: true
         onTriggered: {
             if (root.sessionPolling) return;
             root.sessionPolling = true;
-            sessionDataSource.connectSource(root.buildCollectorCommand(root.shellQuote("--session-state")));
+            sessionDataSource.connectSource(root.buildSessionCommand());
         }
     }
 
@@ -330,6 +415,13 @@ PlasmoidItem {
 
     onExpandedChanged: {
         if (!root.expanded) root.autoOpened = false;
+        if (!root.expanded) {
+            root.pinned = false;
+            root.openedByHover = false;
+            root.popupHovered = false;
+            hoverOpenTimer.stop();
+            hoverCloseTimer.stop();
+        }
         if (root.expanded && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }

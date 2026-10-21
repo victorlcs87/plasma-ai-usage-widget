@@ -1,4 +1,5 @@
 import QtQuick
+import QtQuick.Window
 
 // Anel Duplo: externo = semanal, interno = Janela Nativa. pct < 0 = desconhecido (só trilho).
 // elapsed < 0 = sem marca de tempo decorrido.
@@ -18,6 +19,8 @@ Item {
     // estáticas (arco parado, anel fixo), sem nenhuma animação.
     property string sessionState: ""
     property bool reducedMotion: false
+    // Sem animar (nem gastar CPU) com o widget oculto
+    readonly property bool shown: visible && (Window.window ? Window.window.visible : true)
 
     implicitWidth: 24
     implicitHeight: 24
@@ -103,16 +106,17 @@ Item {
             var ctx = getContext("2d");
             ctx.reset();
             var s = Math.min(width, height);
-            ctx.lineWidth = Math.max(1.5, s * 0.07);
+            // fio fino na folga de 1 px fora do anel externo: nao cobre a cor de nivel
+            ctx.lineWidth = 1.2;
             ctx.lineCap = "round";
             ctx.strokeStyle = "#ffffff";
             ctx.beginPath();
-            ctx.arc(width / 2, height / 2, s / 2 - ctx.lineWidth / 2, 0, 1.75);
+            ctx.arc(width / 2, height / 2, s / 2 - 0.7, 0, 1.75);
             ctx.stroke();
         }
         RotationAnimator on rotation {
             from: 0; to: 360; duration: 1100; loops: Animation.Infinite
-            running: spinner.visible && !ring.reducedMotion
+            running: spinner.visible && ring.shown && !ring.reducedMotion
         }
     }
 
@@ -127,7 +131,7 @@ Item {
         border.color: "#f5a524"
         SequentialAnimation on opacity {
             loops: Animation.Infinite
-            running: pulse.visible && !ring.reducedMotion
+            running: pulse.visible && ring.shown && !ring.reducedMotion
             NumberAnimation { from: 1; to: 0.25; duration: 700; easing.type: Easing.InOutSine }
             NumberAnimation { from: 0.25; to: 1; duration: 700; easing.type: Easing.InOutSine }
         }

@@ -13,3 +13,5 @@
 - [ ] Estado refletido no contrato e nas animações.
 - [ ] Testes pela CLI com configuração temporária.
 - [ ] Testes do coletor passando (`.venv/bin/pytest`), sem regressão nas funcionalidades existentes.
+
+**Notas de implementacao:** registra tambem PostToolUse (batimento / sair de "aguardando"); TTL de ocupada e aguardando = 5 min (limitacao: Esc ou terminal fechado so expiram por TTL; ociosa 30 min); perfil isolado exige `--install-hooks` com o `CLAUDE_CONFIG_DIR` de cada perfil. Ver ADR-0009.

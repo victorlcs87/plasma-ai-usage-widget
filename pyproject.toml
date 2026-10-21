@@ -12,6 +12,7 @@ dependencies = []
 
 [project.scripts]
 ai-usage-collector = "ai_usage_collector.cli:main"
+ai-usage-session-state = "ai_usage_collector.session_state:states_main"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

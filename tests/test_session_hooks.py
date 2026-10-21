@@ -136,10 +136,54 @@ def test_hook_never_fails_on_garbage(tmp_path):
     assert r.returncode == 0
 
 
-def test_idle_prompt_notification_ignored(tmp_path, monkeypatch):
-    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": __import__("io").BytesIO(b'{"session_id":"s","notification_type":"idle_prompt"}')})())
-    session_state.hook_main(["waiting", str(tmp_path / "s")])
-    assert not (tmp_path / "s").exists()
+def hook(monkeypatch, tmp_path, state, stdin: bytes):
+    import io
+
+    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": io.BytesIO(stdin)})())
+    assert session_state.hook_main([state, str(tmp_path / "s")]) == 0
+    return session_state.read_sessions(tmp_path / "s")
+
+
+@pytest.mark.parametrize("ntype", ["idle_prompt", "auth_success", "algo_novo", None])
+def test_notification_only_waits_for_allowed_types(tmp_path, monkeypatch, ntype):
+    payload = {"session_id": "s", **({"notification_type": ntype} if ntype else {})}
+    assert hook(monkeypatch, tmp_path, "waiting", json.dumps(payload).encode()) == []
+
+
+@pytest.mark.parametrize("ntype", session_state.WAITING_NOTIFICATION_TYPES)
+def test_notification_allowed_types_wait(tmp_path, monkeypatch, ntype):
+    recs = hook(monkeypatch, tmp_path, "waiting", json.dumps({"session_id": "s", "notification_type": ntype}).encode())
+    assert [r["state"] for r in recs] == ["waiting"]
+
+
+def test_huge_stdin_still_records_state_and_is_drained(tmp_path, monkeypatch):
+    # PostToolUse com tool_response enorme: JSON truncado no prefixo, mas o estado e gravado
+    big = b'{"session_id": "abc-1", "tool_response": "' + b"x" * (3 << 20) + b'"}'
+    recs = hook(monkeypatch, tmp_path, "busy", big)
+    assert [r["state"] for r in recs] == ["busy"]
+
+
+def test_huge_stdin_real_process_no_epipe(tmp_path):
+    big = b'{"session_id": "abc-1", "notification_type": "permission_prompt", "p": "' + b"y" * (5 << 20) + b'"}'
+    r = subprocess.run([sys.executable, "-I", session_state.__file__, "waiting", str(tmp_path / "s")], input=big, capture_output=True)
+    assert r.returncode == 0 and r.stderr == b""
+    assert [x["state"] for x in session_state.read_sessions(tmp_path / "s")] == ["waiting"]
+
+
+def test_truncated_prefix_ignores_unsafe_session_id(tmp_path, monkeypatch):
+    bad = b'{"session_id": "../../etc x", "p": "' + b"z" * (2 << 20)
+    assert [r["state"] for r in hook(monkeypatch, tmp_path, "busy", bad)] == ["busy"]  # cai em "unknown", nunca no id cru
+    assert [f.name for f in (tmp_path / "s").glob("*.json")] == [session_state.hashlib.sha256(b"unknown").hexdigest()[:16] + ".json"]
+
+
+def test_existing_state_dir_tightened_and_orphan_tmp_purged(tmp_path):
+    sdir = tmp_path / "s"
+    sdir.mkdir(mode=0o755)
+    orphan = sdir / ".dead.1.tmp"
+    orphan.write_text("x")
+    os.utime(orphan, (1, 1))
+    session_state.write_event(sdir, "busy", "a")
+    assert sdir.stat().st_mode & 0o777 == 0o700 and not orphan.exists()
 
 
 def test_aggregation_priority_and_ttl(tmp_path):
@@ -151,7 +195,8 @@ def test_aggregation_priority_and_ttl(tmp_path):
     assert agg(now + 1) == "busy"
     session_state.write_event(sdir, "waiting", "c", now)
     assert agg(now + 1) == "waiting"
-    assert agg(now + session_state.TTL_SECONDS + 1) == "unknown"  # sessao morta sem Stop expira
+    assert agg(now + session_state.TTL_SECONDS["busy"] + 1) == "idle"  # ocupada/aguardando sem evento expiram em minutos
+    assert agg(now + session_state.TTL_SECONDS["idle"] + 1) == "unknown"  # a ociosa dura mais, mas tambem expira
     assert session_state.aggregate(session_state.read_sessions(sdir, now + 1), {"/outro"}) == "unknown"
     (sdir / "lixo.json").write_text("{nope")
     assert agg(now + 1) == "waiting"
@@ -176,3 +221,45 @@ def test_contract_exposes_session_state_per_active_account(env):
     assert validate_status_contract(status)
     states = [a.get("session_state") for a in status["agents"]["claude"]["accounts"]]
     assert states == ["waiting"]
+
+
+def test_surrogate_in_settings_aborts_without_backup(env, capsys):
+    cdir, cache, settings = env
+    content = '{"x": "\\ud800"}'
+    settings.write_text(content)
+    assert run(cache, "--install-hooks") == 1
+    assert settings.read_text() == content and "UTF-8" in capsys.readouterr().err
+    assert not settings.with_name("settings.json.plasma-ai-usage.bak").exists()
+
+
+def test_is_ours_requires_script_name():
+    assert not claude_hooks.is_ours({"command": "echo " + claude_hooks.MARKER})
+    assert not claude_hooks.is_ours({"command": 7}) and not claude_hooks.is_ours("x")
+
+
+def test_relative_claude_config_dir_refused(env, monkeypatch, capsys):
+    cdir, cache, settings = env
+    monkeypatch.setenv("CLAUDE_CONFIG_DIR", "relativo")
+    assert run(cache, "--install-hooks") == 1 and "absoluto" in capsys.readouterr().err
+
+
+def test_malformed_accounts_tolerated(tmp_path):
+    for status in ({"agents": []}, {"agents": {"claude": {"accounts": [1, "x", None, {"id": "a"}]}}}, {"agents": {"claude": 5}}):
+        session_state.apply_session_state(status, {}, tmp_path / "status.json")
+    # --session-state le mapa quebrado/ausente sem erro
+    (tmp_path / session_state.ACCOUNTS_FILENAME).write_text('["lista"]')
+    assert session_state.live_states(tmp_path / "status.json") == {}
+    assert run(tmp_path / "status.json", "--session-state") == 0
+
+
+def test_light_path_matches_contract_and_imports_no_collector(env):
+    cdir, cache, settings = env
+    status = {"agents": {"claude": {"accounts": [{"id": "a", "isActive": True}]}}}
+    session_state.apply_session_state(status, {}, cache)
+    session_state.write_event(session_state.state_dir_for(cache), "busy", "s")
+    assert session_state.live_states(cache) == {"a": "busy"}
+    r = subprocess.run([sys.executable, "-I", "-c", "import sys, ai_usage_collector.session_state as m; m.states_main([sys.argv[1]]); "
+                        "assert 'ai_usage_collector.collector' not in sys.modules", str(cache)],
+                       capture_output=True, text=True, env={**os.environ, "CLAUDE_CONFIG_DIR": str(cdir)})
+    assert r.returncode == 0, r.stderr
+    assert json.loads(r.stdout) == {"claude": {"a": "busy"}}

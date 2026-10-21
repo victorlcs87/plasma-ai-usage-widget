@@ -45,7 +45,7 @@ def hook_command(state: str, state_dir: Path) -> str:
 
 def is_ours(hook: Any) -> bool:
     cmd = hook.get("command") if isinstance(hook, dict) else None
-    return isinstance(cmd, str) and cmd.endswith(" " + MARKER)
+    return isinstance(cmd, str) and cmd.endswith(" " + MARKER) and "session_state.py" in cmd
 
 
 def _our_hooks(groups: list[Any]) -> list[tuple[list[Any], int]]:
@@ -171,12 +171,16 @@ def _edit(settings: Path, mutate: Callable[[dict[str, Any]], bool], creates: boo
         if not mutate(data):
             return False
         mode = (real.stat().st_mode & 0o7777) if real.exists() else 0o600
+        try:  # antes do backup: texto nao codificavel (ex.: surrogate solitario) nao pode alterar nada
+            out = (json.dumps(data, indent=indent, ensure_ascii=False) + ("\n" if newline else "")).encode("utf-8")
+        except UnicodeEncodeError as e:
+            raise HooksError(f"{real} contém texto que não pode ser regravado em UTF-8 ({e}); nada foi alterado.")
         if raw:
             _backup(real, raw)
         fd, tmp = tempfile.mkstemp(dir=real.parent, prefix=f".{real.name}.", suffix=".tmp")
         try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(json.dumps(data, indent=indent, ensure_ascii=False) + ("\n" if newline else ""))
+            with os.fdopen(fd, "wb") as f:
+                f.write(out)
                 f.flush()
                 os.fsync(f.fileno())
             os.chmod(tmp, mode)
@@ -193,6 +197,10 @@ def _edit(settings: Path, mutate: Callable[[dict[str, Any]], bool], creates: boo
 
 
 def settings_path() -> Path:
+    env = os.environ.get("CLAUDE_CONFIG_DIR")
+    if env and not Path(env).expanduser().is_absolute():
+        # o hook resolveria o caminho relativo contra o cwd de cada sessao
+        raise HooksError("CLAUDE_CONFIG_DIR deve ser um caminho absoluto para instalar os hooks.")
     return session_state.claude_config_dir() / "settings.json"
 
 

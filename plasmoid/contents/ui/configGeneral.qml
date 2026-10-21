@@ -29,6 +29,7 @@ Item {
     property bool cfg_sessionState: false
     property bool cfg_sessionAutoOpen: true
     property bool cfg_sessionSound: false
+    property bool cfg_hoverOpen: true
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
 
     function moveProvider(index, delta) {
@@ -735,8 +736,8 @@ Item {
                 text: configRoot.safeI18n("Mostrar o estado da sessão do Claude")
                 checked: configRoot.cfg_sessionState
                 onToggled: configRoot.cfg_sessionState = checked
-                Accessible.description: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks")
-                QQC2.ToolTip.text: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks")
+                Accessible.description: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil)")
+                QQC2.ToolTip.text: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil)")
                 QQC2.ToolTip.visible: hovered || activeFocus
             }
             QQC2.CheckBox {
@@ -751,6 +752,12 @@ Item {
                 checked: configRoot.cfg_sessionSound
                 onToggled: configRoot.cfg_sessionSound = checked
             }
+        }
+
+        QQC2.CheckBox {
+            text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
+            checked: configRoot.cfg_hoverOpen
+            onToggled: configRoot.cfg_hoverOpen = checked
         }
 
         // Intervalo de Atualização por provedor (mínimo de 60 s)

@@ -799,3 +799,22 @@ def test_main_qml_has_no_duplicate_switch_account():
 
 
 
+
+
+def test_hover_open_option_and_wiring():
+    """Ticket 34: opcao hoverOpen (main.xml + configGeneral) e ligacoes de hover/clique/Escape."""
+    root = ET.parse(CONFIG_DIR / "main.xml").getroot()
+    entries = {e.attrib["name"]: e for e in root.iter() if e.tag.endswith("entry")}
+    assert entries["hoverOpen"].attrib["type"] == "Bool"
+    assert entries["hoverOpen"].find("{*}default").text == "true"
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    assert "property bool cfg_hoverOpen" in cfg and "configRoot.cfg_hoverOpen = checked" in cfg
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    assert "toolTipTextFormat: Text.PlainText" in main and "hideOnWindowDeactivate: !pinned" in main
+    compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
+    assert "setPillHovered(containsMouse)" in compact and "pillClicked()" in compact
+    assert "Keys.onEscapePressed" in compact
+    full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
+    assert "HoverHandler" in full and "setPopupHovered(hovered)" in full
+    assert "hideOnWindowDeactivate: !pinned && !pillHovered" in main and "openedByHover" in main
+    assert "Component.onDestruction" in compact and "forceActiveFocus" in full

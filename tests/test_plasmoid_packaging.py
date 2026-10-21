@@ -356,6 +356,15 @@ def test_session_state_config_and_ui_wiring():
     assert xml.split('name="sessionState"')[1].split("</entry>")[0].count("<default>false</default>") == 1
     assert xml.split('name="sessionSound"')[1].split("</entry>")[0].count("<default>false</default>") == 1  # som desligado por padrao
     main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
-    assert "--session-state" in main and "interval: 5000" in main and "sessionSound === true" in main
+    assert "ai-usage-session-state" in main and "interval: 5000" in main and "pillHovered" in main and "sessionSound === true" in main
     ring = (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")
     assert "reducedMotion" in ring and "!ring.reducedMotion" in ring and "#f5a524" in ring
+
+
+def test_session_attention_respects_pinned_hover_and_open_popup():
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    fn = main[main.index("function sessionAttention"):main.index("id: soundDataSource")]
+    assert "!root.expanded && !root.pinned" in fn  # nao abre sobre popup ja aberto
+    assert "root.pillHovered || root.popupHovered" in fn and "root.pinned" in fn  # nao fecha sob o mouse nem fixado
+    assert "root.pinned = " not in fn  # nunca altera o estado fixado
+    assert "ring.shown" in (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")  # animacao para com o widget oculto
