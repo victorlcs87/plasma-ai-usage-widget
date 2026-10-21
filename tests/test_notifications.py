@@ -345,3 +345,18 @@ def test_contract_rejects_non_string_muted(env):
     status = json.loads(env.cache_path.read_text())
     status["notifications"]["muted"] = [1]
     assert not validate_status_contract(status)
+
+
+def test_failed_delivery_warns_once_until_a_send_succeeds(env, notified, capsys):
+    notified.ok = False
+    env(minutes=0, native=96.0)
+    assert "notify-send" in capsys.readouterr().err
+    env(minutes=1, native=96.0)  # tenta de novo, mas sem repetir o aviso
+    assert capsys.readouterr().err == ""
+    notified.ok = True
+    env(minutes=2, native=96.0)
+    assert len(notified) == 1 and not env.cache_path.with_name("notify_failed").exists()
+    notified.ok = False
+    env(minutes=400, native=5.0, release_native=T0 + timedelta(hours=10))
+    env(minutes=401, native=96.0, release_native=T0 + timedelta(hours=10))
+    assert "notify-send" in capsys.readouterr().err  # nova falha depois de um sucesso volta a avisar

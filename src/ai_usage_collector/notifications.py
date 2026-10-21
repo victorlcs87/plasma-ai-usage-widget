@@ -1,4 +1,4 @@
-"""Notificacoes de limite via D-Bus (org.freedesktop.Notifications), ticket 25.
+"""Notificacoes de limite pelo `notify-send` (org.freedesktop.Notifications), ticket 25.
 
 O coletor decide e envia. Avisos ja dados ficam em `notified.json`, ao lado do status.json (0600,
 escrita atomica), por Conta+janela+ciclo de liberacao. Roda dentro do ciclo de coleta, sob o lock
@@ -186,9 +186,17 @@ def deliver(outbox: list[dict[str, Any]], cache_file: Path) -> None:
             down = not ok
         if not ok:
             failed.append(ev)
+    flag = cache_file.with_name("notify_failed")  # falha registrada uma vez so; some quando um envio volta a dar certo
     if not failed:
+        if outbox:
+            flag.unlink(missing_ok=True)
         return
-    sys.stderr.write("Aviso: notificação do sistema não enviada (serviço D-Bus indisponível?)\n")
+    if not flag.exists():
+        sys.stderr.write("Aviso: notificação do sistema não enviada (notify-send ou serviço de notificações indisponível?)\n")
+        try:
+            flag.touch()
+        except OSError:
+            pass
     path = cache_file.with_name(STATE_FILENAME)
     try:
         with status_lock(cache_file.with_name("refresh_state.json")):
