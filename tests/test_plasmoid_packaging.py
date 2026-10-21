@@ -113,6 +113,9 @@ def test_qml_components_syntax_validity():
         "TokenHistory.qml",
         "CompactRepresentation.qml",
         "DualRing.qml",
+        "PanelItem.qml",
+        "LevelBars.qml",
+        "SessionMark.qml",
         "FullRepresentation.qml",
         "configGeneral.qml",
     ]
@@ -357,8 +360,8 @@ def test_session_state_config_and_ui_wiring():
     assert xml.split('name="sessionSound"')[1].split("</entry>")[0].count("<default>false</default>") == 1  # som desligado por padrao
     main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
     assert "ai-usage-session-state" in main and "interval: 5000" in main and "pillHovered" in main and "sessionSound === true" in main
-    ring = (UI_DIR / "DualRing.qml").read_text(encoding="utf-8")
-    assert "reducedMotion" in ring and "!ring.reducedMotion" in ring and "#f5a524" in ring
+    ring = (UI_DIR / "SessionMark.qml").read_text(encoding="utf-8")  # compartilhado por todos os estilos
+    assert "reducedMotion" in ring and "!mark.reducedMotion" in ring and "#f5a524" in ring
 
 
 def test_session_attention_respects_pinned_hover_and_open_popup():

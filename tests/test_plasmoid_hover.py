@@ -10,7 +10,7 @@ from pathlib import Path
 import pytest
 
 from ai_usage_collector.contract import build_agent_account_status
-from test_plasmoid_notch_render import STUBS, UI_DIR
+from test_plasmoid_notch_render import COMPACT_FILES, STUBS, UI_DIR
 
 pytestmark = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary not available")
 
@@ -108,7 +108,7 @@ def run(tmp_path):
             (d / f).write_text(body)
     r = tmp_path / "run"
     r.mkdir()
-    for f in ("CompactRepresentation.qml", "DualRing.qml", "Presets.js", "NotchModel.js"):
+    for f in COMPACT_FILES:
         shutil.copy(UI_DIR / f, r / f)
     (r / "FullRepresentation.qml").write_text("import QtQuick\nItem { property var plasmoidItem }")
     main = (UI_DIR / "main.qml").read_text()

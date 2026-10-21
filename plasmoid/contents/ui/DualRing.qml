@@ -84,57 +84,39 @@ Item {
         }
     }
 
-    // Inicial do provedor: distingue os anéis sem depender de cor
-    Text {
+    // Centro: inicial do provedor (distingue os anéis sem depender de cor), % ou os dois. Sem espaço
+    // para o % legível, cai na inicial; "pct" sem dado mostra "—", nunca 0.
+    property string centerMode: "logo"  // "logo" | "pct" | "logopct"
+    property string centerPct: ""
+    readonly property bool roomPct: width >= 28
+    readonly property bool showPct: centerMode !== "logo" && roomPct && centerPct.length > 0
+    readonly property bool showLetter: letter.length > 0 && width >= 20 && (centerMode !== "pct" || !showPct)
+    Column {
         anchors.centerIn: parent
-        visible: ring.width >= 20 && ring.letter.length > 0
-        text: ring.letter
-        color: "#c9ced6"
-        font.pixelSize: Math.max(8, Math.round(ring.width * 0.3))
-        font.bold: true
-        textFormat: Text.PlainText
-    }
-
-    // Ocupada: arco de 100° no contorno externo, girando
-    Canvas {
-        id: spinner
-        anchors.fill: parent
-        visible: ring.sessionState === "busy"
-        antialiasing: true
-        onVisibleChanged: requestPaint()
-        onWidthChanged: requestPaint()
-        onPaint: {
-            var ctx = getContext("2d");
-            ctx.reset();
-            var s = Math.min(width, height);
-            // fio fino na folga de 1 px fora do anel externo: nao cobre a cor de nivel
-            ctx.lineWidth = 1.2;
-            ctx.lineCap = "round";
-            ctx.strokeStyle = "#ffffff";
-            ctx.beginPath();
-            ctx.arc(width / 2, height / 2, s / 2 - 0.7, 0, 1.75);
-            ctx.stroke();
+        Text {
+            visible: ring.showLetter
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: ring.letter
+            color: "#c9ced6"
+            font.pixelSize: Math.max(8, Math.round(ring.width * (ring.showPct ? 0.2 : 0.3)))
+            font.bold: true
+            textFormat: Text.PlainText
         }
-        RotationAnimator on rotation {
-            from: 0; to: 360; duration: 1100; loops: Animation.Infinite
-            running: spinner.visible && ring.shown && !ring.reducedMotion
+        Text {
+            visible: ring.showPct
+            anchors.horizontalCenter: parent.horizontalCenter
+            text: ring.centerPct
+            color: "#ffffff"
+            font.pixelSize: Math.max(7, Math.round(ring.width * (ring.showLetter ? 0.2 : 0.26)))
+            font.bold: true
+            textFormat: Text.PlainText
         }
     }
 
-    // Aguardando o usuário: anel âmbar pulsando
-    Rectangle {
-        id: pulse
+    SessionMark {
         anchors.fill: parent
-        visible: ring.sessionState === "waiting"
-        color: "transparent"
-        radius: width / 2
-        border.width: Math.max(2, ring.width * 0.1)
-        border.color: "#f5a524"
-        SequentialAnimation on opacity {
-            loops: Animation.Infinite
-            running: pulse.visible && ring.shown && !ring.reducedMotion
-            NumberAnimation { from: 1; to: 0.25; duration: 700; easing.type: Easing.InOutSine }
-            NumberAnimation { from: 0.25; to: 1; duration: 700; easing.type: Easing.InOutSine }
-        }
+        sessionState: ring.sessionState
+        reducedMotion: ring.reducedMotion
+        shown: ring.shown
     }
 }

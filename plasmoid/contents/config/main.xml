@@ -36,6 +36,30 @@
       <label>Cor de destaque do Notch (plasma = cor de realce do Plasma)</label>
       <default>plasma</default>
     </entry>
+    <entry name="panelStyle" type="String">
+      <label>Estilo do painel (pill, ring, text ou bar)</label>
+      <default>pill</default>
+    </entry>
+    <entry name="panelMode" type="String">
+      <label>Modo do painel (ring = só anel, ringpct = anel + %, pct = só %)</label>
+      <default>ring</default>
+    </entry>
+    <entry name="ringCenter" type="String">
+      <label>Centro do anel (logo, pct ou logopct)</label>
+      <default>logo</default>
+    </entry>
+    <entry name="metricSize" type="Int">
+      <label>Tamanho das métricas no painel em porcentagem</label>
+      <default>100</default>
+      <min>80</min>
+      <max>160</max>
+    </entry>
+    <entry name="panelMargin" type="Int">
+      <label>Margem interna do painel em pixels</label>
+      <default>4</default>
+      <min>0</min>
+      <max>16</max>
+    </entry>
     <entry name="sessionState" type="Bool">
       <label>Mostrar o Estado da Sessão (requer --install-hooks)</label>
       <default>false</default>

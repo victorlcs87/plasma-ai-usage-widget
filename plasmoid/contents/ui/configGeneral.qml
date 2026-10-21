@@ -9,6 +9,7 @@ import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.plasma.extras as PlasmaExtras
 import "Presets.js" as Presets
+import "PanelStyle.js" as PanelStyle
 
 Item {
     id: configRoot
@@ -30,6 +31,14 @@ Item {
     property bool cfg_sessionAutoOpen: false
     property bool cfg_sessionSound: false
     property bool cfg_hoverOpen: true
+    // Estilo do painel (ticket 32): valores inválidos do arquivo caem no padrão (PanelStyle.config)
+    property string cfg_panelStyle: "pill"
+    property string cfg_panelMode: "ring"
+    property string cfg_ringCenter: "logo"
+    property int cfg_metricSize: 100
+    property int cfg_panelMargin: 4
+    readonly property var panelNow: PanelStyle.config({ panelStyle: cfg_panelStyle, panelMode: cfg_panelMode, ringCenter: cfg_ringCenter,
+                                                        metricSize: cfg_metricSize, panelMargin: cfg_panelMargin })
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
 
     function moveProvider(index, delta) {
@@ -762,6 +771,95 @@ Item {
                         Accessible.name: configRoot.safeI18n("Mover %1 para depois", Presets.providerInfo(modelData).name)
                     }
                 }
+            }
+        }
+
+        // Estilo do painel: Pílula (padrão), Ring, Text e Bar; modo e centro do anel; tamanho e margem
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Estilo do painel:")
+                textFormat: Text.PlainText
+            }
+            QQC2.ComboBox {
+                textRole: "name"
+                valueRole: "key"
+                model: [
+                    { key: "pill", name: configRoot.safeI18n("Pílula") },
+                    { key: "ring", name: configRoot.safeI18n("Ring") },
+                    { key: "text", name: configRoot.safeI18n("Text (% e ponto)") },
+                    { key: "bar", name: configRoot.safeI18n("Bar (barras)") }
+                ]
+                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.style))
+                onActivated: configRoot.cfg_panelStyle = currentValue
+                Accessible.name: configRoot.safeI18n("Estilo do painel")
+                Accessible.description: configRoot.safeI18n("Pílula: cápsula escura com anéis. Ring: anéis soltos. Text: porcentagem e ponto de nível. Bar: barras verticais com marcador de tempo")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Exibir:")
+                textFormat: Text.PlainText
+            }
+            QQC2.ComboBox {
+                textRole: "name"
+                valueRole: "key"
+                model: [
+                    { key: "ring", name: configRoot.safeI18n("Só o gráfico") },
+                    { key: "ringpct", name: configRoot.safeI18n("Gráfico e %") },
+                    { key: "pct", name: configRoot.safeI18n("Só %") }
+                ]
+                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.mode))
+                onActivated: configRoot.cfg_panelMode = currentValue
+                Accessible.name: configRoot.safeI18n("Modo de exibição do painel")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Centro do anel:")
+                textFormat: Text.PlainText
+            }
+            QQC2.ComboBox {
+                textRole: "name"
+                valueRole: "key"
+                model: [
+                    { key: "logo", name: configRoot.safeI18n("Logo") },
+                    { key: "pct", name: configRoot.safeI18n("%") },
+                    { key: "logopct", name: configRoot.safeI18n("Logo e %") }
+                ]
+                currentIndex: Math.max(0, indexOfValue(configRoot.panelNow.center))
+                onActivated: configRoot.cfg_ringCenter = currentValue
+                Accessible.name: configRoot.safeI18n("Centro do anel")
+                Accessible.description: configRoot.safeI18n("Com % no centro, anéis pequenos mostram o logo; aumente o tamanho das métricas para ver o %")
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Tamanho (%):")
+                textFormat: Text.PlainText
+            }
+            QQC2.SpinBox {
+                from: 80
+                to: 160
+                stepSize: 10
+                editable: true
+                value: Math.round(configRoot.panelNow.scale * 100)
+                onValueModified: configRoot.cfg_metricSize = value
+                Accessible.name: configRoot.safeI18n("Tamanho das métricas em porcentagem (80 a 160)")
+                QQC2.ToolTip.text: configRoot.safeI18n("80 a 160. O painel limita o tamanho à sua espessura, sem cortar")
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Margem (px):")
+                textFormat: Text.PlainText
+            }
+            QQC2.SpinBox {
+                from: 0
+                to: 16
+                editable: true
+                value: configRoot.panelNow.margin
+                onValueModified: configRoot.cfg_panelMargin = value
+                Accessible.name: configRoot.safeI18n("Margem interna do painel em pixels (0 a 16)")
             }
         }
 

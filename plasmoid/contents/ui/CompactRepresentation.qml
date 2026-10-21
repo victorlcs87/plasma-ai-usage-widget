@@ -5,6 +5,7 @@ import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import "Presets.js" as Presets
+import "PanelStyle.js" as PanelStyle
 
 // Notch compacto: pílula sempre escura com um Anel Duplo por provedor (Conta Ativa no Sistema).
 Item {
@@ -21,13 +22,28 @@ Item {
     readonly property bool idle: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.idleHidden === true : false
     readonly property string health: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.worstHealthStatus : ""
 
-    // Tamanho-base do anel e folga da pílula; o anel encolhe até o mínimo (cabe a inicial em 8 px)
+    // Estilo, modo, centro, tamanho e margem (ticket 32): valores inválidos caem no padrão (PanelStyle.config)
+    readonly property var panel: PanelStyle.config(Plasmoid.configuration)
     readonly property int ringBase: Kirigami.Units.iconSizes.smallMedium
     readonly property int ringMin: Math.round(Kirigami.Units.gridUnit * 1.1)
-    readonly property int pad: Kirigami.Units.smallSpacing
+    readonly property int pad: panel.margin
     readonly property int gap: Kirigami.Units.smallSpacing
-    readonly property int ringSize: Math.min(ringBase, Math.max(ringMin, (vertical ? width : height) - 2 * pad))
-    // Selos entram no fluxo da pílula, depois dos anéis: nunca cobrem um anel
+    // Com tamanho < 100%, o piso do anel acompanha o tamanho escolhido
+    readonly property int minUnit: Math.min(ringMin, Math.round(ringBase * panel.scale))
+    readonly property var geoOpts: ({ style: panel.style, mode: panel.mode, vertical: vertical, pad: pad, gap: gap,
+                                      base: ringBase, scale: panel.scale, minUnit: minUnit })
+    // Espessura mínima e preferida do painel (o estilo Ring soma o fundo próprio de cada item)
+    readonly property int ringExtra: panel.style === "ring" ? 4 : 0
+    readonly property int crossMinBase: minUnit + 2 * pad + ringExtra
+    // Nunca menor que o item no menor tamanho de fonte (ex.: Bar vertical precisa de mais largura)
+    readonly property var geoFloor: PanelStyle.layout(geoOpts, crossMinBase)
+    readonly property int crossMin: Math.max(crossMinBase, (vertical ? geoFloor.w : geoFloor.h) + 2 * pad)
+    readonly property int crossPref: Math.round(ringBase * panel.scale) + 2 * pad + ringExtra
+    // Tamanho de cada item: atual (encolhe até caber, sem corte) e no mínimo; o comprimento preferido
+    // acompanha o tamanho atual
+    readonly property var geo: PanelStyle.layout(geoOpts, vertical ? width : height)
+    readonly property var geoMin: PanelStyle.layout(geoOpts, crossMin)
+    // Selos entram no fluxo da pílula, depois dos itens: nunca cobrem um anel
     readonly property int badgeLength: (health !== "" ? healthDot.implicitWidth + gap : 0)
         + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0)
 
@@ -35,7 +51,7 @@ Item {
         return compactRoot.plasmoidItem ? compactRoot.plasmoidItem.safeI18n(text, arg) : text;
     }
 
-    function runLength(size) { return count * size + (count - 1) * gap + badgeLength + 2 * pad; }
+    function runLength(g) { return count * (vertical ? g.h : g.w) + (count - 1) * gap + badgeLength + 2 * pad; }
 
     // Clique do mouse: abre/fixa/solta (main.qml); teclado: abre/fecha como antes
     function toggle() {
@@ -47,10 +63,10 @@ Item {
     }
 
     readonly property int sliver: Kirigami.Units.gridUnit
-    Layout.minimumWidth: vertical ? ringMin + 2 * pad : (idle ? sliver : runLength(ringMin))
-    Layout.minimumHeight: vertical ? (idle ? sliver : runLength(ringMin)) : ringMin + 2 * pad
-    Layout.preferredWidth: vertical ? ringBase + 2 * pad : (idle ? sliver : runLength(ringBase))
-    Layout.preferredHeight: vertical ? (idle ? sliver : runLength(ringBase)) : ringBase + 2 * pad
+    Layout.minimumWidth: vertical ? crossMin : (idle ? sliver : runLength(geoMin))
+    Layout.minimumHeight: vertical ? (idle ? sliver : runLength(geoMin)) : crossMin
+    Layout.preferredWidth: vertical ? crossPref : (idle ? sliver : runLength(geo))
+    Layout.preferredHeight: vertical ? (idle ? sliver : runLength(geo)) : crossPref
 
     activeFocusOnTab: true
     // Destruído com o mouse em cima (formFactor, reconfiguração): não deixa o hover preso
@@ -71,11 +87,14 @@ Item {
         id: pill
         visible: !compactRoot.idle
         anchors.centerIn: parent
-        width: Math.min(parent.width, vertical ? compactRoot.ringSize + 2 * pad : compactRoot.runLength(compactRoot.ringSize))
-        height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.ringSize) : compactRoot.ringSize + 2 * pad)
-        radius: Math.min(width, height) / 2
-        color: "#15171b"
-        border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent : "#2a2d33"
+        width: Math.min(parent.width, vertical ? compactRoot.geo.w + 2 * pad : compactRoot.runLength(compactRoot.geo))
+        height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.geo) : compactRoot.geo.h + 2 * pad)
+        radius: compactRoot.panel.style === "text" || compactRoot.panel.style === "bar"
+            ? Math.min(Kirigami.Units.gridUnit * 0.5, Math.min(width, height) / 2) : Math.min(width, height) / 2
+        // Ring: sem cápsula comum (cada item tem fundo escuro próprio); a borda segue aparecendo no foco/hover
+        color: compactRoot.panel.style === "ring" ? "transparent" : "#15171b"
+        border.color: mouseArea.containsMouse || compactRoot.activeFocus ? compactRoot.accent
+            : (compactRoot.panel.style === "ring" ? "transparent" : "#2a2d33")
         border.width: 1
 
         GridLayout {
@@ -86,20 +105,18 @@ Item {
 
             Repeater {
                 model: compactRoot.rings
-                delegate: DualRing {
+                delegate: PanelItem {
                     required property var modelData
-                    Layout.preferredWidth: compactRoot.ringSize
-                    Layout.preferredHeight: compactRoot.ringSize
-                    outerPct: modelData.outerPct
-                    innerPct: modelData.innerPct
-                    outerElapsed: modelData.outerElapsed
-                    innerElapsed: modelData.innerElapsed
-                    outerLevel: modelData.outerLevel
-                    innerLevel: modelData.innerLevel
-                    outerColor: Presets.levelColor(modelData.outerLevel, compactRoot.accent)
-                    innerColor: Presets.levelColor(modelData.innerLevel, compactRoot.accent)
-                    letter: modelData.letter
-                    sessionState: modelData.sessionState
+                    Layout.preferredWidth: compactRoot.geo.w
+                    Layout.preferredHeight: compactRoot.geo.h
+                    m: modelData
+                    panelStyle: compactRoot.panel.style
+                    mode: compactRoot.panel.mode
+                    center: compactRoot.panel.center
+                    vertical: compactRoot.vertical
+                    geo: compactRoot.geo
+                    gap: compactRoot.gap
+                    accent: compactRoot.accent
                     active: !compactRoot.idle
                     reducedMotion: Kirigami.Units.longDuration === 0  // animações desligadas no Plasma
                     Accessible.role: Accessible.StaticText
@@ -111,8 +128,8 @@ Item {
             // Sem provedor visível (todos ocultos): ponto neutro; o clique ainda abre o popup
             Item {
                 visible: compactRoot.rings.length === 0
-                Layout.preferredWidth: compactRoot.ringSize
-                Layout.preferredHeight: compactRoot.ringSize
+                Layout.preferredWidth: Math.min(compactRoot.geo.w, compactRoot.geo.h)
+                Layout.preferredHeight: Math.min(compactRoot.geo.w, compactRoot.geo.h)
                 Rectangle {
                     anchors.centerIn: parent
                     implicitWidth: parent.width * 0.4

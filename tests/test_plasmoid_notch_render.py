@@ -17,15 +17,19 @@ STUBS = {
         "Units.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var iconSizes: ({small:16, smallMedium:22, medium:32}); property int smallSpacing: 4; property int gridUnit: 18 }",
         "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property var smallFont: ({pointSize: 9}) }"}),
     "org/kde/plasma/plasmoid": ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\n", {
-        "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int formFactor: 2 }"}),
+        "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int formFactor: 2; property var configuration: ({}) }"}),
     "org/kde/plasma/core": ("module org.kde.plasma.core\nsingleton Types 1.0 Types.qml\n", {
         "Types.qml": "pragma Singleton\nimport QtQuick\nQtObject { enum FormFactor { Planar = 0, Horizontal = 2, Vertical = 3 } }"}),
 }
+
+COMPACT_FILES = ("CompactRepresentation.qml", "DualRing.qml", "PanelItem.qml", "LevelBars.qml", "SessionMark.qml",
+                 "Presets.js", "NotchModel.js", "PanelStyle.js")
 
 HARNESS = """
 import QtQuick
 import QtQuick.Window
 import QtTest
+import QtQuick.Layouts
 import org.kde.plasma.plasmoid
 import "NotchModel.js" as NotchModel
 Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
@@ -37,6 +41,7 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
     property string toolTipMainText: "AI"
     property string toolTipSubText: ""
     property bool expanded: false
+    property bool idleHidden: false
     property var calls: []
     function setPillHovered(h) { calls.push("hover:" + h) }
     function pillClicked() { calls.push("click") }
@@ -47,19 +52,39 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
   property bool skipGrab: false
   Timer { id: fin; interval: 100; onTriggered: { console.log("RESULT " + JSON.stringify({calls: logic.calls})); Qt.quit() } }
   TestCase { id: tc; when: false }
-  Component.onCompleted: Plasmoid.formFactor = %(ff)d
+  function find(it, name) {
+    for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
+      if (k.objectName === name) return k.visible ? k.text : null
+      var r = find(k, name); if (r !== undefined) return r }
+    return undefined }
+  function walk(it, out) {
+    for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
+      if (k.objectName === "panelItem") { var p = k.mapToItem(c, 0, 0)
+        out.push({x: p.x, y: p.y, w: k.width, h: k.height, name: k.Accessible.name, desc: k.Accessible.description,
+                  pct: find(k, "panelPct"), mark: find(k, "panelMark")}) }
+      walk(k, out) }
+    return out }
+  function grid(it) {
+    for (var i = 0; i < it.children.length; i++) { var k = it.children[i];
+      if (k.objectName === "panelGrid") return {w: k.implicitWidth, h: k.implicitHeight, cw: k.width, ch: k.height}
+      var r = grid(k); if (r) return r }
+    return null }
+  Component.onCompleted: { Plasmoid.configuration = %(pcfg)s; Plasmoid.formFactor = %(ff)d }
   Timer { interval: 600; running: true; onTriggered: {
     %(drive)s
     if (skipGrab) { fin.start(); return }
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
-      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, calls: logic.calls}));
+      var items = walk(c, []);
+      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, calls: logic.calls, expanded: logic.expanded,
+        panel: c.panel, geo: c.geo, items: items, grid: grid(c), size: [c.width, c.height],
+        min: [c.Layout.minimumWidth, c.Layout.minimumHeight], pref: [c.Layout.preferredWidth, c.Layout.preferredHeight]}));
       Qt.quit() }) } }
 }
 """
 
 
-def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", extra_cfg=None):
+def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", extra_cfg=None, panel=None, size=None):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -69,12 +94,13 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="
             (d / f).write_text(body)
     run = tmp_path / "run"
     run.mkdir()
-    for f in ("CompactRepresentation.qml", "DualRing.qml", "Presets.js", "NotchModel.js"):
+    for f in COMPACT_FILES:
         shutil.copy(UI_DIR / f, run / f)
     png_dir = os.environ.get("AIU_PNG_DIR", "")
     cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": hidden, **(extra_cfg or {})}
     (run / "h.qml").write_text(HARNESS % {
-        "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents}),
+        "w": size[0] if size else 40 if vertical else 300, "h": size[1] if size else 160 if vertical else 40,
+        "pcfg": json.dumps(panel or {}), "data": json.dumps({"agents": agents}),
         "cfg": json.dumps(cfg), "invites": invites, "ff": 3 if vertical else 2,
         "png": f"{png_dir}/{name}.png" if png_dir else "", "drive": drive})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -143,7 +169,8 @@ def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):
 def test_session_animations_stop_when_hidden_by_idle(tmp_path):
     """Widget oculto por ociosidade (active: false) ou janela oculta: nenhuma animacao roda."""
     (tmp_path / "imp").mkdir()
-    shutil.copy(UI_DIR / "DualRing.qml", tmp_path / "DualRing.qml")
+    for f in ("DualRing.qml", "SessionMark.qml"):
+        shutil.copy(UI_DIR / f, tmp_path / f)
     (tmp_path / "h.qml").write_text("""
 import QtQuick
 import QtQuick.Window
