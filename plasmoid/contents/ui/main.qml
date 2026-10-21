@@ -33,7 +33,10 @@ PlasmoidItem {
     property bool pillHovered: false
     property bool popupHovered: false
     property double now: Date.now()
-    hideOnWindowDeactivate: !pinned
+    // Só fecha por hover o popup que o hover abriu (ou que foi solto); atalho/ação externa nunca
+    property bool openedByHover: false
+    // Com o mouse na pílula o press tira o foco do popup: não pode fechá-lo antes do clique fixar
+    hideOnWindowDeactivate: !pinned && !pillHovered
 
     property var statusData: null
     property string lastError: ""
@@ -110,14 +113,18 @@ PlasmoidItem {
             if (hoverOpen && !expanded) hoverOpenTimer.restart();
         } else {
             hoverOpenTimer.stop();
-            if (hoverOpen && expanded && !pinned) hoverCloseTimer.restart();
+            scheduleHoverClose();
         }
+    }
+
+    function scheduleHoverClose() {
+        if (hoverOpen && expanded && openedByHover && !pinned && !pillHovered && !popupHovered) hoverCloseTimer.restart();
     }
 
     function setPopupHovered(h) {
         popupHovered = h;
         if (h) hoverCloseTimer.stop();
-        else if (hoverOpen && expanded && !pinned) hoverCloseTimer.restart();
+        else scheduleHoverClose();
     }
 
     // Clique: fecha/abre como antes; com hover ligado, clicar no popup aberto por hover o fixa, e de novo o solta
@@ -125,7 +132,10 @@ PlasmoidItem {
         hoverOpenTimer.stop();
         if (!hoverOpen) { expanded = !expanded; return; }
         if (!expanded) { pinned = true; expanded = true; }
-        else pinned = !pinned;
+        else {
+            pinned = !pinned;
+            if (!pinned) { openedByHover = true; scheduleHoverClose(); }  // solto: volta a fechar ao sair
+        }
     }
 
     function closePopup() {
@@ -137,14 +147,14 @@ PlasmoidItem {
     Timer {
         id: hoverOpenTimer
         interval: 300
-        onTriggered: if (root.pillHovered && !root.expanded) root.expanded = true
+        onTriggered: if (root.hoverOpen && root.pillHovered && !root.expanded) { root.openedByHover = true; root.expanded = true; }
     }
 
     // Atraso curto de saída: o mouse transita pílula -> popup sem piscar
     Timer {
         id: hoverCloseTimer
         interval: 250
-        onTriggered: if (!root.pinned && !root.pillHovered && !root.popupHovered) root.expanded = false
+        onTriggered: if (root.hoverOpen && root.openedByHover && !root.pinned && !root.pillHovered && !root.popupHovered) root.expanded = false
     }
 
     // Contagem regressiva da dica: só enquanto o mouse está na pílula com o popup fechado
@@ -319,6 +329,7 @@ PlasmoidItem {
     onExpandedChanged: {
         if (!root.expanded) {
             root.pinned = false;
+            root.openedByHover = false;
             root.popupHovered = false;
             hoverOpenTimer.stop();
             hoverCloseTimer.stop();

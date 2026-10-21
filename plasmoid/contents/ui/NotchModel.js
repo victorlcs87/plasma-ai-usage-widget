@@ -18,6 +18,9 @@ function activeAccount(agent) {
     return null;
 }
 
+// Só ISO 8601 ("2026-..T.."): Date.parse("5") não é data
+function parseIso(v) { return typeof v === "string" && /^\d{4}-\d{2}-\d{2}T/.test(v) ? Date.parse(v) : NaN; }
+
 function isNum(v) { return typeof v === "number" && isFinite(v); }
 
 // Percentual da janela, ou -1 (desconhecido): sem dado, não numérico, obsoleto com liberação já
@@ -25,7 +28,7 @@ function isNum(v) { return typeof v === "number" && isFinite(v); }
 function windowPct(acc, win, resetKey) {
     if (!acc || !win || acc.no_data === true || !isNum(win.usage_percentage)) return -1;
     var p = win.usage_percentage;
-    var reset = win[resetKey] ? Date.parse(win[resetKey]) : NaN;
+    var reset = parseIso(win[resetKey]);
     if (acc.stale === true && !isNaN(reset) && reset <= Date.now()) return -1;
     if (p === 0 && isNaN(reset) && !(win.window_seconds > 0) && !(win.total_capacity > 0)) return -1;
     return Math.min(100, Math.max(0, p));
@@ -110,9 +113,10 @@ function formatRemaining(ms, tr) {
 function windowLine(acc, win, resetKey, label, now, tr) {
     var pct = windowPct(acc, win, resetKey);
     if (pct < 0) return label + ": —";
+    var reset = parseIso(win[resetKey]);
+    if (!isNaN(reset) && reset <= now) return label + ": " + formatRemaining(0, tr);  // sem % antigo ambíguo
     var line = label + ": " + Math.round(pct) + "%";
-    var reset = win[resetKey] ? Date.parse(win[resetKey]) : NaN;
-    if (!isNaN(reset)) line += " — " + (reset <= now ? formatRemaining(0, tr) : tr("libera em %1", formatRemaining(reset - now, tr)));
+    if (!isNaN(reset)) line += " — " + tr("libera em %1", formatRemaining(reset - now, tr));
     return line;
 }
 
@@ -124,8 +128,15 @@ function tooltipText(statusData, cfg, tr, now) {
         var name = (ag && ag.name) || Presets.providerInfo(key).name;
         var acc = activeAccount(ag);
         if (!acc) return name + ": " + tr("sem conta ativa no sistema");
+        var notes = [], st = acc.health ? acc.health.status : "";
+        if (st === "session_expired") notes.push(tr("Sessão expirada"));
+        else if (st === "not_configured") notes.push(tr("Conta não configurada"));
+        else if (st && st !== "valid") notes.push(tr("Erro na conta"));
+        if (acc.stale === true) notes.push(tr("dados desatualizados"));
+        if (acc.limit_changes && acc.limit_changes.length > 0) notes.push(tr("limites mudaram"));
         return name + "\n  " + windowLine(acc, acc.native_window, "release_time", tr("Janela nativa"), now, tr)
-            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Semanal"), now, tr);
+            + "\n  " + windowLine(acc, acc.weekly_window, "cycle_reset_time", tr("Semanal"), now, tr)
+            + (notes.length ? "\n  " + notes.join(", ") : "");
     });
     return blocks.join("\n");
 }

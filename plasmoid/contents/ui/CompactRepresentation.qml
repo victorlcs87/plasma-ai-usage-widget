@@ -50,6 +50,8 @@ Item {
     Layout.preferredHeight: vertical ? runLength(ringBase) : ringBase + 2 * pad
 
     activeFocusOnTab: true
+    // Destruído com o mouse em cima (formFactor, reconfiguração): não deixa o hover preso
+    Component.onDestruction: if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.setPillHovered(false)
     Keys.onReturnPressed: toggle()
     Keys.onEnterPressed: toggle()
     Keys.onSpacePressed: toggle()

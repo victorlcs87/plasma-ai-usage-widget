@@ -18,6 +18,8 @@ PlasmaExtras.Representation {
     HoverHandler {
         onHoveredChanged: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.setPopupHovered(hovered)
     }
+    // Foco no popup ao abrir, para o Escape funcionar (precisa de verificação no Plasma real)
+    onVisibleChanged: if (visible) fullRoot.forceActiveFocus()
     Keys.onEscapePressed: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup()
 
     Layout.minimumWidth: Kirigami.Units.gridUnit * 20

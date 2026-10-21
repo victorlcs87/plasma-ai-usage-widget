@@ -816,3 +816,5 @@ def test_hover_open_option_and_wiring():
     assert "Keys.onEscapePressed" in compact
     full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
     assert "HoverHandler" in full and "setPopupHovered(hovered)" in full
+    assert "hideOnWindowDeactivate: !pinned && !pillHovered" in main and "openedByHover" in main
+    assert "Component.onDestruction" in compact and "forceActiveFocus" in full

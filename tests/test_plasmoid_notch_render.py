@@ -44,10 +44,13 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
     function safeI18n(t, a, b) { var r = t; if (a !== undefined) r = r.replace("%%1", a); if (b !== undefined) r = r.replace("%%2", b); return r }
   }
   CompactRepresentation { id: c; plasmoidItem: logic; anchors.fill: parent }
+  property bool skipGrab: false
+  Timer { id: fin; interval: 100; onTriggered: { console.log("RESULT " + JSON.stringify({calls: logic.calls})); Qt.quit() } }
   TestCase { id: tc; when: false }
   Component.onCompleted: Plasmoid.formFactor = %(ff)d
   Timer { interval: 600; running: true; onTriggered: {
     %(drive)s
+    if (skipGrab) { fin.start(); return }
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
       console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, calls: logic.calls}));
@@ -115,3 +118,10 @@ def test_pill_forwards_mouse_and_escape_to_popup_logic(tmp_path):
     """
     agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
     assert render(tmp_path, "h1", agents, drive=drive)["calls"] == ["hover:true", "click", "close"]
+
+
+def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):
+    """M2: representação destruída com o mouse em cima não deixa pillHovered preso."""
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    out = render(tmp_path, "h2", agents, drive="tc.mouseMove(c, 20, 20); c.destroy(); skipGrab = true;")
+    assert out["calls"] == ["hover:true", "hover:false"]
