@@ -470,6 +470,10 @@ def test_repeated_buttons_have_unique_glyph_free_accessible_names(tmp_path):
 def test_tooltips_are_plain_text(tmp_path):
     for f in ("WindowRow.qml", "AccountCard.qml", "NotchButton.qml", "TokenHistory.qml"):
         assert "QQC2.ToolTip.text" not in (UI_DIR / f).read_text(), f  # a ToolTip padrão interpreta HTML
+    cfg = (UI_DIR / "configGeneral.qml").read_text()
+    for name in ("Rename account", "Remove account"):  # nomes de conta vem de dados: sem ToolTip anexado com texto interpolado
+        assert f'QQC2.ToolTip.text: I18n.tr("{name} ' not in cfg
+    assert "text: configRoot.plainMsg(configRoot.errorMessage)" in cfg  # InlineMessage renderiza rich text
     tip = (UI_DIR / "PlainTip.qml").read_text()
     assert "textFormat: Text.PlainText" in tip and "tip.text" in tip
     data = fixture()

@@ -149,6 +149,8 @@ Item {
 
     readonly property bool isBusy: isLoading || isDeleting || isRenaming || isAdding || isCapturing || isInteractiveLogin
 
+    // O InlineMessage do Kirigami usa AutoText: um "<" seguido de ZWSP nao vira tag, entao o stderr do coletor fica literal.
+    function plainMsg(s) { return String(s).replace(/</g, "<\u200b"); }
     function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, configRoot.cfg_collectorPath); }
 
     function healthTone(status) { return status === "valid" ? "#27ae60" : status === "session_expired" ? "#f39c12" : "#7f8c8d"; }
@@ -751,7 +753,7 @@ Item {
             Layout.fillWidth: true
             type: Kirigami.MessageType.Positive
             visible: configRoot.statusMessage.length > 0
-            text: configRoot.statusMessage
+            text: configRoot.plainMsg(configRoot.statusMessage)
             showCloseButton: true
             onVisibleChanged: {
                 if (visible) {
@@ -766,7 +768,7 @@ Item {
             Layout.fillWidth: true
             type: Kirigami.MessageType.Error
             visible: configRoot.errorMessage.length > 0
-            text: configRoot.errorMessage
+            text: configRoot.plainMsg(configRoot.errorMessage)
             showCloseButton: true
         }
 
@@ -1889,8 +1891,7 @@ Item {
                                     display: QQC2.AbstractButton.IconOnly
                                     enabled: !configRoot.isBusy
 
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: I18n.tr("Rename account '%1'", modelData.name || modelData.id)
+                                    PlainTip { visible: parent.hovered; text: I18n.tr("Rename account '%1'", modelData.name || modelData.id) }
 
                                     onClicked: {
                                         configRoot.requestRenameAccount(modelData);
@@ -1905,8 +1906,7 @@ Item {
                                     display: QQC2.AbstractButton.IconOnly
                                     enabled: !configRoot.isBusy
 
-                                    QQC2.ToolTip.visible: hovered
-                                    QQC2.ToolTip.text: I18n.tr("Remove account '%1'", modelData.name || modelData.id)
+                                    PlainTip { visible: parent.hovered; text: I18n.tr("Remove account '%1'", modelData.name || modelData.id) }
 
                                     onClicked: {
                                         configRoot.requestDeleteAccount(modelData);
