@@ -7,6 +7,7 @@ import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
 import "I18n.js" as I18n
+import "Collector.js" as Collector
 
 // Card de uma Conta no Notch escuro: Anel Duplo, nível, % (usado ou restante), liberação (contagem ou data),
 // previsão, nota de limites, Estado da Sessão, detalhamentos, histórico e convites. Ações: ativar no sistema e

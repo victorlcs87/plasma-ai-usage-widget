@@ -13,6 +13,7 @@ import "PanelStyle.js" as PanelStyle
 import "ViewPrefs.js" as ViewPrefs
 import "FloatingGeometry.js" as FloatingGeometry
 import "I18n.js" as I18n
+import "Collector.js" as Collector
 
 Item {
     id: configRoot
@@ -24,6 +25,7 @@ Item {
     property int cfg_refreshIntervalClaude: 300
     property int cfg_refreshIntervalCodex: 300
     property int cfg_refreshIntervalGemini: 300
+    property string cfg_collectorPath: ""
 
     // Notch compacto (KConfigXT): ordem, provedores ocultos e cor de destaque
     property string cfg_providerOrder: "claude,codex,gemini"
@@ -144,17 +146,7 @@ Item {
 
     readonly property bool isBusy: isLoading || isDeleting || isRenaming || isAdding || isCapturing || isInteractiveLogin
 
-    function shellQuote(str) {
-        if (str === null || str === undefined) return "''";
-        return "'" + String(str).replace(/'/g, "'\\''") + "'";
-    }
-
-    function buildCollectorCommand(quotedArgs) {
-        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
-               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
-    }
+    function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, configRoot.cfg_collectorPath); }
 
     function getProviderColor(provider) {
         switch ((provider || "").toLowerCase()) {
@@ -236,15 +228,15 @@ Item {
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
 
-        var safeArgs = shellQuote("--add-account") + " " +
-                       shellQuote("--provider") + " " + shellQuote(prov) + " " +
-                       shellQuote("--label") + " " + shellQuote(label) + " " +
-                       shellQuote("--credential-path") + " " + shellQuote(path);
+        var safeArgs = Collector.shellQuote("--add-account") + " " +
+                       Collector.shellQuote("--provider") + " " + Collector.shellQuote(prov) + " " +
+                       Collector.shellQuote("--label") + " " + Collector.shellQuote(label) + " " +
+                       Collector.shellQuote("--credential-path") + " " + Collector.shellQuote(path);
 
         if (inviteUrl.length > 0) {
-            safeArgs += " " + shellQuote("--invite-url") + " " + shellQuote(inviteUrl);
+            safeArgs += " " + Collector.shellQuote("--invite-url") + " " + Collector.shellQuote(inviteUrl);
         }
-        safeArgs += " " + shellQuote("--status");
+        safeArgs += " " + Collector.shellQuote("--status");
 
         var cmd = configRoot.buildCollectorCommand(safeArgs);
         additionDataSource.connectSource(cmd);
@@ -258,11 +250,11 @@ Item {
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
 
-        var safeArgs = shellQuote("--capture-current") + " " + shellQuote(prov);
+        var safeArgs = Collector.shellQuote("--capture-current") + " " + Collector.shellQuote(prov);
         if (label.length > 0) {
-            safeArgs += " " + shellQuote("--name") + " " + shellQuote(label);
+            safeArgs += " " + Collector.shellQuote("--name") + " " + Collector.shellQuote(label);
         }
-        safeArgs += " " + shellQuote("--status");
+        safeArgs += " " + Collector.shellQuote("--status");
 
         var cmd = configRoot.buildCollectorCommand(safeArgs);
         captureDataSource.connectSource(cmd);
@@ -276,11 +268,11 @@ Item {
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
 
-        var safeArgs = shellQuote("--interactive-login") + " " + shellQuote(prov);
+        var safeArgs = Collector.shellQuote("--interactive-login") + " " + Collector.shellQuote(prov);
         if (label.length > 0) {
-            safeArgs += " " + shellQuote("--name") + " " + shellQuote(label);
+            safeArgs += " " + Collector.shellQuote("--name") + " " + Collector.shellQuote(label);
         }
-        safeArgs += " " + shellQuote("--status");
+        safeArgs += " " + Collector.shellQuote("--status");
 
         var cmd = configRoot.buildCollectorCommand(safeArgs);
         interactiveLoginDataSource.connectSource(cmd);
@@ -333,9 +325,9 @@ Item {
         configRoot.isSavingAlerts = true;
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
-        var args = shellQuote("--set-alert-config") + " " + shellQuote("--alert-mode") + " " + shellQuote(configRoot.alertMode)
-            + " " + shellQuote("--alert-warning") + " " + shellQuote(configRoot.alertWarning)
-            + " " + shellQuote("--alert-critical") + " " + shellQuote(configRoot.alertCritical);
+        var args = Collector.shellQuote("--set-alert-config") + " " + Collector.shellQuote("--alert-mode") + " " + Collector.shellQuote(configRoot.alertMode)
+            + " " + Collector.shellQuote("--alert-warning") + " " + Collector.shellQuote(configRoot.alertWarning)
+            + " " + Collector.shellQuote("--alert-critical") + " " + Collector.shellQuote(configRoot.alertCritical);
         alertDataSource.connectSource(configRoot.buildCollectorCommand(args));
     }
 
@@ -365,7 +357,7 @@ Item {
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
         hideDataSource.connectSource(configRoot.buildCollectorCommand(
-            shellQuote("--set-visibility-config") + " " + shellQuote("--hide-when-not-running") + " " + shellQuote(configRoot.hideMode)));
+            Collector.shellQuote("--set-visibility-config") + " " + Collector.shellQuote("--hide-when-not-running") + " " + Collector.shellQuote(configRoot.hideMode)));
     }
 
     Plasma5Support.DataSource {
@@ -393,14 +385,14 @@ Item {
         configRoot.isSavingNotify = true;
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
-        var args = shellQuote("--set-notify-config");
+        var args = Collector.shellQuote("--set-notify-config");
         if (configRoot.notifyThresholdsEdited) {
-            args += " " + shellQuote("--notify-warning") + " " + shellQuote(configRoot.notifyWarning)
-                + " " + shellQuote("--notify-critical") + " " + shellQuote(configRoot.notifyCritical);
+            args += " " + Collector.shellQuote("--notify-warning") + " " + Collector.shellQuote(configRoot.notifyWarning)
+                + " " + Collector.shellQuote("--notify-critical") + " " + Collector.shellQuote(configRoot.notifyCritical);
         }
-        args += " " + shellQuote("--notify-early") + " " + shellQuote(configRoot.notifyEarly ? "on" : "off")
-            + " " + shellQuote("--notify-reset") + " " + shellQuote(configRoot.notifyReset ? "on" : "off")
-            + " " + shellQuote("--notify-mute") + " " + shellQuote(configRoot.notifyMuted.join(","));
+        args += " " + Collector.shellQuote("--notify-early") + " " + Collector.shellQuote(configRoot.notifyEarly ? "on" : "off")
+            + " " + Collector.shellQuote("--notify-reset") + " " + Collector.shellQuote(configRoot.notifyReset ? "on" : "off")
+            + " " + Collector.shellQuote("--notify-mute") + " " + Collector.shellQuote(configRoot.notifyMuted.join(","));
         notifyDataSource.connectSource(configRoot.buildCollectorCommand(args));
     }
 
@@ -410,7 +402,7 @@ Item {
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
         updateDataSource.connectSource(configRoot.buildCollectorCommand(
-            shellQuote("--set-update-config") + " " + shellQuote("--update-check") + " " + shellQuote(enabled ? "on" : "off")));
+            Collector.shellQuote("--set-update-config") + " " + Collector.shellQuote("--update-check") + " " + Collector.shellQuote(enabled ? "on" : "off")));
     }
 
     Plasma5Support.DataSource {
@@ -491,7 +483,7 @@ Item {
         configRoot.isLoading = true;
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
-        var args = shellQuote(flag) + " " + shellQuote(orphan.provider) + " " + shellQuote(orphan.id) + (confirm ? " " + shellQuote("--confirm") : "");
+        var args = Collector.shellQuote(flag) + " " + Collector.shellQuote(orphan.provider) + " " + Collector.shellQuote(orphan.id) + (confirm ? " " + Collector.shellQuote("--confirm") : "");
         orphanDataSource.connectSource(configRoot.buildCollectorCommand(args));
     }
 
@@ -651,7 +643,7 @@ Item {
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
         var cachePath = (typeof cacheLoc === "string" ? cacheLoc : cacheLoc.toString()).replace(/^file:\/\//, "");
         var statusFilePath = cachePath + "/plasma-ai-usage/status.json";
-        var cmd = "cat " + shellQuote(statusFilePath) + " 2>/dev/null";
+        var cmd = "cat " + Collector.shellQuote(statusFilePath) + " 2>/dev/null";
         configStatusDataSource.connectSource(cmd);
     }
 
@@ -668,7 +660,7 @@ Item {
         configRoot.errorMessage = "";
 
         var provClean = String(acc.provider).toLowerCase().trim();
-        var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(acc.id);
+        var safeArgs = Collector.shellQuote("--remove-account") + " " + Collector.shellQuote(provClean) + " " + Collector.shellQuote(acc.id);
         var cmd = configRoot.buildCollectorCommand(safeArgs);
         removalDataSource.connectSource(cmd);
     }
@@ -693,12 +685,12 @@ Item {
         configRoot.errorMessage = "";
 
         var provClean = String(acc.provider).toLowerCase().trim();
-        var safeArgs = shellQuote("--rename-account") + " " +
-                       shellQuote(provClean) + " " +
-                       shellQuote(acc.id) + " " +
-                       shellQuote("--label") + " " +
-                       shellQuote(newName) + " " +
-                       shellQuote("--status");
+        var safeArgs = Collector.shellQuote("--rename-account") + " " +
+                       Collector.shellQuote(provClean) + " " +
+                       Collector.shellQuote(acc.id) + " " +
+                       Collector.shellQuote("--label") + " " +
+                       Collector.shellQuote(newName) + " " +
+                       Collector.shellQuote("--status");
         var cmd = configRoot.buildCollectorCommand(safeArgs);
         renameDataSource.connectSource(cmd);
     }
@@ -858,6 +850,14 @@ Item {
                     width: tabGeralScroll.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
+                        color: Kirigami.Theme.disabledTextColor
+                        text: I18n.tr("Alerts, hiding and notifications are applied right away by the collector with their own Apply button; every other option is saved when you press OK.")
+                    }
+
                         // Intervalo de Atualização por provedor (mínimo de 60 s); Flow: quebra de linha em largura estreita
                         Flow {
                             Layout.fillWidth: true
@@ -953,10 +953,17 @@ Item {
                             }
 
                             PlasmaComponents3.Button {
-                                text: I18n.tr("Apply")
+                                text: I18n.tr("Apply alerts")
                                 icon.name: "dialog-ok-apply"
                                 enabled: !configRoot.isBusy && !configRoot.isSavingAlerts
                                 onClicked: configRoot.saveAlertSettings()
+                            }
+
+                            QQC2.Label {
+                                visible: configRoot.alertsDirty
+                                textFormat: Text.PlainText
+                                color: Kirigami.Theme.neutralTextColor
+                                text: I18n.tr("Not applied yet")
                             }
                         }
 
@@ -987,10 +994,17 @@ Item {
                             }
 
                             PlasmaComponents3.Button {
-                                text: I18n.tr("Apply")
+                                text: I18n.tr("Apply hiding")
                                 icon.name: "dialog-ok-apply"
                                 enabled: !configRoot.isBusy && !configRoot.isSavingHide
                                 onClicked: configRoot.saveHideSettings()
+                            }
+
+                            QQC2.Label {
+                                visible: configRoot.hideDirty
+                                textFormat: Text.PlainText
+                                color: Kirigami.Theme.neutralTextColor
+                                text: I18n.tr("Not applied yet")
                             }
 
                             QQC2.Label {
@@ -1012,6 +1026,29 @@ Item {
                             Accessible.description: I18n.tr("Queries the widget's GitHub Releases and the npm registry for Claude Code, Codex and Gemini CLI; nothing is downloaded or installed")
                             QQC2.ToolTip.text: Accessible.description
                             QQC2.ToolTip.visible: hovered || activeFocus
+                        }
+
+                        // Último recurso para achar o coletor (PATH, ~/.local/bin e pipx vêm antes)
+                        RowLayout {
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+
+                            QQC2.Label {
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Collector path:")
+                            }
+
+                            QQC2.TextField {
+                                objectName: "collectorPathField"
+                                Layout.fillWidth: true
+                                text: configRoot.cfg_collectorPath
+                                placeholderText: I18n.tr("Empty = ai-usage-collector from the PATH")
+                                onTextEdited: configRoot.cfg_collectorPath = text
+                                Accessible.name: I18n.tr("Path to the ai-usage-collector executable")
+                                Accessible.description: I18n.tr("Only used when the collector is not on the PATH, in ~/.local/bin or in pipx; accepts ~/")
+                                QQC2.ToolTip.text: Accessible.description
+                                QQC2.ToolTip.visible: hovered || activeFocus
+                            }
                         }
                 }
             }
@@ -1902,6 +1939,14 @@ Item {
                     width: tabNotifScroll.availableWidth
                     spacing: Kirigami.Units.smallSpacing
 
+                    QQC2.Label {
+                        Layout.fillWidth: true
+                        wrapMode: Text.WordWrap
+                        textFormat: Text.PlainText
+                        color: Kirigami.Theme.disabledTextColor
+                        text: I18n.tr("Alerts, hiding and notifications are applied right away by the collector with their own Apply button; every other option is saved when you press OK.")
+                    }
+
                         // Estado da Sessão do Claude Code e do Codex (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
                         Flow {
                             Layout.fillWidth: true
@@ -2001,10 +2046,17 @@ Item {
                             }
 
                             PlasmaComponents3.Button {
-                                text: I18n.tr("Apply")
+                                text: I18n.tr("Apply notifications")
                                 icon.name: "dialog-ok-apply"
                                 enabled: !configRoot.isBusy && !configRoot.isSavingNotify
                                 onClicked: configRoot.saveNotifySettings()
+                            }
+
+                            QQC2.Label {
+                                visible: configRoot.notifyDirty
+                                textFormat: Text.PlainText
+                                color: Kirigami.Theme.neutralTextColor
+                                text: I18n.tr("Not applied yet")
                             }
                         }
                 }

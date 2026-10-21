@@ -24,6 +24,10 @@
       <default>300</default>
       <min>60</min>
     </entry>
+    <entry name="collectorPath" type="String">
+      <label>Path to the ai-usage-collector executable (last resort)</label>
+      <default></default>
+    </entry>
     <entry name="providerOrder" type="String">
       <label>Provider order in the compact Notch</label>
       <default>claude,codex,gemini</default>

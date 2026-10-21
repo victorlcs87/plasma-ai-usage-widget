@@ -11,6 +11,7 @@ import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
 import "I18n.js" as I18n
+import "Collector.js" as Collector
 
 PlasmoidItem {
     id: root
@@ -212,28 +213,8 @@ PlasmoidItem {
         onTriggered: root.now = Date.now()
     }
 
-    function shellQuote(str) {
-        if (str === null || str === undefined) return "''";
-        return "'" + String(str).replace(/'/g, "'\\''") + "'";
-    }
-
-    function buildCollectorCommand(quotedArgs) {
-        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
-               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
-    }
-
-    // Caminho leve do Estado da Sessão: não importa o coletor inteiro (~60 ms contra ~240 ms)
-    function buildSessionCommand() {
-        return "bash -c 'if command -v ai-usage-session-state >/dev/null 2>&1; then ai-usage-session-state; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-session-state\" ]; then \"$HOME/.local/bin/ai-usage-session-state\"; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-session-state\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-session-state\"; " +
-               "elif command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector --session-state; " +  // instalação antiga, sem o caminho leve
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" --session-state; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" --session-state; " +
-               "else python3 -m ai_usage_collector --session-state; fi'";
-    }
+    function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, Plasmoid.configuration.collectorPath); }
+    function buildSessionCommand() { return Collector.buildSessionCommand(Plasmoid.configuration.collectorPath); }
 
     // Executor assíncrono de comandos do coletor (refresh / remoção)
     Plasma5Support.DataSource {
@@ -295,11 +276,11 @@ PlasmoidItem {
         var targets = dueProviders || root.providers;
         for (var i = 0; i < targets.length; i++) root.lastProviderRefresh[targets[i]] = now;
 
-        var args = shellQuote("--refresh");
-        if (dueProviders) args += " " + shellQuote("--provider") + " " + shellQuote(dueProviders.join(","));
+        var args = Collector.shellQuote("--refresh");
+        if (dueProviders) args += " " + Collector.shellQuote("--provider") + " " + Collector.shellQuote(dueProviders.join(","));
         for (var j = 0; j < root.providers.length; j++) {
             var p = root.providers[j];
-            args += " " + shellQuote("--refresh-interval") + " " + shellQuote(p + "=" + providerInterval(p));
+            args += " " + Collector.shellQuote("--refresh-interval") + " " + Collector.shellQuote(p + "=" + providerInterval(p));
         }
         root.isRefreshing = true;
         root.lastError = "";
@@ -348,7 +329,7 @@ PlasmoidItem {
         onTriggered: {
             root.nowMs = Date.now();  // antes da chamada: se o coletor falhar, a leitura velha ainda expira
             if (runningDataSource.connectedSources.length === 0)
-                runningDataSource.connectSource(root.buildCollectorCommand(root.shellQuote("--detect-running")));
+                runningDataSource.connectSource(root.buildCollectorCommand(Collector.shellQuote("--detect-running")));
         }
     }
 
@@ -364,7 +345,7 @@ PlasmoidItem {
         }
         root.isRefreshing = true;
         root.lastError = "";
-        var safeArgs = shellQuote("--remove-account") + " " + shellQuote(provClean) + " " + shellQuote(accountId);
+        var safeArgs = Collector.shellQuote("--remove-account") + " " + Collector.shellQuote(provClean) + " " + Collector.shellQuote(accountId);
         var cmd = buildCollectorCommand(safeArgs);
         collectorDataSource.connectSource(cmd);
     }
@@ -500,7 +481,7 @@ PlasmoidItem {
         var cacheLoc = StandardPaths.writableLocation(StandardPaths.GenericCacheLocation);
         var cachePath = (typeof cacheLoc === "string" ? cacheLoc : cacheLoc.toString()).replace(/^file:\/\//, "");
         var statusFilePath = cachePath + "/plasma-ai-usage/status.json";
-        var cmd = "cat " + shellQuote(statusFilePath) + " 2>/dev/null";
+        var cmd = "cat " + Collector.shellQuote(statusFilePath) + " 2>/dev/null";
         statusDataSource.connectSource(cmd);
     }
 
