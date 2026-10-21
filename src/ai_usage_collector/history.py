@@ -12,7 +12,7 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any, Callable
 
-from ai_usage_collector.config import DEFAULT_CACHE_DIR, ensure_secure_dir, get_accounts_for_agent, save_secure_json
+from ai_usage_collector.config import DEFAULT_CACHE_DIR, credential_override, ensure_secure_dir, get_accounts_for_agent, save_secure_json
 from ai_usage_collector.extractors.claude import parse_timestamp
 from ai_usage_collector.identity import credential_identity
 
@@ -30,7 +30,10 @@ def history_path_for(cache_path: str | Path | None) -> Path:
     return base / HISTORY_FILENAME
 
 
-def system_log_dir(provider: str) -> Path | None:
+def system_log_dir(provider: str, override: Path | None = None) -> Path | None:
+    """Diretorio de logs do sistema; com caminho de credenciais alternativo (ticket 38), a pasta dele."""
+    if override:
+        return override.parent
     if provider == "claude":
         return Path(os.environ.get("CLAUDE_CONFIG_DIR") or "~/.claude").expanduser().resolve()
     if provider == "codex":
@@ -57,12 +60,12 @@ def account_key(provider: str, account: dict[str, Any]) -> str:
     return ident.key if ident else str(account.get("id"))
 
 
-def system_key(provider: str, accounts: list[dict[str, Any]]) -> str | None:
+def system_key(provider: str, accounts: list[dict[str, Any]], override: Path | None = None) -> str | None:
     """Chave de quem esta no caminho do sistema agora (None se desconhecido)."""
     from ai_usage_collector.capture import find_matching_account, get_active_credentials, get_system_credential_file
 
-    sys_file = get_system_credential_file(provider)
-    creds = get_active_credentials(provider)
+    sys_file = get_system_credential_file(provider, override)
+    creds = get_active_credentials(provider, override)
     if creds is None:
         return None
     match = find_matching_account(provider, accounts, creds, sys_file)  # token prevalece sobre identidade defasada
@@ -210,6 +213,7 @@ def update_history(
     path: Path,
     today: date,
     rekey: Callable[[], dict[tuple[str, str], str]] = dict,
+    config: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Le o que ha de novo em cada diretorio de logs, aplica a retencao e salva (0600, atomico).
 
@@ -234,7 +238,7 @@ def update_history(
                     added += _read_new_lines(file, provider, account_id, history, cutoff_ts, seen)
                 except OSError:
                     continue
-            if log_dir == system_log_dir(provider) and provider not in history["system_seen"]:
+            if log_dir == system_log_dir(provider, credential_override(provider, config) if config else None) and provider not in history["system_seen"]:
                 # Primeira leitura do sistema: o acumulado antigo e da identidade ativa, sem como saber (estimado).
                 history["system_seen"].append(provider)
                 est = history["estimated"].setdefault(provider, [])
@@ -264,9 +268,10 @@ def build_sources(config: dict[str, Any], only_system: bool = False) -> dict[Pat
                 d = account_log_dir(provider, acc)
                 if d:
                     sources[d] = (provider, account_key(provider, acc))
-        key = system_key(provider, accounts)
+        override = credential_override(provider, config)
+        key = system_key(provider, accounts, override)
         if key:
-            sources[system_log_dir(provider)] = (provider, key)
+            sources[system_log_dir(provider, override)] = (provider, key)
     return sources
 
 
@@ -276,7 +281,7 @@ def rekey_map(config: dict[str, Any]) -> dict[tuple[str, str], str]:
     for provider in LOG_GLOBS:
         accounts = get_accounts_for_agent(config, provider)
         rekey.update({(provider, str(a.get("id"))): account_key(provider, a) for a in accounts})
-        key = system_key(provider, accounts)
+        key = system_key(provider, accounts, credential_override(provider, config))
         if key:
             rekey[(provider, UNATTRIBUTED_ACCOUNT)] = key
     return rekey
@@ -286,7 +291,7 @@ def flush_system_history(config: dict[str, Any], cache_path: str | Path | None, 
     """Fecha a leitura dos logs do sistema na identidade que esta saindo (chamar antes da Alternancia)."""
     update_history(
         build_sources(config, only_system=True), history_path_for(cache_path), now.astimezone().date(),
-        lambda: rekey_map(config),
+        lambda: rekey_map(config), config,
     )
 
 
@@ -337,7 +342,7 @@ def apply_token_history(
 ) -> None:
     """Atualiza o history.json e anexa `token_history` (campo opcional) a cada Conta do status."""
     today = now.astimezone().date()
-    history = update_history(build_sources(config), history_path_for(cache_path), today, lambda: rekey_map(config))
+    history = update_history(build_sources(config), history_path_for(cache_path), today, lambda: rekey_map(config), config)
     accounts = {(p, str(a.get("id"))): a for p in LOG_GLOBS for a in get_accounts_for_agent(config, p)}
     for provider, agent in status_payload["agents"].items():
         for acc in agent["accounts"]:

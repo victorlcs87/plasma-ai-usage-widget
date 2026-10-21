@@ -5,6 +5,7 @@ import io
 import json
 import os
 import stat
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
 import pytest
@@ -372,3 +373,100 @@ def test_export_masks_identities_without_account(tmp_path, capsys):
     assert main(["--export-history", "csv", "--config-path", str(config_path), "--cache-path", str(cache_path)]) == 0
     out = capsys.readouterr().out
     assert "gone@x.com" not in out and "(conta removida)" in out
+
+
+# --- Lacunas da revisao final -------------------------------------------------
+
+
+def test_history_uses_custom_credential_path_for_system_logs(tmp_path):
+    """Caminho de credenciais alternativo (ticket 38): os logs do sistema ficam ao lado dele, nao em CLAUDE_CONFIG_DIR."""
+    from ai_usage_collector.config import save_secure_json
+
+    custom = tmp_path / "custom"
+    prof = tmp_path / "prof_a"
+    for d, name in ((custom, "a"), (prof, "a")):
+        save_secure_json({"claudeAiOauth": {"accessToken": "tok-a", "refreshToken": "ref-a"}}, d / ".credentials.json")
+        save_secure_json({"oauthAccount": {"accountUuid": "uuid-a", "emailAddress": "a@x.com"}}, d / ".claude.json")
+    (custom / "projects" / "p").mkdir(parents=True)
+    (custom / "projects" / "p" / "s.jsonl").write_text(_claude_line(datetime.now(timezone.utc), "m1", 40, 2))
+    cfg = {"version": 1, "agents": {
+        "claude": {"credential_path": str(custom / ".credentials.json"), "accounts": [
+            {"id": "a", "label": "a", "source": "captured", "credential_path": str(prof / ".credentials.json"), "claude_dir": str(prof)}]},
+        "codex": {"accounts": []}, "gemini": {"accounts": []}}}
+    config_path = tmp_path / "cfg" / "config.json"
+    save_config(cfg, config_path)
+    status = _refresh(config_path, tmp_path / "cache" / "status.json")
+    assert _acc_by_id(status, "a")["token_history"]["today"] == 42
+
+
+def _codex_world(tmp_path):
+    from ai_usage_collector.config import save_secure_json
+
+    sys_dir = tmp_path / "_sys_codex"
+    accs = []
+    for name in ("a", "b"):
+        d = tmp_path / "cfg" / "profiles" / name
+        save_secure_json({"tokens": {"access_token": f"tok-{name}", "refresh_token": f"ref-{name}", "account_id": f"acct-{name}"}}, d / "auth.json")
+        accs.append({"id": name, "label": name, "source": "captured", "credential_path": str(d / "auth.json"), "codex_dir": str(d)})
+    cfg = {"version": 1, "agents": {"codex": {"accounts": accs}, "claude": {"accounts": []}, "gemini": {"accounts": []}}}
+    config_path = tmp_path / "cfg" / "config.json"
+    save_config(cfg, config_path)
+    save_secure_json({"tokens": {"access_token": "tok-a", "refresh_token": "ref-a", "account_id": "acct-a"}}, sys_dir / "auth.json")
+    (sys_dir / "sessions" / "2026" / "10" / "20").mkdir(parents=True)
+    return sys_dir / "sessions" / "2026" / "10" / "20" / "rollout-1.jsonl", config_path, tmp_path / "cache" / "status.json"
+
+
+def test_codex_switch_a_b_a_attributes_consumption_between_switches(tmp_path):
+    log, config_path, cache_path = _codex_world(tmp_path)
+    now = datetime.now(timezone.utc)
+    base = ["--config-path", str(config_path), "--cache-path", str(cache_path)]
+    codex = lambda status, i: next(a for a in status["agents"]["codex"]["accounts"] if a["id"] == i)  # noqa: E731
+
+    log.write_text(_codex_lines(now, "gpt-5", [(60, 40)]))  # consumo de A
+    assert main(["--switch-account", "codex", "b", *base]) == 0
+    with open(log, "a") as f:  # novo turno de B; total_token_usage acumulado nao conta como delta
+        f.write(_codex_lines(now, "gpt-5", [(15, 5)]).split("\n", 1)[1])
+    assert main(["--switch-account", "codex", "a", *base]) == 0
+    status = _refresh(config_path, cache_path)
+    assert codex(status, "b")["token_history"]["today"] == 20
+    assert codex(status, "a")["token_history"]["today"] == 100
+
+
+def test_switch_captures_unknown_system_credential_and_keeps_its_history(tmp_path, monkeypatch):
+    from ai_usage_collector.config import load_config, save_secure_json
+
+    log, config_path, cache_path = _claude_world(tmp_path, monkeypatch)
+    sys_dir = log.parents[2]
+    save_secure_json({"claudeAiOauth": {"accessToken": "tok-c", "refreshToken": "ref-c"}}, sys_dir / ".credentials.json")
+    save_secure_json({"oauthAccount": {"accountUuid": "uuid-c", "emailAddress": "c@x.com"}}, sys_dir / ".claude.json")
+    log.write_text(_claude_line(datetime.now(timezone.utc), "m1", 70, 0))  # consumo da identidade desconhecida C
+
+    assert main(["--switch-account", "claude", "b", "--config-path", str(config_path), "--cache-path", str(cache_path)]) == 0
+    ids = [a["id"] for a in load_config(config_path)["agents"]["claude"]["accounts"]]
+    assert len(ids) == 3  # C foi capturada antes da troca
+    status = _refresh(config_path, cache_path)
+    captured = next(a for a in status["agents"]["claude"]["accounts"] if a["id"] not in ("a", "b"))
+    assert captured["token_history"]["today"] == 70
+    assert _acc_by_id(status, "b")["token_history"]["today"] == 0
+
+
+def test_legacy_default_account_migration_keeps_history(tmp_path, monkeypatch):
+    from ai_usage_collector.config import load_config, save_secure_json
+
+    log, config_path, cache_path = _claude_world(tmp_path, monkeypatch)
+    sys_dir = log.parents[2]
+    cfg = json.loads(config_path.read_text())
+    cfg["agents"]["claude"]["accounts"] = [{
+        "id": "default", "label": "Claude (Padrão)", "source": "auto", "credential_path": str(sys_dir / ".credentials.json")}]
+    save_config(cfg, config_path)
+    cache_path.parent.mkdir(parents=True)
+    day = _local_day(datetime.now(timezone.utc))
+    (cache_path.parent / "history.json").write_text(json.dumps({
+        "version": 1, "cursors": {}, "daily": {day: {"claude": {"default": {"m": 33}}}}}))
+
+    status = _refresh(config_path, cache_path)
+    (acc,) = status["agents"]["claude"]["accounts"]
+    assert acc["token_history"]["today"] == 33
+    migrated = load_config(config_path)["agents"]["claude"]["accounts"][0]
+    assert Path(migrated["credential_path"]).resolve() != (sys_dir / ".credentials.json").resolve()  # virou Perfil Isolado
+    assert _refresh(config_path, cache_path)["agents"]["claude"]["accounts"][0]["token_history"]["today"] == 33
