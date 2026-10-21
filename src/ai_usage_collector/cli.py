@@ -28,6 +28,7 @@ from ai_usage_collector.config import (
     set_provider_settings,
 )
 from ai_usage_collector.pace import alert_settings
+from ai_usage_collector.waybar import waybar_line
 from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
 from ai_usage_collector.orphans import delete_orphan, list_orphans, reimport_orphan
@@ -53,6 +54,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--status",
         action="store_true",
         help="Exibe o payload canônico de status atual em JSON na saída padrão",
+    )
+    parser.add_argument(
+        "--waybar",
+        action="store_true",
+        help="Imprime o status em JSON de uma linha para o modulo custom do Waybar (le o cache; nao coleta)",
     )
     parser.add_argument(
         "--switch-account",
@@ -210,6 +216,10 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     config_path = args.config_path
     cache_path = args.cache_path
+
+    if args.waybar:  # fora do try: sempre uma linha JSON valida e exit 0, mesmo sem cache
+        sys.stdout.write(waybar_line(load_status_cache(cache_path)))
+        return 0
 
     try:
         if args.export_history:
