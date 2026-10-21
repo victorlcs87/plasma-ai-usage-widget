@@ -8,6 +8,8 @@ import sys
 from typing import Sequence
 
 from ai_usage_collector import __version__
+from ai_usage_collector.claude_hooks import HooksError, install_hooks, uninstall_hooks
+from ai_usage_collector.session_state import live_states, state_dir_for
 from ai_usage_collector.collector import (
     add_account_entry,
     capture_current_account,
@@ -28,8 +30,11 @@ from ai_usage_collector.config import (
     set_notify_settings,
     set_update_settings,
     set_provider_settings,
+    set_visibility_settings,
 )
 from ai_usage_collector.pace import alert_settings
+from ai_usage_collector.running import HIDE_MODES, refresh_running
+from pathlib import Path
 from ai_usage_collector.waybar import waybar_line
 from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
@@ -61,6 +66,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--waybar",
         action="store_true",
         help="Imprime o status em JSON de uma linha para o modulo custom do Waybar (le o cache; nao coleta)",
+    )
+    parser.add_argument(
+        "--install-hooks",
+        action="store_true",
+        help="Registra no settings.json do Claude Code (CLAUDE_CONFIG_DIR, absoluto, ou ~/.claude) os hooks do Estado da Sessão: UserPromptSubmit (ocupada), PostToolUse (ocupada; batimento e fim da espera), Stop (ociosa) e Notification (aguardando); idempotente. Perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil",
+    )
+    parser.add_argument(
+        "--uninstall-hooks",
+        action="store_true",
+        help="Remove só os hooks do Estado da Sessão do widget, preservando os demais hooks e configurações",
+    )
+    parser.add_argument(
+        "--session-state",
+        action="store_true",
+        help="Imprime em JSON o Estado da Sessão por Conta Claude (le o mapa do último refresh e os hooks; nao coleta)",
     )
     parser.add_argument(
         "--switch-account",
@@ -168,6 +188,17 @@ def build_parser() -> argparse.ArgumentParser:
         help="Liga/desliga a verificação diária de atualização (GitHub Releases e npm): --update-check on|off (padrão on)",
     )
     parser.add_argument("--update-check", choices=["on", "off"], default=None, help="Verificação diária de atualização")
+    parser.add_argument(
+        "--set-visibility-config",
+        action="store_true",
+        help="Define quando ocultar o Plasmoid sem o processo da CLI: --hide-when-not-running off (padrão) | widget (esconde tudo) | provider (esconde só o provedor parado)",
+    )
+    parser.add_argument("--hide-when-not-running", choices=HIDE_MODES, default=None, help="off (padrão), widget ou provider")
+    parser.add_argument(
+        "--detect-running",
+        action="store_true",
+        help="Atualiza no status.json se o processo de cada CLI está em execução (lê /proc; cache de 5 s; não consulta provedores)",
+    )
     parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
     parser.add_argument(
         "--api-key-stdin",
@@ -242,10 +273,31 @@ def main(argv: Sequence[str] | None = None) -> int:
             sys.stdout.write('{"text": "\\u2014", "tooltip": "", "class": "unknown", "alt": "unknown"}\n')
         return 0
 
+    if args.hide_when_not_running is not None and not args.set_visibility_config:
+        sys.stderr.write("Erro: --hide-when-not-running só vale junto de --set-visibility-config.\n")
+        return 1
+
     try:
         if args.export_history:
             sys.stdout.write(export_history(cache_path, args.export_history, load_config(config_path)))
             sys.stdout.flush()
+            return 0
+
+        if args.install_hooks or args.uninstall_hooks:
+            if args.install_hooks and args.uninstall_hooks:
+                sys.stderr.write("Erro: use --install-hooks ou --uninstall-hooks, não os dois.\n")
+                return 2
+            try:
+                sys.stdout.write(
+                    (install_hooks(state_dir_for(cache_path)) if args.install_hooks else uninstall_hooks()) + "\n"
+                )
+            except HooksError as e:
+                sys.stderr.write(f"Erro: {e}\n")
+                return 1
+            return 0
+
+        if args.session_state:
+            sys.stdout.write(json.dumps({"claude": live_states(cache_path)}) + "\n")
             return 0
 
         if args.list_orphans:
@@ -268,6 +320,20 @@ def main(argv: Sequence[str] | None = None) -> int:
             ok, message = set_alert_settings(args.alert_mode, args.alert_warning, args.alert_critical, config_path)
             if ok and alert_settings(load_config(config_path)) != before:
                 reapply_alert_levels(config_path, cache_path)  # so recalcula niveis; sem consulta aos provedores
+            (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
+            return 0 if ok else 1
+
+        if args.detect_running:
+            refresh_running(load_config(config_path), Path(cache_path).expanduser().resolve())
+            return 0
+
+        if args.set_visibility_config:
+            if args.hide_when_not_running is None:
+                sys.stderr.write("Erro: informe --hide-when-not-running off|widget|provider.\n")
+                return 1
+            ok, message = set_visibility_settings(args.hide_when_not_running, config_path)
+            if ok:
+                reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem consulta aos provedores
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
             return 0 if ok else 1
 
@@ -479,6 +545,8 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not args.set_alert_config
             and not args.set_notify_config
             and not args.set_update_config
+            and not args.set_visibility_config
+            and not args.detect_running
             and not args.switch_account
             and not args.remove_account
             and not args.rename_account

@@ -26,6 +26,11 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     key read by the settings screen: no version bump
 #     Top-level "updates" {enabled, items: {widget|claude|codex|gemini: {latest, current, available, url?}}}
 #     (ticket 39) is a new optional key: no version bump
+#     Per-account "session_state" ("busy"|"waiting"|"idle"|"unknown"; Claude only, present once the
+#     opt-in session hooks have written state; ticket 35) is a new optional key: no version bump
+#     Ticket 37: optional per-agent "running" (bool|null: the CLI process runs for the current user; null =
+#     undeterminable), top-level "running_checked_at" (ISO) and "visibility" {hide_when_not_running}: new
+#     optional keys that old readers ignore: no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
@@ -238,6 +243,11 @@ def validate_status_contract(data: Any) -> bool:
         )
     ):
         return False
+    vis = data.get("visibility")
+    if vis is not None and not (isinstance(vis, dict) and vis.get("hide_when_not_running") in ("off", "widget", "provider")):
+        return False
+    if data.get("running_checked_at") is not None and not isinstance(data["running_checked_at"], str):
+        return False
 
     orphans = data.get("orphan_profiles")
     if orphans is not None and not (isinstance(orphans, list) and all(isinstance(o, dict) for o in orphans)):
@@ -253,6 +263,8 @@ def validate_status_contract(data: Any) -> bool:
             return False
         if not isinstance(agent_data["accounts"], list):
             return False
+        if agent_data.get("running") is not None and not isinstance(agent_data["running"], bool):
+            return False
 
         for acc in agent_data["accounts"]:
             if not isinstance(acc, dict):
@@ -262,6 +274,8 @@ def validate_status_contract(data: Any) -> bool:
                     return False
 
             if "isActive" in acc and not isinstance(acc["isActive"], bool):
+                return False
+            if acc.get("session_state") not in (None, "busy", "waiting", "idle", "unknown"):
                 return False
             if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False

@@ -9,6 +9,39 @@ function visibleProviders(cfg) {
     return Presets.normalizeOrder(cfg.providerOrder).filter(function (k) { return hidden.indexOf(k) === -1; });
 }
 
+// Ocultar sem o processo da CLI (ticket 37): "off" (padrão) | "widget" | "provider", vindo do contrato
+var RUNNING_MAX_AGE_MS = 180000;
+var RUNNING_FUTURE_SKEW_MS = 30000;
+
+function hideMode(statusData) {
+    var v = statusData && statusData.visibility;
+    var m = v && v.hide_when_not_running;
+    return (m === "widget" || m === "provider") ? m : "off";
+}
+
+// Só `running === false` explícito e leitura recente (null, ausente, antigo, no futuro ou data inválida =
+// não esconde). `nowMs` vem do chamador (relógio observável, atualizado por um Timer), nunca de Date.now().
+function notRunning(statusData, key, nowMs) {
+    var checked = Date.parse(statusData && statusData.running_checked_at);
+    var age = nowMs - checked;
+    if (isNaN(age) || age < -RUNNING_FUTURE_SKEW_MS || age > RUNNING_MAX_AGE_MS) return false;
+    var ag = statusData.agents && statusData.agents[key];
+    return !!ag && ag.running === false;
+}
+
+// Modo "provider": provedores visíveis sem processo agora (o chamador pode confirmá-los com atraso)
+function idleProviders(statusData, cfg, nowMs) {
+    if (hideMode(statusData) !== "provider") return [];
+    return visibleProviders(cfg).filter(function (k) { return notRunning(statusData, k, nowMs); });
+}
+
+// Modo "widget": todos os provedores visíveis sem processo (com ao menos um visível)
+function widgetIdle(statusData, cfg, nowMs) {
+    if (hideMode(statusData) !== "widget") return false;
+    var keys = visibleProviders(cfg);
+    return keys.length > 0 && keys.every(function (k) { return notRunning(statusData, k, nowMs); });
+}
+
 // Conta Ativa no Sistema (CONTEXT.md); sem nenhuma marcada, null: nunca outra conta no lugar
 function activeAccount(agent) {
     var accs = (agent && agent.accounts) || [];
@@ -55,6 +88,21 @@ function levelWord(level, tr) {
 
 function pctWord(pct) { return pct < 0 ? "-" : Math.round(pct) + "%"; }
 
+// Estado da Sessão (busy/waiting/idle) da Conta Ativa: o overlay ao vivo (cfg.sessionOverlay, por id
+// de Conta) vence o campo do contrato; desligado ou desconhecido = "" (sem indicador)
+function sessionState(acc, cfg) {
+    if (!cfg.showSession) return "";
+    var s = (cfg.sessionOverlay && cfg.sessionOverlay[acc.id]) || acc.session_state;
+    return (s === "busy" || s === "waiting" || s === "idle") ? s : "";
+}
+
+function sessionWord(state, tr) {
+    if (state === "busy") return tr("sessão ocupada");
+    if (state === "waiting") return tr("aguardando você");
+    if (state === "idle") return tr("sessão ociosa");
+    return "";
+}
+
 // Atualizações (ticket 39): texto do status.json é não confiável, então só versão curta e URL da release do widget
 var RELEASE_URL = /^https:\/\/github\.com\/victorlcs87\/plasma-ai-usage-widget\/releases\/[A-Za-z0-9._~\/%+-]{0,200}$/;
 var URL_FORBIDDEN = /\.\.|%2e|%2f|%5c/i;  // igual ao coletor (updates.py)
@@ -86,16 +134,20 @@ function updateSummary(statusData, tr) {
     return { widget: widget, clis: clis, lines: lines };
 }
 
-function buildModel(statusData, cfg, tr) {
+function buildModel(statusData, cfg, tr, nowMs) {
     var agents = (statusData && statusData.agents) || {};
-    return visibleProviders(cfg).map(function (key) {
+    // cfg.idleProviders (já confirmados com atraso pelo chamador) tem precedência sobre a leitura direta
+    var idle = Array.isArray(cfg.idleProviders) ? cfg.idleProviders : idleProviders(statusData, cfg, nowMs);
+    return visibleProviders(cfg).filter(function (k) {
+        return idle.indexOf(k) === -1;
+    }).map(function (key) {
         var info = Presets.providerInfo(key);
         var ag = agents[key];
         var acc = activeAccount(ag);
         var m = {
             provider: key, name: (ag && ag.name) || info.name, letter: info.letter,
             innerPct: -1, outerPct: -1, innerLevel: "", outerLevel: "", innerElapsed: -1, outerElapsed: -1,
-            health: "", update: updateItem(statusData, key)
+            health: "", sessionState: "", update: updateItem(statusData, key)
         };
         if (!acc) {
             var hasAccounts = ag && ag.accounts && ag.accounts.length > 0;
@@ -111,8 +163,10 @@ function buildModel(statusData, cfg, tr) {
         m.outerElapsed = windowElapsed(acc, ww, m.outerPct);
         var st = acc.health ? acc.health.status : "";
         m.health = (st && st !== "valid") ? st : "";
+        m.sessionState = sessionState(acc, cfg);
         var tail = acc.stale === true ? tr("dados desatualizados") : "";
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
+        if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);
         if (m.update) tail += (tail ? ", " : "") + tr("nova versão %1", m.update.latest);
         m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct), levelWord(m.innerLevel, tr))
             + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct), levelWord(m.outerLevel, tr))

@@ -36,6 +36,18 @@
       <label>Cor de destaque do Notch (plasma = cor de realce do Plasma)</label>
       <default>plasma</default>
     </entry>
+    <entry name="sessionState" type="Bool">
+      <label>Mostrar o Estado da Sessão (requer --install-hooks)</label>
+      <default>false</default>
+    </entry>
+    <entry name="sessionAutoOpen" type="Bool">
+      <label>Abrir o Notch por 5 s quando a sessão termina ou pede algo</label>
+      <default>false</default>
+    </entry>
+    <entry name="sessionSound" type="Bool">
+      <label>Tocar um som quando a sessão termina ou pede algo</label>
+      <default>false</default>
+    </entry>
     <entry name="hoverOpen" type="Bool">
       <label>Abrir o popup ao passar o mouse sobre o Notch (desligado: só o clique)</label>
       <default>true</default>

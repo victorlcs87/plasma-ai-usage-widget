@@ -25,6 +25,10 @@ Item {
     property string cfg_providerOrder: "claude,codex,gemini"
     property string cfg_hiddenProviders: ""
     property string cfg_accentPreset: "plasma"
+    // Estado da Sessão (KConfigXT): os hooks só existem após `ai-usage-collector --install-hooks`
+    property bool cfg_sessionState: false
+    property bool cfg_sessionAutoOpen: false
+    property bool cfg_sessionSound: false
     property bool cfg_hoverOpen: true
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
 
@@ -63,6 +67,10 @@ Item {
     property bool updateCheck: true
     property bool isSavingUpdates: false
     property bool updateCheckBefore: true  // valor anterior, restaurado se o coletor falhar
+    // Ocultar sem o processo da CLI (config.json do coletor, lido do status.json): off (padrão) | widget | provider
+    property string hideMode: "off"
+    property bool isSavingHide: false
+    property bool hideDirty: false
 
     property var statusData: null
     property bool isLoading: false
@@ -261,6 +269,10 @@ Item {
                     }
                     var up = configRoot.statusData.updates;
                     if (up && typeof up.enabled === "boolean" && !configRoot.isSavingUpdates) configRoot.updateCheck = up.enabled;
+                    var vis = configRoot.statusData.visibility;
+                    if (vis && !configRoot.isSavingHide && !configRoot.hideDirty) {
+                        configRoot.hideMode = (vis.hide_when_not_running === "widget" || vis.hide_when_not_running === "provider") ? vis.hide_when_not_running : "off";
+                    }
                     var nt = configRoot.statusData.notifications;
                     if (nt && !configRoot.isSavingNotify && !configRoot.notifyDirty) {
                         configRoot.notifyWarning = Math.round(Number(nt.warning)) || 80;
@@ -299,6 +311,35 @@ Item {
             var stderr = (data["stderr"] || "").trim();
             if (data["exit code"] === 0) {
                 configRoot.alertsDirty = false;
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    // Ocultar sem o processo da CLI: o coletor valida o modo e o expõe no status
+    function saveHideSettings() {
+        configRoot.isSavingHide = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        hideDataSource.connectSource(configRoot.buildCollectorCommand(
+            shellQuote("--set-visibility-config") + " " + shellQuote("--hide-when-not-running") + " " + shellQuote(configRoot.hideMode)));
+    }
+
+    Plasma5Support.DataSource {
+        id: hideDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingHide = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.hideDirty = false;
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
@@ -760,6 +801,33 @@ Item {
             }
         }
 
+        // Estado da Sessão do Claude Code (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Mostrar o estado da sessão do Claude")
+                checked: configRoot.cfg_sessionState
+                onToggled: configRoot.cfg_sessionState = checked
+                Accessible.description: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil; se o estado não atualizar, reinstale o pacote: pip install -e .)")
+                QQC2.ToolTip.text: configRoot.safeI18n("Requer instalar os hooks: ai-usage-collector --install-hooks (perfil isolado: rode com o CLAUDE_CONFIG_DIR de cada perfil; se o estado não atualizar, reinstale o pacote: pip install -e .)")
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Abrir o Notch por 5 s quando a sessão terminar ou pedir algo")
+                enabled: configRoot.cfg_sessionState
+                checked: configRoot.cfg_sessionAutoOpen
+                onToggled: configRoot.cfg_sessionAutoOpen = checked
+            }
+            QQC2.CheckBox {
+                text: configRoot.safeI18n("Tocar um som nesses momentos")
+                enabled: configRoot.cfg_sessionState
+                checked: configRoot.cfg_sessionSound
+                onToggled: configRoot.cfg_sessionSound = checked
+            }
+        }
+
         QQC2.CheckBox {
             text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
             checked: configRoot.cfg_hoverOpen
@@ -939,6 +1007,48 @@ Item {
                 icon.name: "dialog-ok-apply"
                 enabled: !configRoot.isBusy && !configRoot.isSavingNotify
                 onClicked: configRoot.saveNotifySettings()
+            }
+        }
+
+        // Ocultar quando a CLI não está rodando (desligado por padrão)
+        Flow {
+            Layout.fillWidth: true
+            spacing: Kirigami.Units.smallSpacing
+
+            QQC2.Label {
+                text: configRoot.safeI18n("Ocultar sem a CLI em execução:")
+                textFormat: Text.PlainText
+            }
+
+            QQC2.ComboBox {
+                textRole: "text"
+                valueRole: "value"
+                model: [
+                    { value: "off", text: configRoot.safeI18n("Nunca") },
+                    { value: "provider", text: configRoot.safeI18n("Só o provedor parado") },
+                    { value: "widget", text: configRoot.safeI18n("O widget inteiro") }
+                ]
+                currentIndex: configRoot.hideMode === "widget" ? 2 : (configRoot.hideMode === "provider" ? 1 : 0)
+                onActivated: { configRoot.hideMode = currentValue; configRoot.hideDirty = true; }
+                Accessible.name: configRoot.safeI18n("Ocultar quando o processo da CLI não está em execução")
+                Accessible.description: configRoot.safeI18n("O widget inteiro reaparece ao abrir o popup ou a configuração; no painel resta uma fatia fina com o menu de botão direito")
+                QQC2.ToolTip.text: Accessible.description
+                QQC2.ToolTip.visible: hovered || activeFocus
+            }
+
+            PlasmaComponents3.Button {
+                text: configRoot.safeI18n("Aplicar")
+                icon.name: "dialog-ok-apply"
+                enabled: !configRoot.isBusy && !configRoot.isSavingHide
+                onClicked: configRoot.saveHideSettings()
+            }
+
+            QQC2.Label {
+                width: parent.width
+                wrapMode: Text.WordWrap
+                color: Kirigami.Theme.disabledTextColor
+                textFormat: Text.PlainText
+                text: configRoot.safeI18n("Para reencontrar o widget oculto: aponte para a fatia fina no painel (ela reabre o monitor e o botão direito leva a Configurar), use o modo de edição do painel, ou, na bandeja do sistema, abra os itens ocultos. O widget nunca some com o popup ou esta janela abertos.")
             }
         }
 
