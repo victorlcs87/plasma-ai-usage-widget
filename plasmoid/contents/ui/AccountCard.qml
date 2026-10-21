@@ -167,7 +167,7 @@ Rectangle {
     // Saúde: palavra + forma (a cor sozinha nunca informa)
     function healthText() {
         var st = cardRoot.healthStatus;
-        if (st === "valid") return I18n.tr("Active");
+        if (st === "valid") return I18n.tr("Valid");
         if (st === "session_expired") return I18n.tr("Expired");
         if (st === "not_configured") return I18n.tr("Not set up");
         return I18n.tr("Error");

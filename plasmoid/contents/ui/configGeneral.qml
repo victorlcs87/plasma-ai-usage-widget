@@ -1824,7 +1824,7 @@ Item {
                                                 id: healthText
                                                 anchors.centerIn: parent
                                                 text: {
-                                                    if (modelData.healthStatus === "valid") return I18n.tr("Active");
+                                                    if (modelData.healthStatus === "valid") return I18n.tr("Valid");
                                                     if (modelData.healthStatus === "session_expired") return I18n.tr("Expired");
                                                     if (modelData.healthStatus === "not_configured") return I18n.tr("Not set up");
                                                     return modelData.healthStatus;
