@@ -822,8 +822,9 @@ def run_interactive_login(
             pass
 
     try:
-        updated_cfg = add_account_to_config(cfg, prov, account_entry)
-        save_config(updated_cfg, config_path)
+        with config_lock(config_path):  # recarrega: evita lost-update durante o login demorado
+            updated_cfg = add_account_to_config(load_config(config_path), prov, account_entry)
+            save_config(updated_cfg, config_path)
     except Exception as e:
         _cleanup_profile_if_empty(profile_dir)
         return False, f"Falha ao salvar configuração: {e}", None
@@ -1030,23 +1031,10 @@ def find_matching_account(
     return None
 
 
-def _identity_owned_by_other(
-    provider: str,
-    accounts: list[dict[str, Any]],
-    src_file: Path,
-    match: dict[str, Any],
-) -> bool:
-    """A identidade de `src_file` ja pertence a outra Conta cadastrada que nao `match`?"""
-    ident = credential_identity(provider, src_file)
-    if ident is None:
-        return False
-    for acc in accounts:
-        if acc is match:
-            continue
-        acc_ident = credential_identity(provider, account_credential_file(provider, acc))
-        if acc_ident and acc_ident.key == ident.key:
-            return True
-    return False
+def _expires_at(creds: dict[str, Any] | None) -> float:
+    oauth = (creds or {}).get("claudeAiOauth")
+    val = oauth.get("expiresAt") if isinstance(oauth, dict) else None
+    return float(val) if isinstance(val, (int, float)) and not isinstance(val, bool) else 0.0
 
 
 def _store_into_profile(
@@ -1054,41 +1042,43 @@ def _store_into_profile(
     creds: dict[str, Any],
     src_file: Path,
     profile_file: Path,
-    propagate_identity: bool = True,
-) -> bool:
-    """Grava a credencial e seus metadados de identidade no Perfil Isolado.
+    copy_identity: bool = False,
+) -> None:
+    """Grava a credencial do sistema no Perfil Isolado de uma Conta.
 
-    Se o perfil ja tinha outra credencial, ela e preservada antes em `.bak-<timestamp>`.
-    A identidade so e propagada se `propagate_identity` e se nao diverge da do perfil
-    (casamento por token com identidade da origem possivelmente defasada).
-
-    Returns:
-        bool: True se o perfil recebeu identidade que antes nao tinha.
+    A identidade (`oauthAccount`) so e copiada com `copy_identity`, isto e, na criacao de um
+    perfil novo: um perfil existente casado por token nunca ganha a identidade do sistema,
+    que pode estar defasada. Nunca regride tokens: se o perfil tem `expiresAt` mais novo,
+    a credencial recebida vai so para um `.bak-<timestamp>`. Se o perfil tinha outra
+    credencial, ela e preservada antes em `.bak-<timestamp>`.
     """
+    current = _read_json_dict(profile_file)
+    if current is not None and _expires_at(current) > _expires_at(creds) > 0:
+        _write_bak(profile_file, json.dumps(creds).encode("utf-8"))
+        return
     _backup_profile_credential(profile_file, creds)
     save_secure_json(creds, profile_file, prefix="backup_")
-    src_ident = credential_identity(provider, src_file)
-    dst_ident = credential_identity(provider, profile_file)
-    gained = False
-    if propagate_identity and not (src_ident and dst_ident and src_ident.key != dst_ident.key):
+    if copy_identity:
         copy_identity_state(provider, src_file, profile_file)
-        gained = dst_ident is None and src_ident is not None
     enforce_profile_security_permissions(profile_file.parent)
-    return gained
 
 
 PROFILE_BACKUPS_KEPT = 5
 
 
-def _backup_profile_credential(profile_file: Path, new_creds: dict[str, Any]) -> None:
-    if not profile_file.is_file() or _read_json_dict(profile_file) == new_creds:
-        return
+def _write_bak(profile_file: Path, data: bytes) -> None:
     bak = profile_file.with_name(f"{profile_file.name}.bak-{time.time_ns()}")
     fd = os.open(bak, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)  # nasce 0600
     with os.fdopen(fd, "wb") as f:
-        f.write(profile_file.read_bytes())
+        f.write(data)
     for old in sorted(profile_file.parent.glob(f"{profile_file.name}.bak-*"))[:-PROFILE_BACKUPS_KEPT]:
         old.unlink(missing_ok=True)
+
+
+def _backup_profile_credential(profile_file: Path, new_creds: dict[str, Any]) -> None:
+    if not profile_file.is_file() or _read_json_dict(profile_file) == new_creds:
+        return
+    _write_bak(profile_file, profile_file.read_bytes())
 
 
 def _snapshot(paths: list[Path | None]) -> list[tuple[Path, bytes | None, int]]:
@@ -1176,10 +1166,7 @@ def _switch_system_account(
             match_file = account_credential_file(prov, match)
             if match_file != sys_file.resolve():  # conta legada no proprio caminho (Codex/Gemini)
                 try:
-                    _store_into_profile(
-                        prov, sys_creds, sys_file, match_file,
-                        propagate_identity=not _identity_owned_by_other(prov, accounts, sys_file, match),
-                    )
+                    _store_into_profile(prov, sys_creds, sys_file, match_file)
                 except Exception as e:
                     return False, f"Falha ao realizar backup da conta ativa no sistema para '{match.get('id')}': {e}", False
             if match is target_acc:
@@ -1272,14 +1259,15 @@ def _migrate_provider(
 ) -> bool:
     changed = False
     sys_file = get_system_credential_file(prov)  # sem resolver: symlink define o estado ao lado
-    fresh: set[int] = set()  # Contas que receberam identidade nesta execucao
 
     # 1. Entradas legadas apontando para o caminho do sistema viram Perfil Isolado.
     for acc in list(accounts):
         if account_credential_file(prov, acc) != sys_file.resolve():
             continue
-        changed = True
         sys_creds = _read_json_dict(sys_file)
+        if sys_creds is None and sys_file.is_file():
+            continue  # ilegivel (transitorio?): adia a migracao em vez de apagar a entrada
+        changed = True
         if sys_creds is None:
             accounts.remove(acc)  # o caminho do sistema nunca e, por si so, uma Conta
             continue
@@ -1287,9 +1275,7 @@ def _migrate_provider(
         match = find_matching_account(prov, others, sys_creds, sys_file)
         if match is not None:
             _merge_label(prov, match, acc)  # antes do backup: compara com o rotulo gerado do perfil
-            propagate = not _identity_owned_by_other(prov, others, sys_file, match)
-            if _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match), propagate):
-                fresh.add(id(match))
+            _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
             accounts.remove(acc)
             continue
         ident = credential_identity(prov, sys_file)
@@ -1302,13 +1288,12 @@ def _migrate_provider(
         profile_dir = ensure_secure_dir(profiles_base / dir_name)
         created.append(profile_dir)
         profile_file = profile_dir / _CREDENTIAL_FILENAMES[prov]
-        _store_into_profile(prov, sys_creds, sys_file, profile_file)
-        fresh.add(id(acc))
+        _store_into_profile(prov, sys_creds, sys_file, profile_file, copy_identity=True)
         acc.pop("credentials_path", None)
         acc["credential_path"] = str(profile_file)
         acc[f"{prov}_dir"] = str(profile_dir)
 
-    # 2. Fusao de Contas com a mesma identidade (Perfis dos duplicados ficam como Orfaos).
+    # 2. Fusao de Contas com a mesma identidade e o mesmo refresh token (Perfis dos duplicados ficam como Orfaos).
     seen: dict[str, dict[str, Any]] = {}
     for acc in list(accounts):
         f = account_credential_file(prov, acc)
@@ -1320,12 +1305,8 @@ def _migrate_provider(
             seen[ident.key] = acc
             continue
         keep_file = account_credential_file(prov, keep)
-        if (id(acc) in fresh or id(keep) in fresh) and _refresh_token(prov, f) != _refresh_token(prov, keep_file):
-            continue  # identidade recem-propagada nao e evidencia suficiente para fundir
-        if f.is_file() and keep_file and keep_file.is_file() and f.stat().st_mtime > keep_file.stat().st_mtime:
-            creds = _read_json_dict(f)
-            if creds is not None:
-                _store_into_profile(prov, creds, f, keep_file)
+        if _refresh_token(prov, f) != _refresh_token(prov, keep_file):
+            continue  # tokens divergentes: nunca sobrescrever credenciais na fusao automatica
         _merge_label(prov, keep, acc)
         accounts.remove(acc)
         changed = True

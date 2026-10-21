@@ -151,7 +151,7 @@ def test_legacy_default_merges_into_account_with_same_identity(env):
 
 def test_duplicates_are_merged_preserving_renamed_label(env):
     p1 = env.profile("one", _creds("tok-1", "ref-1"), "uuid-a", "a@x.com")
-    p2 = env.profile("two", _creds("tok-2", "ref-2"), "uuid-a", "a@x.com")
+    p2 = env.profile("two", _creds("tok-2", "ref-1"), "uuid-a", "a@x.com")
     pb = env.profile("b", _creds("tok-b", "ref-b"), "uuid-b")
     env.save_cfg([
         _acc("one", p1, label="Claude (a@x.com)"),
@@ -388,8 +388,7 @@ def test_legacy_default_merges_by_tokens_into_profiles_without_identity(env):
     cfg = load_config(env.config)
     accs = cfg["agents"]["claude"]["accounts"]
     assert [(a["id"], a["label"]) for a in accs] == [("claude-signatus", "Claude (signatus)"), ("claude-cga", "CGA")]
-    assert _read(pc / ".claude.json")["oauthAccount"]["accountUuid"] == "uuid-cga"
-    assert not (ps / ".claude.json").exists()
+    assert not (pc / ".claude.json").exists() and not (ps / ".claude.json").exists()  # sem identidade so por token
     assert load_config(env.config) == cfg
     assert env.active_ids() == ["claude-cga"]
 
@@ -403,7 +402,7 @@ def test_unmatched_legacy_default_gets_email_label(env):
 
 def test_user_typed_label_like_auto_format_is_preserved_on_merge(env):
     p1 = env.profile("one", _creds("tok-1", "ref-1"), "uuid-a", "a@x.com")
-    p2 = env.profile("two", _creds("tok-2", "ref-2"), "uuid-a", "a@x.com")
+    p2 = env.profile("two", _creds("tok-2", "ref-1"), "uuid-a", "a@x.com")
     env.save_cfg([_acc("one", p1, label="Claude (a@x.com)"), _acc("two", p2, label="Claude (signatus)")])
     accs = load_config(env.config)["agents"]["claude"]["accounts"]
     assert [a["label"] for a in accs] == ["Claude (signatus)"]
@@ -501,3 +500,85 @@ def test_failed_migration_save_keeps_load_working_without_new_orphans(env, monke
         cfg = load_config(env.config)
         assert cfg["agents"]["claude"]["accounts"][0]["credential_path"] == str(env.sys_creds)
     assert not profiles.exists() or list(profiles.iterdir()) == []
+
+
+def test_token_match_never_gives_identity_to_profile_without_one(env):
+    # A1: sistema == tokens do signatus, ~/.claude.json defasado (cga), cga sem .claude.json.
+    ps = env.profile("sig", _creds("tok-s", "ref-s"), None)
+    pc = env.profile("cga", _creds("tok-c-old", "ref-c-old"), None)
+    env.save_cfg([_acc("sig", ps), _acc("cga", pc)])
+    env.system(_creds("tok-s", "ref-s"), "uuid-cga", "cga@x.com")
+    assert env.active_ids() == ["sig"]
+
+    assert env.run("--switch-account", "claude", "cga") == 0
+    assert not (ps / ".claude.json").exists()  # nao herdou a identidade defasada
+
+    # O CGA real roda e rotaciona; ao voltar ao signatus, os tokens do CGA nao podem ir para ele.
+    env.system(_creds("tok-c-new", "ref-c-new"), "uuid-cga", "cga@x.com")
+    assert env.run("--switch-account", "claude", "sig") == 0
+    assert _read(ps / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-s"
+    assert _read(env.sys_creds)["claudeAiOauth"]["refreshToken"] == "ref-s"
+    saved = [_read(f)["claudeAiOauth"]["refreshToken"]
+             for f in (env.root / "cfg" / "profiles").glob("*/.credentials.json")]
+    assert "ref-c-new" in saved  # credencial do CGA capturada, nao perdida
+
+
+def test_duplicates_with_divergent_tokens_are_not_merged(env):
+    # A2: mesma identidade, refresh tokens diferentes: nunca sobrescrever na fusao automatica.
+    p1 = env.profile("one", _creds("tok-1", "ref-1"), "uuid-a", "a@x.com")
+    p2 = env.profile("two", _creds("tok-2", "ref-2"), "uuid-a", "a@x.com")
+    env.save_cfg([_acc("one", p1), _acc("two", p2)])
+
+    accs = load_config(env.config)["agents"]["claude"]["accounts"]
+    assert [a["id"] for a in accs] == ["one", "two"]
+    assert _read(p1 / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-1"
+    assert _read(p2 / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-2"
+
+
+def test_backup_never_regresses_newer_profile_tokens(env):
+    # M3: o perfil tem expiresAt mais novo que o sistema: nao e regredido, e o sistema vai ao .bak.
+    def with_exp(access, refresh, exp):
+        c = _creds(access, refresh)
+        c["claudeAiOauth"]["expiresAt"] = exp
+        return c
+    pa = env.profile("a", with_exp("tok-a-new", "ref-a-new", 2000), "uuid-a")
+    pb = env.profile("b", _creds("tok-b", "ref-b"), "uuid-b")
+    env.save_cfg([_acc("a", pa), _acc("b", pb)])
+    env.system(with_exp("tok-a-old", "ref-a-old", 1000), "uuid-a")
+
+    assert env.run("--switch-account", "claude", "b") == 0
+    assert _read(pa / ".credentials.json")["claudeAiOauth"]["refreshToken"] == "ref-a-new"
+    assert [_read(b)["claudeAiOauth"]["refreshToken"] for b in _baks(pa)] == ["ref-a-old"]
+
+
+def test_unreadable_system_credential_defers_default_migration(env):
+    # B1: .credentials.json ilegivel nao apaga a entrada `default`.
+    env.save_cfg([_legacy_default(env)])
+    env.sys_creds.parent.mkdir(parents=True, exist_ok=True)
+    env.sys_creds.write_text("{nao e json")
+    assert [a["id"] for a in load_config(env.config)["agents"]["claude"]["accounts"]] == ["default"]
+
+    env.system(_creds("tok-x", "ref-x"), "uuid-x", "x@x.com")
+    accs = load_config(env.config)["agents"]["claude"]["accounts"]
+    assert len(accs) == 1 and accs[0]["credential_path"] != str(env.sys_creds)
+
+
+@pytest.mark.parametrize("op", ["add", "rename", "remove"])
+def test_config_writes_wait_for_config_lock(env, op):
+    # M2: add/rename/remove fazem read-modify-write sob config_lock.
+    import threading
+    from ai_usage_collector import collector, config
+    pa = env.profile("a", _creds("tok-a", "ref-a"), "uuid-a")
+    env.save_cfg([_acc("a", pa)])
+    calls = {
+        "add": lambda: config.add_account("claude", {"id": "n", "label": "N"}, env.config),
+        "rename": lambda: config.rename_account("claude", "a", "Novo", env.config),
+        "remove": lambda: collector.remove_account("claude", "a", env.config, env.cache),
+    }
+    t = threading.Thread(target=calls[op])
+    with config.config_lock(env.config):
+        t.start()
+        t.join(0.5)
+        assert t.is_alive()
+    t.join(5)
+    assert not t.is_alive()

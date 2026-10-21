@@ -232,9 +232,10 @@ def add_account(
     config_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Add or update an account in config and persist atomically with 0600."""
-    cfg = load_config(config_path)
-    updated_cfg = add_account_to_config(cfg, provider, account_data)
-    save_config(updated_cfg, config_path)
+    with config_lock(config_path):  # read-modify-write: recarrega a configuracao dentro do lock
+        cfg = load_config(config_path)
+        updated_cfg = add_account_to_config(cfg, provider, account_data)
+        save_config(updated_cfg, config_path)
     return updated_cfg
 
 
@@ -365,10 +366,11 @@ def rename_account(
     config_path: str | Path | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Load config, rename account, persist atomically with 0600 if changed, and return (config, was_renamed)."""
-    cfg = load_config(config_path)
-    updated_cfg, was_renamed = rename_account_in_config(cfg, provider, account_id, new_label)
-    if was_renamed:
-        save_config(updated_cfg, config_path)
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        updated_cfg, was_renamed = rename_account_in_config(cfg, provider, account_id, new_label)
+        if was_renamed:
+            save_config(updated_cfg, config_path)
     return updated_cfg, was_renamed
 
 
@@ -413,41 +415,42 @@ def create_account_entry(
     if not clean_cred:
         raise ValueError("Caminho de credenciais não pode ser vazio")
 
-    cfg = load_config(config_path)
-    existing_accs = get_accounts_for_agent(cfg, prov)
-    existing_ids = {str(a.get("id")) for a in existing_accs if isinstance(a, dict) and a.get("id")}
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        existing_accs = get_accounts_for_agent(cfg, prov)
+        existing_ids = {str(a.get("id")) for a in existing_accs if isinstance(a, dict) and a.get("id")}
 
-    unique_slug = generate_account_slug(clean_label, existing_ids)
+        unique_slug = generate_account_slug(clean_label, existing_ids)
 
-    account_entry: dict[str, Any] = {
-        "id": unique_slug,
-        "name": clean_label,
-        "label": clean_label,
-        "source": "manual",
-        "credential_path": clean_cred,
-    }
+        account_entry: dict[str, Any] = {
+            "id": unique_slug,
+            "name": clean_label,
+            "label": clean_label,
+            "source": "manual",
+            "credential_path": clean_cred,
+        }
 
-    # If the user passed a directory, also record the provider's specific dir key
-    cred_p = Path(clean_cred).expanduser()
-    if cred_p.is_dir():
-        if prov == "claude":
-            account_entry["claude_dir"] = clean_cred
-        elif prov == "codex":
-            account_entry["codex_dir"] = clean_cred
-        elif prov == "gemini":
-            account_entry["gemini_dir"] = clean_cred
+        # If the user passed a directory, also record the provider's specific dir key
+        cred_p = Path(clean_cred).expanduser()
+        if cred_p.is_dir():
+            if prov == "claude":
+                account_entry["claude_dir"] = clean_cred
+            elif prov == "codex":
+                account_entry["codex_dir"] = clean_cred
+            elif prov == "gemini":
+                account_entry["gemini_dir"] = clean_cred
 
-    if invite_url and str(invite_url).strip():
-        account_entry["manual_invite_url"] = str(invite_url).strip()
+        if invite_url and str(invite_url).strip():
+            account_entry["manual_invite_url"] = str(invite_url).strip()
 
-    if total_capacity is not None:
-        try:
-            val = int(total_capacity)
-            if val > 0:
-                account_entry["rate_limit_capacity"] = val
-        except (ValueError, TypeError):
-            pass
+        if total_capacity is not None:
+            try:
+                val = int(total_capacity)
+                if val > 0:
+                    account_entry["rate_limit_capacity"] = val
+            except (ValueError, TypeError):
+                pass
 
-    updated_cfg = add_account_to_config(cfg, prov, account_entry)
-    save_config(updated_cfg, config_path)
+        updated_cfg = add_account_to_config(cfg, prov, account_entry)
+        save_config(updated_cfg, config_path)
     return updated_cfg, account_entry

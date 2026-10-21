@@ -19,6 +19,7 @@ from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
     SUPPORTED_PROVIDERS,
+    config_lock,
     create_account_entry,
     get_accounts_for_agent,
     load_config,
@@ -272,17 +273,18 @@ def remove_account(
     if not cfg_file.exists():
         return False, f"Arquivo de configuração não encontrado: {cfg_file}"
 
-    try:
-        config_data = load_config(cfg_file)
-    except Exception as e:
-        return False, f"Falha ao ler arquivo de configuração: {e}"
+    with config_lock(cfg_file):  # read-modify-write sob o lock
+        try:
+            config_data = load_config(cfg_file)
+        except Exception as e:
+            return False, f"Falha ao ler arquivo de configuração: {e}"
 
-    updated_cfg, was_removed = remove_account_from_config(config_data, prov, acc_id)
-    if not was_removed:
-        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
+        updated_cfg, was_removed = remove_account_from_config(config_data, prov, acc_id)
+        if not was_removed:
+            return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
 
-    # Persist config atomically with 0600
-    save_config(updated_cfg, cfg_file)
+        # Persist config atomically with 0600
+        save_config(updated_cfg, cfg_file)
 
     # Sync cache if exists
     c_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
