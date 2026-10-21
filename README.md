@@ -35,14 +35,31 @@ coletor** (Configuração > Geral; `collectorPath` em `main.xml`, vazio por padr
 `python3 -m ai_usage_collector`. Para um venv de desenvolvimento, preencha o campo com
 `~/caminho/do/repo/.venv/bin/ai-usage-collector`; nenhum caminho pessoal vai no código.
 
-## Estado da Sessão (Claude Code, opt-in)
+## Histórico de Tokens, órfãos e configuração pela CLI
+
+- **Exportar o histórico:** `ai-usage-collector --export-history csv|json` imprime o Histórico de Tokens diário (até 400 dias, por provedor, Conta e modelo) na saída padrão. Identidades sem Conta cadastrada saem mascaradas.
+- **Perfis Órfãos** (Perfis Isolados sem Conta): `--list-orphans` lista em JSON, `--reimport-orphan PROVEDOR PERFIL` reimporta como Conta (funde se a identidade já existir) e `--delete-orphan PROVEDOR PERFIL --confirm` exclui do disco. Nada é apagado sem `--confirm`.
+- **Opções `--set-*`** (as mesmas que a tela de configuração aplica): `--set-provider-config PROVEDOR` (`--credential-path`, e no Claude `--api-base-url`, `--api-key-stdin`, `--clear-api-key`), `--set-alert-config` (`--alert-mode pace|threshold`, `--alert-warning`, `--alert-critical`), `--set-notify-config` (`--notify-warning`, `--notify-critical`, `--notify-early`, `--notify-reset`, `--notify-mute`), `--set-update-config` (`--update-check on|off`) e `--set-visibility-config` (`--hide-when-not-running off|widget|provider`).
+
+## Notificações de limite (opt-in)
+
+O coletor avisa quando uma janela passa dos limiares, esgotará antes da liberação ou, se ativado, foi liberada. Configure em Configuração > Notificações ou com `--set-notify-config`. O envio usa o binário **`notify-send`** (libnotify) numa sessão gráfica com serviço de notificações; **não** fala D-Bus diretamente. Sem o `notify-send` (ou sem barramento de sessão) o aviso falha em silêncio: o coletor segue normalmente, registra uma única mensagem em stderr, tenta de novo no próximo ciclo sem repetir a mensagem e a marca some quando um envio funciona (`notify_failed` ao lado do `status.json`).
+
+## Estado da Sessão (Claude Code e Codex, opt-in)
 
 `ai-usage-collector --install-hooks` registra hooks no `settings.json` do Claude Code (`CLAUDE_CONFIG_DIR`
 absoluto ou `~/.claude`); `--uninstall-hooks` remove só os do widget (pode reindentar o arquivo). Perfil
-isolado: rode com o `CLAUDE_CONFIG_DIR` de cada perfil. Ative "Mostrar o estado da sessão" na configuração
-do plasmoid. O caminho leve de consulta (`ai-usage-session-state`) exige reinstalar o pacote
+isolado: rode com o `CLAUDE_CONFIG_DIR` de cada perfil. Para o Codex, o estado "ocupada" vem dos logs de sessão sem instalar nada;
+`ai-usage-collector --install-hooks codex` (opcional) grava uma linha `notify` no `config.toml` (`CODEX_HOME`), nunca sobrescreve um `notify` seu, encerra
+o estado ocupado ao fim de cada turno e é o que habilita o som e o Notch no Codex (sem ele o Codex só mostra o estado). Ative "Mostrar o estado da sessão" na configuração
+do plasmoide. O caminho leve de consulta (`ai-usage-session-state`) exige reinstalar o pacote
 (`pip install -e .`); ele lê `session-accounts.json`, atualizado a cada refresh. Detalhes e limitações no
 ADR-0009.
+
+## Cores: acento e alerta
+
+Os acentos "red" e "orange" do Notch podem coincidir com a cor de alerta (crítico/atenção). O nível nunca depende só da cor: ele
+aparece também pela forma (normal ●, atenção ▲, crítico ■, sem nível ○) e pela palavra.
 
 ## Traduções (i18n)
 
