@@ -322,7 +322,9 @@ def test_compact_notch_uses_contract_level_not_fixed_thresholds():
     presets = (UI_DIR / "Presets.js").read_text(encoding="utf-8")
     for src in (compact, main):
         assert "< 70" not in src and "<= 90" not in src and "maxUsagePercent" not in src
-    assert "alert_level" in main and "elapsed_fraction" in main and "isActive" in main
+    model = (UI_DIR / "NotchModel.js").read_text(encoding="utf-8")
+    assert "alert_level" in model and "elapsed_fraction" in model and "isActive" in model
+    assert "NotchModel" in main
     assert "levelColor" in presets and 'return neutral' in presets  # sem nivel = neutro
     assert "Plasmoid.formFactor" in compact and "Accessible.description" in compact
     assert "free_trial_invites" in main and "inviteBadge" in compact and "healthDot" in compact

@@ -53,14 +53,14 @@ def test_build_agent_account_status():
 
     # Native window checks
     assert account["native_window"]["type"] == "5h"
-    assert account["native_window"]["usage_percentage"] == 0.0
+    assert account["native_window"]["usage_percentage"] is None
     assert "release_time" in account["native_window"]
     assert "seconds_remaining" in account["native_window"]
 
     # Weekly window checks
     assert "total_tokens_or_turns" in account["weekly_window"]
     assert "cycle_reset_time" in account["weekly_window"]
-    assert account["weekly_window"]["usage_percentage"] == 0.0
+    assert account["weekly_window"]["usage_percentage"] is None
     assert "total_capacity" in account["weekly_window"]
     assert "available_capacity" in account["weekly_window"]
 
@@ -286,3 +286,16 @@ def test_contract_v5_validates_pace_and_alerts_types():
     for bad in ({"mode": "x", "warning": 1, "critical": 2}, {"mode": "pace", "warning": "a", "critical": 2}, "pace"):
         status["alerts"] = bad
         assert not validate_status_contract(status)
+
+
+def test_window_without_data_is_none_not_fake_zero():
+    acc = build_agent_account_status(
+        provider="claude", account_id="a", label="A", source="auto",
+        health={"status": "valid"}, weekly_window=None,
+    )
+    assert acc["weekly_window"]["usage_percentage"] is None
+    acc = build_agent_account_status(
+        provider="claude", account_id="a", label="A", source="auto",
+        health={"status": "valid"}, weekly_window={"usage_percentage": None},
+    )
+    assert acc["weekly_window"]["usage_percentage"] is None

@@ -125,7 +125,7 @@ def build_agent_account_status(
         "total_capacity": None,
         "used_capacity": None,
         "available_capacity": None,
-        "usage_percentage": 0.0,
+        "usage_percentage": None,  # None = sem dado (nunca 0% falso)
         "release_time": None,
         "seconds_remaining": None,
         "window_seconds": None,
@@ -139,7 +139,7 @@ def build_agent_account_status(
         "total_capacity": None,
         "used_capacity": None,
         "available_capacity": None,
-        "usage_percentage": 0.0,
+        "usage_percentage": None,  # None = sem dado (nunca 0% falso)
         "cycle_reset_time": None,
         "seconds_remaining": None,
         "window_seconds": None,
@@ -150,9 +150,7 @@ def build_agent_account_status(
             try:
                 default_weekly_window["usage_percentage"] = float(round(default_weekly_window["usage_percentage"], 1))
             except (ValueError, TypeError):
-                default_weekly_window["usage_percentage"] = 0.0
-        else:
-            default_weekly_window["usage_percentage"] = 0.0
+                default_weekly_window["usage_percentage"] = None
     default_weekly_window["elapsed_fraction"] = _elapsed_fraction(default_weekly_window)
 
     default_invites: dict[str, Any] = {

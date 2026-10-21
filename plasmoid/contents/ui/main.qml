@@ -8,6 +8,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support as Plasma5Support
 import org.kde.kirigami as Kirigami
 import "Presets.js" as Presets
+import "NotchModel.js" as NotchModel
 
 PlasmoidItem {
     id: root
@@ -32,8 +33,8 @@ PlasmoidItem {
     property string lastUpdatedFormatted: formatLastUpdated(statusData?.last_updated)
     property int totalInvites: calculateTotalInvites()
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
-    property var compactModel: buildCompactModel()
-    property string worstHealthStatus: worstHealth()
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n)
+    property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
     function safeI18n(text, arg1, arg2) {
@@ -79,102 +80,10 @@ PlasmoidItem {
         return total;
     }
 
-    function visibleProviders() {
-        var hidden = String(Plasmoid.configuration.hiddenProviders || "").split(",");
-        return Presets.normalizeOrder(Plasmoid.configuration.providerOrder).filter(function (k) {
-            return hidden.indexOf(k) === -1;
-        });
-    }
-
-    // Conta Ativa no Sistema; sem nenhuma marcada, a primeira do provedor
-    function activeAccount(agent) {
-        var accs = (agent && agent.accounts) || [];
-        for (var i = 0; i < accs.length; i++) {
-            if (accs[i].isActive === true || accs[i].is_active === true) return accs[i];
-        }
-        return accs.length > 0 ? accs[0] : null;
-    }
-
-    // Percentual da janela, ou -1 (desconhecido): sem dado, nulo ou obsoleto com liberação já passada
-    function windowPct(acc, win, resetKey) {
-        if (!acc || !win || acc.no_data === true) return -1;
-        var p = win.usage_percentage;
-        if (p === undefined || p === null) return -1;
-        var t = win[resetKey] ? Date.parse(win[resetKey]) : NaN;
-        if (acc.stale === true && !isNaN(t) && t <= Date.now()) return -1;
-        return p;
-    }
-
-    // Nível do contrato; ausente, obsoleto ou sem dado = "" (cor neutra)
-    function windowLevel(acc, win, pct) {
-        if (!acc || !win || pct < 0 || acc.stale === true || acc.no_data === true) return "";
-        return win.alert_level || "";
-    }
-
-    function windowElapsed(acc, win, pct) {
-        if (pct < 0 || acc.stale === true || !(win.window_seconds > 0)) return -1;
-        var e = win.elapsed_fraction;
-        return (e === undefined || e === null) ? -1 : e;
-    }
-
-    function levelWord(level) {
-        if (level === "critical") return safeI18n("crítico");
-        if (level === "warning") return safeI18n("atenção");
-        if (level === "normal") return safeI18n("normal");
-        return safeI18n("sem nível");
-    }
-
-    function pctWord(pct) {
-        return pct < 0 ? "-" : Math.round(pct) + "%";
-    }
-
-    function buildCompactModel() {
-        var agents = (statusData && statusData.agents) || {};
-        return visibleProviders().map(function (key) {
-            var info = Presets.providerInfo(key);
-            var ag = agents[key];
-            var acc = activeAccount(ag);
-            var nw = acc ? acc.native_window : null;
-            var ww = acc ? acc.weekly_window : null;
-            var inner = windowPct(acc, nw, "release_time");
-            var outer = windowPct(acc, ww, "cycle_reset_time");
-            var il = windowLevel(acc, nw, inner);
-            var ol = windowLevel(acc, ww, outer);
-            var tail = !acc ? safeI18n("sem dados") : (acc.stale === true ? safeI18n("dados desatualizados") : "");
-            if (acc && acc.limit_changes && acc.limit_changes.length > 0) {
-                tail += (tail ? ", " : "") + safeI18n("limites mudaram");
-            }
-            return {
-                provider: key,
-                name: (ag && ag.name) || info.name,
-                letter: info.letter,
-                innerPct: inner,
-                outerPct: outer,
-                innerLevel: il,
-                outerLevel: ol,
-                innerElapsed: acc ? windowElapsed(acc, nw, inner) : -1,
-                outerElapsed: acc ? windowElapsed(acc, ww, outer) : -1,
-                description: safeI18n("Janela nativa %1 (%2)", pctWord(inner), levelWord(il))
-                    + ", " + safeI18n("semanal %1 (%2)", pctWord(outer), levelWord(ol))
-                    + (tail ? ", " + tail : "")
-            };
-        });
-    }
-
-    // Saúde da pior Conta Ativa visível: "" quando tudo válido ou sem dados
-    function worstHealth() {
-        var agents = (statusData && statusData.agents) || {};
-        var worst = "";
-        visibleProviders().forEach(function (key) {
-            var acc = activeAccount(agents[key]);
-            var st = acc && acc.health ? acc.health.status : "";
-            if (!st || st === "valid") return;
-            if (st === "session_expired" || worst === "") worst = st;
-        });
-        return worst;
-    }
-
     function getSummaryToolTip() {
+        if (compactModel.length === 0) {
+            return safeI18n("Nenhum provedor visível no painel.");
+        }
         if (!statusData || !statusData.agents) {
             return safeI18n("Nenhum dado coletado ainda.");
         }

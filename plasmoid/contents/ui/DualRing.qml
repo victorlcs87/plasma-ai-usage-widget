@@ -11,6 +11,8 @@ Item {
     property real innerElapsed: -1
     property color outerColor: "#8a9099"
     property color innerColor: "#8a9099"
+    property string outerLevel: ""
+    property string innerLevel: ""
     property string letter: ""
 
     implicitWidth: 24
@@ -23,25 +25,31 @@ Item {
     onOuterColorChanged: canvas.requestPaint()
     onInnerColorChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
+    onHeightChanged: canvas.requestPaint()
+    onOuterLevelChanged: canvas.requestPaint()
+    onInnerLevelChanged: canvas.requestPaint()
 
     Canvas {
         id: canvas
         anchors.fill: parent
         antialiasing: true
 
-        function arc(ctx, cx, cy, r, lw, pct, elapsed, color) {
+        function arc(ctx, cx, cy, r, lw, pct, elapsed, color, level) {
             var start = -Math.PI / 2;
             ctx.lineWidth = lw;
-            ctx.lineCap = "round";
+            ctx.lineCap = level === "critical" || level === "warning" ? "butt" : "round";
             ctx.strokeStyle = "rgba(255,255,255,0.16)";
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, 2 * Math.PI);
             ctx.stroke();
             if (pct > 0) {
+                // Forma além da cor: warning = traços longos, critical = traços curtos
+                ctx.setLineDash(level === "critical" ? [lw * 0.9, lw * 0.9] : level === "warning" ? [lw * 3, lw * 1.2] : []);
                 ctx.strokeStyle = color;
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, start, start + 2 * Math.PI * Math.min(1, pct / 100));
                 ctx.stroke();
+                ctx.setLineDash([]);
             }
             if (elapsed >= 0) {  // marca radial do tempo decorrido
                 var a = start + 2 * Math.PI * Math.min(1, elapsed);
@@ -59,22 +67,22 @@ Item {
             var ctx = getContext("2d");
             ctx.reset();
             var s = Math.min(width, height);
-            var lw = Math.max(2, s * 0.1);
+            var lw = Math.max(1.75, s * 0.085);
             var cx = width / 2, cy = height / 2;
-            var rOuter = s / 2 - lw / 2 - 1.5;
-            var rInner = rOuter - lw - Math.max(1.5, s * 0.05);
-            arc(ctx, cx, cy, rOuter, lw, ring.outerPct, ring.outerElapsed, ring.outerColor);
-            arc(ctx, cx, cy, rInner, lw, ring.innerPct, ring.innerElapsed, ring.innerColor);
+            var rOuter = s / 2 - lw / 2 - 1;
+            var rInner = rOuter - lw - Math.max(1.25, s * 0.045);
+            arc(ctx, cx, cy, rOuter, lw, ring.outerPct, ring.outerElapsed, ring.outerColor, ring.outerLevel);
+            arc(ctx, cx, cy, rInner, lw, ring.innerPct, ring.innerElapsed, ring.innerColor, ring.innerLevel);
         }
     }
 
     // Inicial do provedor: distingue os anéis sem depender de cor
     Text {
         anchors.centerIn: parent
-        visible: ring.width >= 22 && ring.letter.length > 0
+        visible: ring.width >= 20 && ring.letter.length > 0
         text: ring.letter
         color: "#c9ced6"
-        font.pixelSize: Math.round(ring.width * 0.26)
+        font.pixelSize: Math.max(8, Math.round(ring.width * 0.3))
         font.bold: true
         textFormat: Text.PlainText
     }
