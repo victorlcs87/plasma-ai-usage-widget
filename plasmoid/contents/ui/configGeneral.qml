@@ -1753,7 +1753,9 @@ Item {
                                     implicitWidth: providerTag.implicitWidth + Kirigami.Units.smallSpacing * 2
                                     implicitHeight: providerTag.implicitHeight + Kirigami.Units.smallSpacing
                                     radius: 4
-                                    color: configRoot.getProviderColor(modelData.provider)
+                                    color: Qt.alpha(configRoot.getProviderColor(modelData.provider), 0.18)  // fundo suave + borda: o texto usa a cor do tema (>= 4,5:1)
+                                    border.width: 1
+                                    border.color: configRoot.getProviderColor(modelData.provider)
 
                                     QQC2.Label {
                                         textFormat: Text.PlainText
@@ -1762,7 +1764,7 @@ Item {
                                         text: (modelData.provider || "").toUpperCase()
                                         font.bold: true
                                         font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                        color: "white"
+                                        color: Kirigami.Theme.textColor
                                     }
                                 }
 
@@ -1783,14 +1785,14 @@ Item {
                                         }
 
                                         Rectangle {
-                                            implicitWidth: healthText.implicitWidth + Kirigami.Units.smallSpacing
+                                            implicitWidth: healthText.implicitWidth + Kirigami.Units.smallSpacing * 2
                                             implicitHeight: healthText.implicitHeight + 2
                                             radius: 3
-                                            color: {
-                                                if (modelData.healthStatus === "valid") return "#27ae60";
-                                                if (modelData.healthStatus === "session_expired") return "#f39c12";
-                                                return "#7f8c8d";
-                                            }
+                                            readonly property color tone: modelData.healthStatus === "valid" ? "#27ae60"
+                                                : modelData.healthStatus === "session_expired" ? "#f39c12" : "#7f8c8d"
+                                            color: Qt.alpha(tone, 0.18)  // palavra + cor; texto na cor do tema (>= 4,5:1 nos dois temas)
+                                            border.width: 1
+                                            border.color: tone
 
                                             QQC2.Label {
                                                 textFormat: Text.PlainText
@@ -1802,9 +1804,9 @@ Item {
                                                     if (modelData.healthStatus === "not_configured") return I18n.tr("Not set up");
                                                     return modelData.healthStatus;
                                                 }
-                                                font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
+                                                font.pointSize: Kirigami.Theme.smallFont.pointSize
                                                 font.bold: true
-                                                color: "white"
+                                                color: Kirigami.Theme.textColor
                                             }
                                         }
                                     }
