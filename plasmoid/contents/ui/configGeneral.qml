@@ -148,6 +148,8 @@ Item {
 
     function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, configRoot.cfg_collectorPath); }
 
+    function healthTone(status) { return status === "valid" ? "#27ae60" : status === "session_expired" ? "#f39c12" : "#7f8c8d"; }
+
     function getProviderColor(provider) {
         switch ((provider || "").toLowerCase()) {
         case "claude":
@@ -1774,8 +1776,7 @@ Item {
                                             implicitWidth: healthText.implicitWidth + Kirigami.Units.smallSpacing * 2
                                             implicitHeight: healthText.implicitHeight + 2
                                             radius: 3
-                                            readonly property color tone: modelData.healthStatus === "valid" ? "#27ae60"
-                                                : modelData.healthStatus === "session_expired" ? "#f39c12" : "#7f8c8d"
+                                            readonly property color tone: configRoot.healthTone(modelData.healthStatus)
                                             color: Qt.alpha(tone, 0.18)  // palavra + cor; texto na cor do tema (>= 4,5:1 nos dois temas)
                                             border.width: 1
                                             border.color: tone
