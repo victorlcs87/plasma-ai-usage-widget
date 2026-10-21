@@ -59,6 +59,12 @@ Item {
                 ctx.stroke();
                 ctx.setLineDash([]);
             }
+            if (pct === 0 && (level === "critical" || level === "warning")) {  // 0% (ex.: restante esgotado): ponto no topo mantém a forma do nível
+                ctx.fillStyle = color;
+                ctx.beginPath();
+                ctx.arc(cx, cy - r, lw * 0.7, 0, 2 * Math.PI);
+                ctx.fill();
+            }
             if (elapsed >= 0) {  // marca radial do tempo decorrido
                 var a = start + 2 * Math.PI * Math.min(1, elapsed);
                 ctx.lineWidth = 1.5;

@@ -13,6 +13,9 @@ ColumnLayout {
     property color barColor: Kirigami.Theme.highlightColor
     // 0 = 30 dias (diario), 1 = 3 meses (semanal), 2 = 12 meses (mensal)
     property int period: 0
+    // Recolhido: só o resumo Hoje/Semana/Mês; gráfico e períodos aparecem expandidos
+    property bool summaryOnly: false
+    property string owner: ""  // Conta dona (nomes acessíveis dos botões de período não se repetem por cartão)
 
     readonly property var series: {
         if (!history) return [];
@@ -73,11 +76,13 @@ ColumnLayout {
         }
 
         Repeater {
-            model: [root.tr("30d"), root.tr("3m"), root.tr("12m")]
+            model: root.summaryOnly ? [] : [root.tr("30d"), root.tr("3m"), root.tr("12m")]
             delegate: NotchButton {
                 required property int index
                 required property string modelData
                 text: modelData
+                visible: !root.summaryOnly
+                accessibleName: root.owner ? root.periodNames[index] + ", " + root.owner : root.periodNames[index]
                 hint: root.periodNames[index]
                 checkable: true
                 checked: root.period === index
@@ -89,6 +94,7 @@ ColumnLayout {
 
     Item {
         id: chart
+        visible: !root.summaryOnly
         // Resumo para tecnologias assistivas: as barras são só visuais
         Accessible.role: Accessible.Chart
         Accessible.name: root.tr("Histórico de tokens, %1", root.periodNames[root.period])
@@ -122,8 +128,7 @@ ColumnLayout {
                         hoverEnabled: true
                     }
 
-                    QQC2.ToolTip.visible: barMouse.containsMouse
-                    QQC2.ToolTip.text: root.pointLabel(modelData) + ": " + root.compact(modelData.tokens) + " tokens"
+                    PlainTip { visible: barMouse.containsMouse; text: root.pointLabel(modelData) + ": " + root.compact(modelData.tokens) + " tokens" }
                 }
             }
         }

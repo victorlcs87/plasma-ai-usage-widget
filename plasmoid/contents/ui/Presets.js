@@ -77,4 +77,4 @@ function onPill(r, g, b) {
 
 // Paleta fixa do Notch (sempre escuro, independente do tema): fundo, cartão, borda, texto, texto secundário
 // e botão. Texto sobre o cartão >= 4,5:1.
-var ui = { panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#a3a9b1", chip: "#2a2e36" };
+var ui = { panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#b4bac2", chip: "#2a2e36" };

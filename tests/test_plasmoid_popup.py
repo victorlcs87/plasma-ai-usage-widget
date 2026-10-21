@@ -36,7 +36,7 @@ STUBS = {
                           " Component.onCompleted: Log.sources.push(this) }"}),
 }
 
-FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "UsageDetails.qml", "TokenHistory.qml",
+FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
          "DualRing.qml", "SessionMark.qml", "Presets.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
@@ -47,7 +47,7 @@ import org.kde.plasma.plasmoid
 import org.kde.plasma.plasma5support
 import org.kde.kirigami as Kirigami
 import "NotchModel.js" as NotchModel
-Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "#303236"
+Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
   Item { id: logic
     property var statusData: %(data)s
     property bool expanded: %(expanded)s
@@ -149,11 +149,11 @@ def popup(tmp_path, name, data=None, drive="", cfg=None, size=(460, 560), expand
     for f in FILES:
         shutil.copy(UI_DIR / f, run / f)
     png_dir = os.environ.get("AIU_PNG_DIR", "")
-    (run / "h.qml").write_text(HARNESS % {
+    (run / "h.qml").write_text((HARNESS % {
         "w": size[0], "h": size[1], "data": json.dumps(data if data is not None else fixture()), "expanded": str(expanded).lower(),
         "idle": str(idle).lower(), "refreshing": str(refreshing).lower(), "error": json.dumps(error), "overlay": json.dumps(overlay or {}),
         "pcfg": json.dumps(cfg or {}), "dur": 0 if reduced else 200, "delay": delay, "drive": drive,
-        "png": f"{png_dir}/{name}.png" if png_dir else ""})
+        "png": f"{png_dir}/{name}.png" if png_dir else ""}).replace("BGCOLOR", os.environ.get("AIU_BG", "#303236")))
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
     res = subprocess.run(["qml6", "-I", str(imp), str(run / "h.qml")], env=env, capture_output=True, text=True, timeout=90)
     out = res.stdout + res.stderr
@@ -275,7 +275,8 @@ def test_invalid_config_falls_back_to_defaults(tmp_path):
     assert out["provs"] == ["provider_codex", "provider_claude", "provider_gemini"]  # desconhecido sai, faltantes entram no fim
     low = popup(tmp_path / "x", "lowop", cfg={"popupOpacity": 10})
     assert low["prefs"]["opacity"] == 1
-    assert popup(tmp_path / "y", "op70", cfg={"popupOpacity": 70})["prefs"]["opacity"] == 0.7
+    assert popup(tmp_path / "y", "op85", cfg={"popupOpacity": 85})["prefs"]["opacity"] == 0.85
+    assert popup(tmp_path / "z", "op60", cfg={"popupOpacity": 60})["prefs"]["opacity"] == 1  # valor antigo 50-79: padrão
 
 
 def test_order_and_visibility_of_provider_cards(tmp_path):
@@ -351,8 +352,8 @@ def test_idle_hidden_widget_does_not_animate_popup(tmp_path):
 
 
 def test_error_banner_and_background_opacity_render(tmp_path):
-    out = popup(tmp_path, "error", error="Cache de status não encontrado. Execute o coletor.", cfg={"popupOpacity": 60}, drive="obs('bg', String(named('popupBackground')[0].color)); obs('err', named('errorBox')[0].visible)", size=(460, 300))
-    assert out["err"] is True and out["bg"].startswith("#99")  # alfa 0,6
+    out = popup(tmp_path, "error", error="Cache de status não encontrado. Execute o coletor.", cfg={"popupOpacity": 80}, drive="obs('bg', String(named('popupBackground')[0].color)); obs('err', named('errorBox')[0].visible)", size=(460, 300))
+    assert out["err"] is True and out["bg"].startswith("#cc")  # alfa 0,8
 
 
 def js(tmp_path, expr):
@@ -412,7 +413,7 @@ def test_popup_options_declared_with_safe_defaults_and_exposed():
     for name, (typ, default) in want.items():
         assert entries[name].attrib["type"] == typ and (entries[name].find("{*}default").text or None) == default
         assert f"cfg_{name}" in cfg
-    assert entries["popupOpacity"].find("{*}min").text == "50" and entries["popupOpacity"].find("{*}max").text == "100"
+    assert entries["popupOpacity"].find("{*}min").text == "80" and entries["popupOpacity"].find("{*}max").text == "100"
     assert "Accessible.name" in cfg.split('safeI18n("Popup:")')[1][:5000]
 
 
@@ -425,3 +426,110 @@ def test_keyboard_focus_scrolls_the_list_to_the_focused_control(tmp_path):
     """
     out = popup(tmp_path, "scroll", drive=drive, size=(460, 400))
     assert out["before"] == 0 and out["after"] > 0 and out["inView"]
+
+
+def lum(hexc):
+    ch = [int(hexc[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+    ch = [c / 12.92 if c <= 0.03928 else ((c + 0.055) / 1.055) ** 2.4 for c in ch]
+    return 0.2126 * ch[0] + 0.7152 * ch[1] + 0.0722 * ch[2]
+
+
+def contrast(a, b):
+    la, lb = lum(a) if isinstance(a, str) else a, lum(b) if isinstance(b, str) else b
+    return (max(la, lb) + 0.05) / (min(la, lb) + 0.05)
+
+
+def blend(fg, bg, a):
+    f = [int(fg[i:i + 2], 16) for i in (1, 3, 5)]
+    b = [int(bg[i:i + 2], 16) for i in (1, 3, 5)]
+    return "#" + "".join(f"{round(x * a + y * (1 - a)):02x}" for x, y in zip(f, b))
+
+
+def test_text_contrast_holds_at_the_opacity_floor_on_any_backdrop_and_when_dimmed():
+    import re
+    ui = dict(re.findall(r'(\w+): "(#[0-9a-f]{6})"', (UI_DIR / "Presets.js").read_text()))
+    floor = float(re.search(r"OPACITY = \[(\d+),", (UI_DIR / "ViewPrefs.js").read_text()).group(1)) / 100
+    for backdrop in ("#ffffff", "#000000", "#808080"):  # fundo claro, escuro e médio atrás do popup
+        bg = blend(ui["panel"], backdrop, floor)
+        assert contrast(ui["fg"], bg) >= 4.5 and contrast(ui["muted"], bg) >= 4.5, backdrop
+    for a in (0.75,):  # linhas esmaecidas (obsoleto/sem dado) sobre o cartão
+        assert contrast(blend(ui["muted"], ui["card"], a), ui["card"]) >= 4.5
+        assert contrast(blend(ui["fg"], ui["card"], a), ui["card"]) >= 4.5
+    row = (UI_DIR / "WindowRow.qml").read_text()
+    assert "view.dim ? 0.75" in row
+
+
+def test_repeated_buttons_have_unique_glyph_free_accessible_names(tmp_path):
+    drive = "obs('names', buttons().map(function (b) { return b.Accessible.name }))"
+    out = popup(tmp_path, "names", drive=drive, size=(460, 1400))
+    names = out["names"]
+    assert "Ativar Pessoal no sistema" in names and "Copiar link de convite de Trabalho" in names
+    assert "Histórico e detalhes de Trabalho" in names and "30 dias, Trabalho" in names
+    assert len(names) == len(set(names))  # nenhum nome repetido
+    assert not any(ch in n for n in names for ch in "⚡▾▸✓")
+
+
+def test_tooltips_are_plain_text(tmp_path):
+    for f in ("WindowRow.qml", "AccountCard.qml", "NotchButton.qml", "TokenHistory.qml"):
+        assert "QQC2.ToolTip.text" not in (UI_DIR / f).read_text(), f  # a ToolTip padrão interpreta HTML
+    tip = (UI_DIR / "PlainTip.qml").read_text()
+    assert "textFormat: Text.PlainText" in tip and "tip.text" in tip
+    data = fixture()
+    data["agents"]["claude"]["accounts"][2]["health"]["message"] = "<img src=x onerror=alert(1)>"
+    drive = """
+    var tips = all(f).concat(all(f).reduce(function (a, k) { return a.concat(k.data || []) }, [])).filter(function (k) { return k.contentItem && k.contentItem.textFormat !== undefined })
+    obs('n', tips.length); obs('bad', tips.filter(function (k) { return k.contentItem.textFormat !== Text.PlainText }).length)
+    """
+    out = popup(tmp_path, "tip", data=data, drive=drive, size=(460, 1400))
+    assert out["n"] >= 5 and out["bad"] == 0
+
+
+def test_token_summary_stays_visible_when_details_are_collapsed(tmp_path):
+    drive = """
+    var th = all(f).filter(function (k) { return k.summaryOnly !== undefined && k.history })
+    obs('n', th.length); obs('summaryOnly', th.map(function (k) { return k.summaryOnly }))
+    obs('chart', th.map(function (k) { return k.visible }))
+    obs('labels', all(f).filter(function (k) { return k.visible && typeof k.text === 'string' && k.text.indexOf('Hoje ') === 0 }).length)
+    var d = btn("Histórico e detalhes de Trabalho"); d.click(); wait(50)
+    obs('after', th.map(function (k) { return k.summaryOnly }))
+    """
+    data = fixture()
+    data["agents"]["claude"]["accounts"][1]["token_history"] = hist()  # inativa: recolhida
+    out = popup(tmp_path, "summary", data=data, drive=drive, size=(460, 1400))
+    assert out["n"] == 2 and out["summaryOnly"] == [False, True] and out["labels"] == 2  # resumo nas duas
+    assert out["after"] == [True, True]
+
+
+def test_empty_usage_details_do_not_offer_a_details_toggle(tmp_path):
+    data = {"agents": {"claude": {"name": "Claude", "accounts": [acct("claude", "a", "A", True, usage_details={"tokens_by_model": [], "quota_by_model": []})]}}}
+    out = popup(tmp_path, "nodetails", data=data, drive="obs('has', btn('Histórico e detalhes de A') !== undefined)")
+    assert out["has"] is False
+
+
+def test_hidden_providers_are_trimmed_and_empties_ignored():
+    got = js(Path(__import__("tempfile").mkdtemp()), 'VP.config({popupHiddenProviders: " codex , ,gemini"}).order')
+    assert got == ["claude"]
+
+
+def test_page_keys_and_arrows_scroll_with_focus_on_root(tmp_path):
+    drive = """
+    var flick = named('popupFlick')[0]; f.forceActiveFocus()
+    tc.keyClick(Qt.Key_PageDown); var a = flick.contentY; tc.keyClick(Qt.Key_Down); var b = flick.contentY
+    tc.keyClick(Qt.Key_End); var e = flick.contentY; tc.keyClick(Qt.Key_Home)
+    obs('k', [a, b, e, flick.contentY, flick.contentHeight - flick.height])
+    """
+    a, b, e, top, maxy = popup(tmp_path, "pagekeys", drive=drive, size=(460, 400))["k"]
+    assert 0 < a < b and e == maxy and top == 0
+
+
+def test_zero_remaining_keeps_a_level_marker_and_long_provider_names_elide(tmp_path):
+    data = fixture()
+    data["agents"]["codex"]["name"] = "Provedor com um nome absurdamente comprido para a largura do popup inteiro"
+    data["agents"]["codex"]["accounts"][0]["native_window"]["usage_percentage"] = 100.0
+    drive = """
+    obs('texts', txt('levelMark')); obs('pcts', txt('pct').slice(0, 6))
+    var h = all(f).filter(function (k) { return k.visible && k.elide === Text.ElideRight && typeof k.text === 'string' && k.text.indexOf('Provedor com') === 0 })[0]
+    obs('elided', h ? h.truncated : null)
+    """
+    out = popup(tmp_path, "zero_remaining", data=data, cfg={"usageDisplay": "remaining"}, drive=drive, size=(460, 1400))
+    assert "0%" in out["pcts"] and "\u25A0" in out["texts"] and out["elided"] is True  # 0% restante: forma e palavra do nível seguem

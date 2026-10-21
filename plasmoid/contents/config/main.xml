@@ -87,7 +87,7 @@
     <entry name="popupOpacity" type="Int">
       <label>Opacidade do fundo do popup em porcentagem</label>
       <default>100</default>
-      <min>50</min>
+      <min>80</min>
       <max>100</max>
     </entry>
     <entry name="popupProviderOrder" type="String">

@@ -88,8 +88,8 @@ function levelWord(level, tr) {
 }
 
 // Usado (padrão) ou restante (preferência do usuário); desconhecido = "-"
-function pctWord(pct, remaining) {
-    return pct < 0 ? "-" : ViewPrefs.shownPct(pct, remaining) + "%" + (remaining ? " restante" : "");
+function pctWord(pct, remaining, tr) {
+    return pct < 0 ? "-" : ViewPrefs.shownPct(pct, remaining) + "%" + (remaining ? " " + (tr ? tr("restante") : "restante") : "");
 }
 
 // Estado da Sessão (busy/waiting/idle) da Conta Ativa (Claude ou Codex): o overlay ao vivo
@@ -173,8 +173,8 @@ function buildModel(statusData, cfg, tr, nowMs) {
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
         if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);
         if (m.update) tail += (tail ? ", " : "") + tr("nova versão %1", m.update.latest);
-        m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct, cfg.remaining), levelWord(m.innerLevel, tr))
-            + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct, cfg.remaining), levelWord(m.outerLevel, tr))
+        m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct, cfg.remaining, tr), levelWord(m.innerLevel, tr))
+            + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct, cfg.remaining, tr), levelWord(m.outerLevel, tr))
             + (tail ? ", " + tail : "");
         return m;
     });
@@ -207,7 +207,7 @@ function windowLine(acc, win, resetKey, label, now, tr, cfg) {
     if (pct < 0) return label + ": —";
     var reset = parseIso(win[resetKey]);
     if (!isNaN(reset) && reset <= now) return label + ": " + formatRemaining(0, tr);  // sem % antigo ambíguo
-    var line = label + ": " + pctWord(pct, cfg.remaining);
+    var line = label + ": " + pctWord(pct, cfg.remaining, tr);
     if (!isNaN(reset)) line += " — " + (cfg.date ? tr("libera %1", ViewPrefs.dateText(reset, now)) : tr("libera em %1", formatRemaining(reset - now, tr)));
     return line;
 }
@@ -235,7 +235,16 @@ function tooltipText(statusData, cfg, tr, now) {
 
 // ---- Popup (ticket 33) ----
 
-// Provedores do popup na ordem/visibilidade escolhidas; cada um com suas Contas (a Ativa no Sistema primeiro)
+// Há conteúdo em usage_details? (objeto vazio ou listas vazias não abrem "Histórico e detalhes")
+function hasUsageDetails(d) {
+    if (!d) return false;
+    return ["tokens_by_model", "tokens_by_project", "quota_by_model"].some(function (k) { return d[k] && d[k].length > 0; })
+        || !!d.extra_usage || !!d.credits || !!d.current_model;
+}
+
+// Provedores do popup na ordem/visibilidade escolhidas; cada um com suas Contas (a Ativa no Sistema primeiro).
+// Só os provedores conhecidos (Presets.providers) aparecem, como no painel e no coletor: um provedor
+// desconhecido no status.json é ignorado de propósito (novos provedores estão fora do escopo da spec 05).
 function popupProviders(statusData, prefs) {
     var agents = (statusData && statusData.agents) || {};
     return prefs.order.map(function (key) {

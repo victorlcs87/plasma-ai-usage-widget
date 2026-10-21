@@ -10,6 +10,7 @@ QQC2.AbstractButton {
 
     property color accent: Kirigami.Theme.highlightColor
     property string hint: ""  // dica (tooltip) e descrição acessível
+    property string accessibleName: ""  // nome para leitor de tela quando o texto tem glifos ou se repete por cartão
     property alias iconItem: iconItem
     readonly property bool iconOnly: display === QQC2.AbstractButton.IconOnly && icon.name !== ""
 
@@ -20,7 +21,7 @@ QQC2.AbstractButton {
     opacity: enabled ? 1 : 0.45
 
     Accessible.role: Accessible.Button
-    Accessible.name: text
+    Accessible.name: accessibleName !== "" ? accessibleName : text
     Accessible.description: hint
     Accessible.checkable: checkable
     Accessible.checked: checked
@@ -67,8 +68,7 @@ QQC2.AbstractButton {
         }
     }
 
-    QQC2.ToolTip.visible: (hovered || visualFocus) && hint.length > 0
-    QQC2.ToolTip.text: hint
+    PlainTip { visible: (btn.hovered || btn.visualFocus) && btn.hint.length > 0; text: btn.hint }
     Keys.onReturnPressed: click()  // Enter também ativa (Espaço já é nativo)
     Keys.onEnterPressed: click()
 }

@@ -4,7 +4,8 @@
 // Preferências de exibição (ticket 33), valendo em todo o widget: popup, dica e painel.
 // Puro (testável sem Plasma). Valor inválido ou fora da faixa = padrão (nunca clamp silencioso).
 
-var OPACITY = [50, 100], DEFAULT_OPACITY = 100;
+// Piso 80: com fundo claro atrás do popup, o texto direto sobre o fundo mantém >= 4,5:1 (teste de contraste)
+var OPACITY = [80, 100], DEFAULT_OPACITY = 100;
 
 function pick(list, v, def) { return typeof v === "string" && list.indexOf(v) >= 0 ? v : def; }
 
@@ -12,7 +13,7 @@ function pick(list, v, def) { return typeof v === "string" && list.indexOf(v) >=
 function config(c) {
     c = c || {};
     var op = c.popupOpacity;
-    var hidden = String(c.popupHiddenProviders || "").split(",");
+    var hidden = String(c.popupHiddenProviders || "").split(",").map(function (k) { return k.trim(); }).filter(function (k) { return k; });
     return {
         remaining: pick(["used", "remaining"], c.usageDisplay, "used") === "remaining",
         date: pick(["countdown", "date"], c.resetDisplay, "countdown") === "date",

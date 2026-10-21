@@ -32,7 +32,7 @@ Rectangle {
     readonly property bool hasNoData: cardRoot.accountData?.no_data === true
     readonly property var nativeView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.native_window, "native", cardRoot.prefs, cardRoot.nowMs, cardRoot.safeI18n)
     readonly property var weeklyView: NotchModel.windowView(cardRoot.accountData || {}, cardRoot.accountData?.weekly_window, "weekly", cardRoot.prefs, cardRoot.nowMs, cardRoot.safeI18n)
-    readonly property bool hasDetails: Boolean(cardRoot.accountData?.token_history || cardRoot.accountData?.usage_details)
+    readonly property bool hasDetails: Boolean(cardRoot.accountData?.token_history) || NotchModel.hasUsageDetails(cardRoot.accountData?.usage_details)
     readonly property string healthStatus: cardRoot.accountData?.health?.status || "unknown"
     readonly property string accountName: cardRoot.accountData?.name || cardRoot.accountData?.label || cardRoot.safeI18n("Conta")
 
@@ -284,6 +284,7 @@ Rectangle {
                         enabled: !cardRoot.isSwitching
                         text: cardRoot.isSwitching ? cardRoot.safeI18n("Ativando...") : cardRoot.safeI18n("⚡ Ativar no Sistema")
                         accent: cardRoot.accent
+                        accessibleName: cardRoot.safeI18n("Ativar %1 no sistema", cardRoot.accountName)
                         hint: cardRoot.switchError.length > 0 ? cardRoot.switchError
                             : cardRoot.isSwitching ? cardRoot.safeI18n("Ativando conta no sistema...")
                             : cardRoot.safeI18n("Ativar esta conta como perfil padrão no CLI do sistema")
@@ -314,8 +315,7 @@ Rectangle {
                             color: Presets.ui.fg
                         }
                         HoverHandler { id: activeHover }
-                        QQC2.ToolTip.visible: activeHover.hovered
-                        QQC2.ToolTip.text: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.")
+                        PlainTip { visible: activeHover.hovered; text: cardRoot.safeI18n("Esta conta está configurada como a conta ativa no sistema.") }
                     }
 
                     Rectangle {
@@ -340,8 +340,7 @@ Rectangle {
                             color: Presets.ui.fg
                         }
                         HoverHandler { id: healthHover }
-                        QQC2.ToolTip.visible: healthHover.hovered && Boolean(cardRoot.accountData?.health?.message)
-                        QQC2.ToolTip.text: cardRoot.accountData?.health?.message || ""
+                        PlainTip { visible: healthHover.hovered && Boolean(cardRoot.accountData?.health?.message); text: cardRoot.accountData?.health?.message || "" }
                     }
                 }
 
@@ -410,7 +409,7 @@ Rectangle {
             id: detailsToggle
             visible: cardRoot.hasDetails
             text: (cardRoot.detailsOpen ? "▾ " : "▸ ") + cardRoot.safeI18n("Histórico e detalhes")
-            Accessible.name: cardRoot.safeI18n("Histórico e detalhes")
+            accessibleName: cardRoot.safeI18n("Histórico e detalhes de %1", cardRoot.accountName)
             Accessible.expanded: cardRoot.detailsOpen
             accent: cardRoot.accent
             onClicked: cardRoot.detailsOpen = !cardRoot.detailsOpen
@@ -422,10 +421,12 @@ Rectangle {
             details: cardRoot.accountData?.usage_details ?? null
         }
 
-        // Histórico de Tokens (campo opcional do contrato v2)
+        // Histórico de Tokens (campo opcional do contrato v2): o resumo Hoje/Semana/Mês fica sempre à vista,
+        // gráfico e períodos só com os detalhes abertos
         TokenHistory {
             Layout.fillWidth: true
-            visible: cardRoot.detailsOpen && Boolean(history)
+            summaryOnly: !cardRoot.detailsOpen
+            owner: cardRoot.accountName
             history: cardRoot.accountData?.token_history ?? null
             barColor: cardRoot.accent
         }
@@ -455,6 +456,7 @@ Rectangle {
                 id: copyInviteButton
                 visible: Boolean(cardRoot.accountData?.free_trial_invites?.invite_url)
                 text: cardRoot.copiedFeedback ? cardRoot.safeI18n("Copiado!") : cardRoot.safeI18n("Copiar Link")
+                accessibleName: cardRoot.safeI18n("Copiar link de convite de %1", cardRoot.accountName)
                 accent: cardRoot.accent
                 hint: cardRoot.copiedFeedback
                     ? cardRoot.safeI18n("Link copiado para a Área de Transferência!")

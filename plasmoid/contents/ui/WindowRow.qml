@@ -15,11 +15,12 @@ ColumnLayout {
     property color accent: Kirigami.Theme.highlightColor
     property string summary: ""
 
-    readonly property color levelColor: Presets.levelColor(view.level || "", accent)
+    // Sem nível (obsoleto, sem dado): cor secundária legível, nunca o cinza neutro esmaecido
+    readonly property color levelColor: view.level ? Presets.levelColor(view.level, accent) : Presets.ui.muted
     readonly property bool flagged: view.level === "warning" || view.level === "critical"
 
     spacing: 1
-    opacity: view.dim ? 0.55 : 1
+    opacity: view.dim ? 0.75 : 1
     Accessible.role: Accessible.StaticText
     Accessible.name: summary
 
@@ -63,7 +64,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             font.bold: true
             font.pointSize: Kirigami.Theme.defaultFont.pointSize
-            color: row.view.known ? row.levelColor : Presets.ui.muted
+            color: row.levelColor
         }
         QQC2.Label {
             Accessible.ignored: true
@@ -86,8 +87,7 @@ ColumnLayout {
         font.pointSize: Kirigami.Theme.smallFont.pointSize
         color: Presets.ui.muted
         HoverHandler { id: resetHover }
-        QQC2.ToolTip.visible: resetHover.hovered && Boolean(row.view.resetFull)
-        QQC2.ToolTip.text: row.view.resetFull || ""
+        PlainTip { visible: resetHover.hovered && Boolean(row.view.resetFull); text: row.view.resetFull || "" }
     }
 
     QQC2.Label {

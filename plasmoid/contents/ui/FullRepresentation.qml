@@ -36,6 +36,18 @@ Item {
     // Foco no popup ao abrir, para o Escape funcionar (precisa de verificação no Plasma real)
     onVisibleChanged: if (visible) fullRoot.forceActiveFocus()
     Keys.onEscapePressed: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup()
+    // Rolagem pelo teclado com o foco na raiz (sem botão focado)
+    function scrollBy(dy) { flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + dy)); }
+    Keys.onUpPressed: scrollBy(-Kirigami.Units.gridUnit * 2)
+    Keys.onDownPressed: scrollBy(Kirigami.Units.gridUnit * 2)
+    Keys.onPressed: (event) => {
+        if (event.key === Qt.Key_PageUp) scrollBy(-flick.height * 0.9);
+        else if (event.key === Qt.Key_PageDown) scrollBy(flick.height * 0.9);
+        else if (event.key === Qt.Key_Home) scrollBy(-flick.contentHeight);
+        else if (event.key === Qt.Key_End) scrollBy(flick.contentHeight);
+        else return;
+        event.accepted = true;
+    }
 
     Accessible.role: Accessible.Pane
     Accessible.name: fullRoot.safeI18n("Monitor de Uso de IA")
@@ -90,7 +102,12 @@ Item {
         onTriggered: fullRoot.nowMs = Date.now()
     }
 
-    // Fundo sempre escuro; a opacidade é configurável (50 a 100%)
+    // Fundo sempre escuro; a opacidade é configurável (80 a 100%).
+    // PENDÊNCIA PARA O GATE (não verificável sem Plasma real): este popup é um Item com fundo próprio, não um
+    // PlasmaExtras.Representation, então o diálogo do Plasma desenha a moldura do tema por trás. Com opacidade
+    // < 100% a cor do tema aparece através do fundo (e pode haver moldura dupla). Plasmoid.backgroundHints só
+    // controla o fundo do widget na área de trabalho, não o do diálogo do popup; por isso nada é forçado aqui.
+    // Todo texto fora dos cards (cuja placa é opaca) usa fg/muted com >= 4,5:1 mesmo no pior caso (piso 80% sobre branco).
     Rectangle {
         objectName: "popupBackground"
         anchors.fill: parent
@@ -324,8 +341,10 @@ Item {
                             }
                             QQC2.Label {
                                 Accessible.ignored: true
+                                Layout.maximumWidth: block.width * 0.5
                                 text: block.modelData.name
                                 textFormat: Text.PlainText
+                                elide: Text.ElideRight
                                 font.bold: true
                                 color: Presets.ui.fg
                             }

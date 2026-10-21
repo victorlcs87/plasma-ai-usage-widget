@@ -1003,13 +1003,13 @@ Item {
                 textFormat: Text.PlainText
             }
             QQC2.SpinBox {
-                from: 50
+                from: 80
                 to: 100
                 stepSize: 5
                 editable: true
                 value: Math.round(configRoot.viewNow.opacity * 100)
                 onValueModified: configRoot.cfg_popupOpacity = value
-                Accessible.name: configRoot.safeI18n("Opacidade do fundo do popup em porcentagem (50 a 100)")
+                Accessible.name: configRoot.safeI18n("Opacidade do fundo do popup em porcentagem (80 a 100)")
             }
             QQC2.Label {
                 text: configRoot.safeI18n("Provedores no popup:")
