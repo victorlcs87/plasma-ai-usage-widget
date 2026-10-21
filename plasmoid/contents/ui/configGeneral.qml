@@ -1525,6 +1525,7 @@ Item {
                                 PlasmaComponents3.ComboBox {
                                     id: providerComboBox
                                     Layout.fillWidth: true
+                                    Accessible.name: I18n.tr("Provider:")
                                     model: ["Claude", "Codex", "Gemini"]
                                     currentIndex: 0
                                     enabled: !configRoot.isBusy
@@ -1546,6 +1547,7 @@ Item {
                                 QQC2.TextField {
                                     id: accountNameField
                                     Layout.fillWidth: true
+                                    Accessible.name: I18n.tr("Nickname:")
                                     placeholderText: I18n.tr("E.g. Claude Work, Codex Personal (optional)")
                                     enabled: !configRoot.isBusy
                                 }
@@ -1643,6 +1645,7 @@ Item {
                                     QQC2.TextField {
                                         id: credentialPathField
                                         Layout.fillWidth: true
+                                        Accessible.name: I18n.tr("Path:")
                                         placeholderText: I18n.tr("E.g. %1", configRoot.getDefaultPath(providerComboBox.currentText))
                                         enabled: !configRoot.isBusy
                                     }
@@ -1674,6 +1677,7 @@ Item {
                                     QQC2.TextField {
                                         id: inviteUrlField
                                         Layout.fillWidth: true
+                                        Accessible.name: I18n.tr("Invite Link:")
                                         placeholderText: I18n.tr("https://... (optional)")
                                         enabled: !configRoot.isBusy
                                     }
@@ -2183,6 +2187,7 @@ Item {
             QQC2.TextField {
                 id: renameAccountField
                 Layout.fillWidth: true
+                Accessible.name: I18n.tr("New account name")
                 placeholderText: I18n.tr("New account name")
                 enabled: !configRoot.isBusy
                 onAccepted: {
