@@ -21,6 +21,9 @@ Item {
     implicitWidth: Kirigami.Units.gridUnit * 32
     implicitHeight: Kirigami.Units.gridUnit * 28
 
+    // Texto de ajuda/secundário: texto do tema a 70% (>= 5:1 no Breeze claro e escuro; disabledTextColor dava 3,7:1)
+    readonly property color secondaryText: Qt.alpha(Kirigami.Theme.textColor, 0.7)
+
     // Intervalo de Atualização por provedor (KConfigXT, main.xml)
     property int cfg_refreshIntervalClaude: 300
     property int cfg_refreshIntervalCodex: 300
@@ -848,7 +851,7 @@ Item {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         textFormat: Text.PlainText
-                        color: Kirigami.Theme.disabledTextColor
+                        color: configRoot.secondaryText
                         text: I18n.tr("Alerts, hiding and notifications are applied right away by the collector with their own Apply button; every other option is saved when you press OK.")
                     }
 
@@ -1004,7 +1007,7 @@ Item {
                             QQC2.Label {
                                 width: parent.width
                                 wrapMode: Text.WordWrap
-                                color: Kirigami.Theme.disabledTextColor
+                                color: configRoot.secondaryText
                                 textFormat: Text.PlainText
                                 text: I18n.tr("To find the hidden widget again: point at the thin sliver in the panel (it reopens the monitor and right-click leads to Configure), use the panel edit mode, or open the hidden items in the system tray. The widget never disappears while the popup or this window is open.")
                             }
@@ -1444,7 +1447,7 @@ Item {
                     textFormat: Text.PlainText
                     Layout.fillWidth: true
                     text: I18n.tr("View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly.")
-                    color: Kirigami.Theme.disabledTextColor
+                    color: configRoot.secondaryText
                     wrapMode: Text.WordWrap
                 }
 
@@ -1609,7 +1612,7 @@ Item {
                                     textFormat: Text.PlainText
                                     text: I18n.tr("Advanced Options (Manual Setup)")
                                     font.bold: false
-                                    color: Kirigami.Theme.disabledTextColor
+                                    color: configRoot.secondaryText
                                     Layout.fillWidth: true
                                 }
 
@@ -1809,21 +1812,21 @@ Item {
                                             textFormat: Text.PlainText
                                             text: I18n.tr("ID: %1", modelData.id)
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                            color: Kirigami.Theme.disabledTextColor
+                                            color: configRoot.secondaryText
                                         }
 
                                         QQC2.Label {
                                             textFormat: Text.PlainText
                                             text: "•"
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                            color: Kirigami.Theme.disabledTextColor
+                                            color: configRoot.secondaryText
                                         }
 
                                         QQC2.Label {
                                             textFormat: Text.PlainText
                                             text: modelData.source === "auto" ? I18n.tr("Automatic detection") : I18n.tr("Manual setup")
                                             font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                            color: Kirigami.Theme.disabledTextColor
+                                            color: configRoot.secondaryText
                                         }
                                     }
                                 }
@@ -1936,7 +1939,7 @@ Item {
                         Layout.fillWidth: true
                         wrapMode: Text.WordWrap
                         textFormat: Text.PlainText
-                        color: Kirigami.Theme.disabledTextColor
+                        color: configRoot.secondaryText
                         text: I18n.tr("Alerts, hiding and notifications are applied right away by the collector with their own Apply button; every other option is saved when you press OK.")
                     }
 
