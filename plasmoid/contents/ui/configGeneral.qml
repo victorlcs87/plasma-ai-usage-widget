@@ -781,6 +781,23 @@ Item {
         }
 
         // Abas (Geral abre por padrão)
+        // Em janela estreita as abas rolam; os botões ‹ › aparecem só quando há o que rolar (Ctrl+Tab e roda seguem valendo)
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: 0
+
+        QQC2.ToolButton {
+            objectName: "tabsScrollLeft"
+            readonly property Item strip: configTabBar.contentItem
+            visible: strip.contentWidth > strip.width + 1
+            enabled: !strip.atXBeginning
+            icon.name: "go-previous"
+            Accessible.name: I18n.tr("Show previous tabs")
+            QQC2.ToolTip.text: Accessible.name
+            QQC2.ToolTip.visible: hovered
+            onClicked: strip.contentX = Math.max(strip.originX, strip.contentX - strip.width / 2)
+        }
+
         QQC2.TabBar {
             id: configTabBar
             objectName: "configTabBar"
@@ -788,6 +805,7 @@ Item {
             currentIndex: 0
             Accessible.role: Accessible.PageTabList
             Accessible.name: I18n.tr("Settings sections")
+            onCurrentIndexChanged: contentItem.positionViewAtIndex(currentIndex, ListView.Contain)
 
             QQC2.TabButton {
                 text: I18n.tr("General")
@@ -824,6 +842,19 @@ Item {
                 Accessible.name: I18n.tr("Notifications")
                 Accessible.description: I18n.tr("Session state, notifications and sounds")
             }
+        }
+
+        QQC2.ToolButton {
+            objectName: "tabsScrollRight"
+            readonly property Item strip: configTabBar.contentItem
+            visible: strip.contentWidth > strip.width + 1
+            enabled: !strip.atXEnd
+            icon.name: "go-next"
+            Accessible.name: I18n.tr("Show next tabs")
+            QQC2.ToolTip.text: Accessible.name
+            QQC2.ToolTip.visible: hovered
+            onClicked: strip.contentX = Math.min(strip.originX + strip.contentWidth - strip.width, strip.contentX + strip.width / 2)
+        }
         }
 
         Shortcut { sequences: ["Ctrl+Tab"]; onActivated: configTabBar.currentIndex = (configTabBar.currentIndex + 1) % configTabBar.count }

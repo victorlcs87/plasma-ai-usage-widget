@@ -219,3 +219,19 @@ def test_header_is_generic_and_add_account_header_is_keyboard_reachable():
     assert "manage their lifecycle" in blocks["tabContas"] and "manage their lifecycle" not in CFG.split('objectName: "tabGeral"')[0]
     assert "MouseArea" not in CFG  # nenhum controle só por mouse: o botão Expandir/Recolher é focável
     assert 'Accessible.name: I18n.tr("Add New Account")' in blocks["tabContas"]
+
+
+@needs_qml
+def test_tabs_scroll_with_visible_arrows_in_a_narrow_window(tmp_path, monkeypatch):
+    """R2 P2-4: em janela estreita as abas não ficam cortadas sem aviso: aparecem as setas e a aba atual rola para a vista."""
+    monkeypatch.setenv("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop")  # o estilo Basic reparte a largura e nunca transborda
+    drive = """
+    var bar = named("configTabBar"), c = bar.contentItem
+    obs('arrows', [named("tabsScrollLeft").visible, named("tabsScrollRight").visible])
+    bar.currentIndex = 4; tc.wait(300); obs('moved', c.contentX > 0)
+    """
+    out = config(tmp_path, drive=drive, size=(330, 640))
+    assert out["arrows"] == [True, True] and out["moved"] is True
+    (tmp_path / "w").mkdir()
+    wide = config(tmp_path / "w", drive=drive, size=(900, 640))
+    assert wide["arrows"] == [False, False]  # cabendo, sem setas
