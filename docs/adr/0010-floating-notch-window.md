@@ -76,3 +76,13 @@ X11 e fallback: `Window` sem moldura com `Qt.WindowStaysOnTopHint | Qt.Tool | Qt
   foco para o Escape; o foco volta a pilula no clique seguinte.
 - **SpinBox** da configuracao: `value` vem da configuracao validada e `onValueModified` grava o `cfg_*`; o de
   posicao mostra a borda escolhida (uma por borda) e aceita -20000..20000 px, a janela reclampa.
+
+## Correcao: tela do widget em varios monitores
+
+- Causa medida (plasmashell real, kwin virtual com 2 saidas, painel na 2a): `Window.window` do FloatingNotch e nulo
+  (o item nao fica dentro da janela do painel), `widgetScreenName` ficava vazio e `pickScreen` caia no indice 0 de
+  `Qt.application.screens`, entao o `get_layer_surface` ia para o `wl_output` da 1a tela. A ordem do Qt tambem nao e a do Plasma.
+- Agora a tela do widget vem de `Plasmoid.containment.screenGeometry` casada com `virtualX/virtualY` das telas do Qt
+  (`FG.screenNameAt`); a janela so e fallback. `floatScreen` (nome) segue valendo.
+- Regra `ownsScreen` mantida: com `floatScreen` definido, so a instancia que mora naquela tela mostra o Notch. Mover o Notch para
+  outra tela exigiria deduplicar instancias (estado compartilhado entre widgets), fora do escopo; a de outra tela fica como pilula.

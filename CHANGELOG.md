@@ -4,6 +4,7 @@
 
 ### Correções
 - Gemini: a conta da CLI Antigravity (`~/.gemini/antigravity-cli/antigravity-oauth-token`, token aninhado) agora é capturada. Ordem das fontes: chaveiro, `oauth_creds.json`, esse arquivo; respeita `GEMINI_CONFIG_DIR`. O arquivo original e o chaveiro nunca são modificados pela captura.
+- Notch flutuante: aparecia no monitor errado (índice 0 do Qt) quando o painel do widget ficava em outra tela; a tela agora vem da geometria do containment.
 
 ## 1.1.0
 
