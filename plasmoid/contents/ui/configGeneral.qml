@@ -712,7 +712,7 @@ Item {
             Kirigami.Heading {
                 textFormat: Text.PlainText
                 level: 2
-                text: I18n.tr("AI Account Management")
+                text: I18n.tr("Configuration")
                 Layout.fillWidth: true
             }
 
@@ -729,14 +729,6 @@ Item {
                     configRoot.loadStatus();
                 }
             }
-        }
-
-        QQC2.Label {
-            textFormat: Text.PlainText
-            Layout.fillWidth: true
-            text: I18n.tr("View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly.")
-            color: Kirigami.Theme.disabledTextColor
-            wrapMode: Text.WordWrap
         }
 
         // Barra de progresso durante carregamento, adição ou exclusão
@@ -1446,6 +1438,14 @@ Item {
                 Layout.fillHeight: true
                 spacing: Kirigami.Units.smallSpacing
 
+                QQC2.Label {
+                    textFormat: Text.PlainText
+                    Layout.fillWidth: true
+                    text: I18n.tr("View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly.")
+                    color: Kirigami.Theme.disabledTextColor
+                    wrapMode: Text.WordWrap
+                }
+
                 // Seção expansível: Adicionar Nova Conta
                 Kirigami.AbstractCard {
                     id: addAccountSection
@@ -1454,7 +1454,7 @@ Item {
                     contentItem: ColumnLayout {
                         spacing: Kirigami.Units.smallSpacing
 
-                        // Cabeçalho retrátil clicável
+                        // Cabeçalho retrátil: o botão Expandir/Recolher é o controle (teclado e leitor de tela)
                         RowLayout {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.smallSpacing
@@ -1471,18 +1471,12 @@ Item {
                                 font.bold: true
                                 font.pointSize: Kirigami.Theme.defaultFont.pointSize
                                 Layout.fillWidth: true
-
-                                MouseArea {
-                                    anchors.fill: parent
-                                    cursorShape: Qt.PointingHandCursor
-                                    onClicked: {
-                                        configRoot.isAddFormExpanded = !configRoot.isAddFormExpanded;
-                                    }
-                                }
                             }
 
                             PlasmaComponents3.Button {
                                 id: toggleAddFormBtn
+                                Accessible.name: I18n.tr("Add New Account")
+                                Accessible.description: configRoot.isAddFormExpanded ? I18n.tr("Collapse") : I18n.tr("Expand")
                                 text: configRoot.isAddFormExpanded ? I18n.tr("Collapse") : I18n.tr("Expand")
                                 icon.name: configRoot.isAddFormExpanded ? "arrow-up" : "arrow-down"
                                 display: QQC2.AbstractButton.TextBesideIcon
@@ -1613,14 +1607,6 @@ Item {
                                     font.bold: false
                                     color: Kirigami.Theme.disabledTextColor
                                     Layout.fillWidth: true
-
-                                    MouseArea {
-                                        anchors.fill: parent
-                                        cursorShape: Qt.PointingHandCursor
-                                        onClicked: {
-                                            configRoot.isAdvancedExpanded = !configRoot.isAdvancedExpanded;
-                                        }
-                                    }
                                 }
 
                                 PlasmaComponents3.Button {

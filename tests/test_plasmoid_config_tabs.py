@@ -211,3 +211,11 @@ def test_narrow_width_still_renders_every_tab(tmp_path):
     png_dir = os.environ.get("AIU_PNG_DIR", "")
     pngs = [f"{png_dir}/narrow_{t}.png" if png_dir else "" for t in TABS]
     config(tmp_path, size=(360, 560), pngs=pngs)
+
+
+def test_header_is_generic_and_add_account_header_is_keyboard_reachable():
+    assert 'I18n.tr("Configuration")' in CFG and "AI Account Management" not in CFG
+    blocks = tab_blocks()
+    assert "manage their lifecycle" in blocks["tabContas"] and "manage their lifecycle" not in CFG.split('objectName: "tabGeral"')[0]
+    assert "MouseArea" not in CFG  # nenhum controle só por mouse: o botão Expandir/Recolher é focável
+    assert 'Accessible.name: I18n.tr("Add New Account")' in blocks["tabContas"]
