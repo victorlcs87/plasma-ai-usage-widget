@@ -1003,7 +1003,7 @@ def find_matching_account(
     sobre metadados de identidade possivelmente defasados; (2) Identidade da Conta;
     (3) assinatura por email/token, so para Contas sem identidade conhecida.
     Nos provedores com Identidade da Conta, a propria `cred_file` nunca e uma Conta; os
-    demais (Codex/Gemini ate os tickets 19 e 20) mantem o comportamento anterior.
+    demais (Gemini ate o ticket 20) mantem o comportamento anterior.
     """
     prov = provider.lower().strip()
     target = cred_file.expanduser().resolve()
@@ -1171,7 +1171,7 @@ def _switch_system_account(
         match = find_matching_account(prov, accounts, sys_creds, sys_file)
         if match is not None:
             match_file = account_credential_file(prov, match)
-            if match_file != sys_file.resolve():  # conta legada no proprio caminho (Codex/Gemini)
+            if match_file != sys_file.resolve():  # conta legada no proprio caminho (Gemini)
                 try:
                     _store_into_profile(prov, sys_creds, sys_file, match_file)
                 except Exception as e:

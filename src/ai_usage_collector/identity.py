@@ -1,12 +1,13 @@
 """Identidade da Conta por provedor (ADR-0008).
 
 Interface unica para responder "qual e a identidade desta credencial?". Cada provedor
-registra um adaptador em `_ADAPTERS`; o Codex entra depois (ticket 19)
-apenas adicionando o seu adaptador, sem alterar quem consome esta interface.
+registra um adaptador em `_ADAPTERS`; Codex e Gemini ja registraram os seus,
+sem alterar quem consome esta interface.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import tempfile
@@ -117,6 +118,36 @@ def _claude_copy_state(src_cred_file: Path, dst_cred_file: Path) -> None:
     write_json_atomic(data, dst)
 
 
+# --- Codex -------------------------------------------------------------------
+# A identidade vive no proprio auth.json (`tokens.account_id`, ou o claim chatgpt_account_id do
+# id_token), logo nao ha arquivo de estado separado e a identidade nunca fica defasada.
+
+
+def _jwt_claims(token: Any) -> dict[str, Any]:
+    try:
+        payload = str(token).split(".")[1]
+        data = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _codex_read(cred_file: Path) -> Identity | None:
+    tokens = _load_json(cred_file).get("tokens")
+    if not isinstance(tokens, dict):
+        return None
+    claims = _jwt_claims(tokens.get("id_token"))
+    auth = claims.get("https://api.openai.com/auth")
+    account_id = tokens.get("account_id") or (auth.get("chatgpt_account_id") if isinstance(auth, dict) else None)
+    email = str(claims.get("email") or "").strip() or None
+    account_id = str(account_id or "").strip()
+    if account_id:
+        return Identity(account_id.lower(), email)
+    if email:
+        return Identity(f"email:{email.lower()}", email)
+    return None
+
+
 # --- Gemini ------------------------------------------------------------------
 # A identidade e o email Google da conta, no proprio `id_token` da credencial (arquivo
 # oauth_creds.json ou payload do chaveiro, plano ou aninhado em `token`); nao ha arquivo de estado.
@@ -137,6 +168,7 @@ def _gemini_read(cred_file: Path) -> Identity | None:
 
 _ADAPTERS: dict[str, _Adapter] = {
     "claude": _Adapter(read=_claude_read, state_file=_claude_state_file, copy_state=_claude_copy_state),
+    "codex": _Adapter(read=_codex_read, state_file=lambda _: None, copy_state=lambda *_: None),
     "gemini": _Adapter(
         read=_gemini_read,
         state_file=lambda cred_file: None,

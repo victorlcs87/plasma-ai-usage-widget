@@ -82,17 +82,7 @@ def get_default_config() -> dict[str, Any]:
         "agents": {
             # O caminho do sistema nunca e uma Conta (ADR-0008); Contas vem de captura/login.
             "claude": {"accounts": []},
-            "codex": {
-                "accounts": [
-                    {
-                        "id": "default",
-                        "label": "Codex (Padrão)",
-                        "source": "auto",
-                        "credential_path": "~/.codex/auth.json",
-                        "manual_invite_url": None,
-                    }
-                ]
-            },
+            "codex": {"accounts": []},
             "gemini": {"accounts": []},
         },
     }
