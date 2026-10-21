@@ -2,7 +2,8 @@
 # Smoke do plasmoide no runtime REAL do Plasma (plasmoidviewer) numa tela virtual, com HOME falso.
 # Nunca toca na sessão nem nos dados do usuário: xvfb-run + HOME/XDG_* temporários + sem Wayland/D-Bus de sessão.
 # Uso: scripts/plasmoidviewer-smoke.sh [diretório-de-PNGs]   (padrão: ./smoke-out)
-# Variáveis: LANGS="pt_BR en_US"  FORMS="horizontal vertical"  PYTHON=python3
+# Variáveis: PLASMOID_PACKAGE=/caminho/x.plasmoid (instala esse pacote publicado em vez da árvore do repo e exige os .mo nele)
+#            LANGS="pt_BR en_US"  FORMS="horizontal vertical"  PYTHON=python3
 # Sai com código != 0 se o log tiver erro de QML nosso (recursive rearrange, TypeError, ReferenceError, Unable to assign,
 # is not defined, Binding loop) vindo do plasmoide; ruído do próprio viewer é ignorado (allowlist abaixo).
 set -uo pipefail
@@ -21,7 +22,16 @@ export QT_QPA_PLATFORM=xcb QT_FORCE_STDERR_LOGGING=1
 unset WAYLAND_DISPLAY DBUS_SESSION_BUS_ADDRESS
 mkdir -p "$XDG_CACHE_HOME/plasma-ai-usage"
 PYTHONPATH="$REPO/src" "$PYTHON" "$REPO/tools/smoke_status.py" "$XDG_CACHE_HOME/plasma-ai-usage/status.json" || exit 2
-bash "$REPO/scripts/install-plasmoid.sh" >/dev/null 2>&1 || { echo "instalação falhou" >&2; exit 2; }
+if [ -n "${PLASMOID_PACKAGE:-}" ]; then
+    command -v kpackagetool6 >/dev/null || { echo "faltando: kpackagetool6" >&2; exit 2; }
+    kpackagetool6 -t Plasma/Applet -i "$PLASMOID_PACKAGE" >/dev/null 2>&1 || { echo "instalação do .plasmoid falhou" >&2; exit 2; }
+    for l in en pt_BR; do
+        [ -f "$XDG_DATA_HOME/plasma/plasmoids/org.kde.plasma.aiusage/contents/locale/$l/LC_MESSAGES/plasma_applet_org.kde.plasma.aiusage.mo" ] \
+            || { echo "pacote instalado sem o catálogo $l" >&2; exit 2; }
+    done
+else
+    bash "$REPO/scripts/install-plasmoid.sh" >/dev/null 2>&1 || { echo "instalação falhou" >&2; exit 2; }
+fi
 
 # Só contam linhas que citam arquivos do nosso plasmoide (org.kde.plasma.aiusage). O ruído do viewer fica de fora por
 # construção: desktopcontainment/isScreenUiReady, "Failed to register with host portal", "Failed to create wl_display",
