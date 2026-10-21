@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector.config import validate_base_url
 from ai_usage_collector.discovery import discover_claude
 
 CLAUDE_5H_SECONDS = 5 * 3600  # 18000s
@@ -356,14 +357,28 @@ def resolve_tier_capacity(account: dict[str, Any], health: dict[str, Any]) -> in
     return DEFAULT_FALLBACK_CAPACITY
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Nunca segue redirects: o Authorization nao pode ser reenviado a outro host."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
 def fetch_claude_usage_api(
     access_token: str,
     timeout: float = 3.0,
+    base_url: str = "https://api.anthropic.com",
 ) -> dict[str, Any] | None:
-    """Fetch official usage metrics from Anthropic API (https://api.anthropic.com/api/oauth/usage)."""
+    """Fetch official usage metrics from Anthropic API (or a custom gateway via `base_url`)."""
     if not access_token:
         return None
-    url = "https://api.anthropic.com/api/oauth/usage"
+    try:
+        url = f"{validate_base_url(base_url)}/api/oauth/usage"
+    except ValueError:
+        return None
     req = urllib.request.Request(
         url,
         headers={
@@ -374,7 +389,7 @@ def fetch_claude_usage_api(
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _NO_REDIRECT.open(req, timeout=timeout) as resp:
             status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
             if status in (200, 201):
                 body = resp.read()
@@ -392,6 +407,7 @@ def extract_claude_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
     now: datetime | None = None,
+    api: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
     """Extract metrics, calculate 5h and weekly windows, and format Claude status."""
     now_dt = now or datetime.now(timezone.utc)
@@ -512,14 +528,31 @@ def extract_claude_status(
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
+    native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+    native_api_fields: list[str] = []  # fatos realmente lidos da API: "duration", "release"
+    weekly_api_fields: list[str] = []
+
     # Attempt primary official API usage route
     api_data = None
-    if access_token and health.get("status") in ("valid", "session_expired"):
+    base_url = (api or {}).get("api_base_url")
+    if base_url:
+        # Gateway personalizado: so a chave configurada e enviada, nunca o token OAuth (ticket 38).
+        if api.get("api_key"):
+            api_data = fetch_claude_usage_api(api["api_key"], base_url=base_url)
+    elif access_token and health.get("status") in ("valid", "session_expired"):
         api_data = fetch_claude_usage_api(access_token)
 
     if api_data and (isinstance(api_data.get("five_hour"), dict) or isinstance(api_data.get("seven_day"), dict)):
         five_hour_info = api_data.get("five_hour") or {}
         seven_day_info = api_data.get("seven_day") or {}
+        # five_hour nulo pode ser so ociosidade: a janela de 5h nunca vira "api_missing" (nem removida/nova);
+        # a semanal sumir com a de 5h presente nao e explicavel por ociosidade.
+        if five_hour_info:
+            native_source = "api"
+        if seven_day_info:
+            weekly_source = "api"
+        elif five_hour_info:
+            weekly_source = "api_missing"
 
         # 5h window from official API
         util_5h = five_hour_info.get("utilization")
@@ -535,6 +568,7 @@ def extract_claude_status(
                 release_sec = r_sec
                 seconds_remaining = max(0, int(release_sec - now_sec))
                 release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+                native_api_fields.append("release")
 
         # Weekly window from official API
         util_7d = seven_day_info.get("utilization")
@@ -554,6 +588,7 @@ def extract_claude_status(
                 cycle_reset_sec = w_sec
                 weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
                 cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+                weekly_api_fields.append("release")
     else:
         # Fallback to local calculation
         weekly_usage_percentage = min(100.0, round((total_weekly_messages / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
@@ -562,6 +597,8 @@ def extract_claude_status(
 
     native_window = {
         "type": "5h",
+        "source": native_source,
+        "api_fields": native_api_fields,
         # The usage API has no duration field: it is deduced from the five_hour/seven_day bucket names
         "window_seconds": CLAUDE_5H_SECONDS,
         "total_capacity": total_capacity,
@@ -575,6 +612,8 @@ def extract_claude_status(
     }
 
     weekly_window = {
+        "source": weekly_source,
+        "api_fields": weekly_api_fields,
         "total_tokens_or_turns": None,
         "total_capacity": weekly_total_capacity,
         "used_capacity": weekly_used_capacity,

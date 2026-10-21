@@ -224,6 +224,9 @@ def validate_status_contract(data: Any) -> bool:
                 return False
             if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False
+            lc = acc.get("limit_changes")
+            if lc is not None and not (isinstance(lc, list) and all(isinstance(c, dict) for c in lc)):
+                return False
 
             qbm = (acc.get("usage_details") or {}).get("quota_by_model") if isinstance(acc.get("usage_details"), dict) else None
             if qbm is not None and not (

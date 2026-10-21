@@ -133,6 +133,24 @@ Kirigami.AbstractCard {
         switchDataSource.connectSource(cmd);
     }
 
+    function limitChangeText(changes) {
+        var now = Date.now();
+        changes = (changes || []).filter(function (c) {
+            return c && c.window && c.kind && !(c.expires_at && Date.parse(c.expires_at) <= now);
+        });
+        if (changes.length === 0) return "";
+        var names = { native: cardRoot.safeI18n("janela ativa"), weekly: cardRoot.safeI18n("janela semanal") };
+        var kinds = {
+            added: cardRoot.safeI18n("nova"),
+            removed: cardRoot.safeI18n("removida"),
+            duration: cardRoot.safeI18n("com duração diferente"),
+            early_reset: cardRoot.safeI18n("com reset antecipado")
+        };
+        return cardRoot.safeI18n("Limites mudaram: %1", changes.map(function (c) {
+            return (names[c.window] || c.window) + " " + (kinds[c.kind] || c.kind);
+        }).join(", "));
+    }
+
     function safeI18n(text, arg1, arg2, arg3) {
         if (typeof i18n === "function") {
             if (arg3 !== undefined) return i18n(text, arg1, arg2, arg3);
@@ -682,6 +700,17 @@ Kirigami.AbstractCard {
                     }
                 }
             }
+        }
+
+        // Nota de mudanca de limites (campo opcional "limit_changes", valida por 3 dias)
+        QQC2.Label {
+            Layout.fillWidth: true
+            visible: text.length > 0
+            text: cardRoot.limitChangeText(cardRoot.accountData?.limit_changes)
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            color: Kirigami.Theme.neutralTextColor
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
         }
 
         UsageDetails {

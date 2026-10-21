@@ -491,7 +491,7 @@ def test_fetch_claude_usage_api_success():
     mock_resp.__enter__.return_value = mock_resp
     mock_resp.read.return_value = fake_body
 
-    with patch("urllib.request.urlopen", return_value=mock_resp) as mock_urlopen:
+    with patch("urllib.request.OpenerDirector.open", return_value=mock_resp) as mock_urlopen:
         data = fetch_claude_usage_api("test-token")
         assert data is not None
         assert data["five_hour"]["utilization"] == 22.5
@@ -504,13 +504,13 @@ def test_fetch_claude_usage_api_success():
 
 
 def test_fetch_claude_usage_api_http_error():
-    with patch("urllib.request.urlopen", side_effect=urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)):
+    with patch("urllib.request.OpenerDirector.open", side_effect=urllib.error.HTTPError("url", 401, "Unauthorized", {}, None)):
         data = fetch_claude_usage_api("bad-token")
         assert data is None
 
 
 def test_fetch_claude_usage_api_timeout():
-    with patch("urllib.request.urlopen", side_effect=TimeoutError("Connection timed out")):
+    with patch("urllib.request.OpenerDirector.open", side_effect=TimeoutError("Connection timed out")):
         data = fetch_claude_usage_api("test-token")
         assert data is None
 
@@ -611,3 +611,44 @@ def test_extract_claude_status_fallback_when_api_fails(tmp_path):
     assert nw["window_seconds"] == 5 * 3600
     assert ww["window_seconds"] == 7 * 86400
 
+
+
+def test_claude_windows_carry_source_marker(tmp_path):
+    """A origem da leitura (api / api_missing / local) alimenta a nota de mudanca de limites."""
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {"accessToken": "sk-ant-live"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "claude", "claude_dir": str(claude_dir)}
+    five_only = {"five_hour": {"utilization": 1.0, "resets_at": "2026-10-20T18:00:00Z"}, "seven_day": None}
+
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=five_only):
+        res = extract_claude_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("api", "api_missing")
+
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=None):
+        res = extract_claude_status(account, now=now)
+    assert (res["native_window"]["source"], res["weekly_window"]["source"]) == ("local", "local")
+
+
+def test_claude_idle_null_five_hour_is_never_removed(tmp_path):
+    """five_hour nulo pode ser so ociosidade: a janela de 5h fica `local`; a semanal sumir e que e removida."""
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {"accessToken": "sk-ant-live"}}))
+    now = datetime(2026, 10, 20, 15, 0, 0, tzinfo=timezone.utc)
+    account = {"id": "c", "provider": "claude", "claude_dir": str(claude_dir)}
+    seven = {"utilization": 1.0, "resets_at": "2026-10-25T12:00:00Z"}
+    five = {"utilization": 1.0, "resets_at": "2026-10-20T18:00:00Z"}
+
+    def sources(api):
+        with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=api):
+            res = extract_claude_status(account, now=now)
+        return res["native_window"], res["weekly_window"]
+
+    nw, ww = sources({"five_hour": None, "seven_day": seven})
+    assert (nw["source"], ww["source"], ww["api_fields"]) == ("local", "api", ["release"])
+    nw, ww = sources({"five_hour": five, "seven_day": None})
+    assert (nw["source"], ww["source"]) == ("api", "api_missing")
+    nw, ww = sources({"five_hour": None, "seven_day": None})
+    assert (nw["source"], ww["source"]) == ("local", "local")
