@@ -587,3 +587,14 @@ def test_accent_has_at_least_3_to_1_on_the_pill_for_dark_system_accents_and_pres
     assert got[-1] == "#3daee9"  # já passa: não muda a cor padrão
     keep = js(tmp_path, '[PR.accents.map(function (a) { return a.color ? PR.onPill(parseInt(a.color.substr(1,2),16)/255, parseInt(a.color.substr(3,2),16)/255, parseInt(a.color.substr(5,2),16)/255, 3) : "" })]')[0]
     assert keep == [a if a else "" for a in [""] + ["#ff5fa2", "#ff5c5c", "#ff9f43", "#ffd84d", "#4cd964", "#2dd4bf", "#4da3ff", "#7b83ff", "#b57bff", "#f2f2f2", "#9aa0a6"]]  # predefinições intactas
+
+
+def test_history_summary_keeps_all_three_metrics_with_a_large_font(tmp_path):
+    """P2c: com fonte de 14 pt o resumo quebra em até 2 linhas em vez de cortar o "Mês" em silêncio."""
+    drive = """
+    Kirigami.Theme.smallFont = ({pointSize: 14}); wait(200)
+    var l = named('historySummary').filter(function (k) { return k.visible })[0]
+    obs('text', l.text); obs('trunc', l.truncated); obs('lines', l.lineCount)
+    """
+    out = popup(tmp_path, "histfont", drive=drive, size=(460, 900), cfg={})
+    assert "Month" in out["text"] and out["trunc"] is False and out["lines"] <= 2

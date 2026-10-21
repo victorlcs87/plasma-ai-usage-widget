@@ -58,9 +58,12 @@ ColumnLayout {
         }
 
         QQC2.Label {
+            objectName: "historySummary"
             Layout.fillWidth: true
             font.pointSize: Kirigami.Theme.smallFont.pointSize
             color: Presets.ui.muted
+            wrapMode: Text.WordWrap  // com fonte grande quebra em até 2 linhas: Hoje, Semana e Mês sempre à vista
+            maximumLineCount: 2
             elide: Text.ElideRight
             textFormat: Text.PlainText
             text: root.history
