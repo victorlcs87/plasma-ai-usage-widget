@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Layouts
 import QtQuick.Controls as QQC2
 import org.kde.kirigami as Kirigami
-import org.kde.plasma.plasma5support as Plasma5Support
 import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
@@ -57,44 +56,6 @@ Rectangle {
 
     Component.onCompleted: cardRoot.detailsOpen = cardRoot.isActive && cardRoot.hasDetails
 
-    Plasma5Support.DataSource {
-        id: switchDataSource
-        engine: "executable"
-        connectedSources: []
-        onNewData: (sourceName, data) => {
-            cardRoot.isSwitching = false;
-            var exitCode = data["exit code"];
-            var stdout = (data["stdout"] || "").trim();
-            var stderr = (data["stderr"] || "").trim();
-
-            if (exitCode === 0) {
-                cardRoot.switchError = "";
-                var jsonStart = stdout.indexOf("{");
-                if (jsonStart !== -1) {
-                    try {
-                        var parsed = JSON.parse(stdout.substring(jsonStart));
-                        if (cardRoot.plasmoidItem) {
-                            cardRoot.plasmoidItem.statusData = parsed;
-                        }
-                    } catch (e) {
-                        // ignore parse error and rely on loadStatus
-                    }
-                }
-                if (cardRoot.plasmoidItem && typeof cardRoot.plasmoidItem.loadStatus === "function") {
-                    cardRoot.plasmoidItem.loadStatus();
-                }
-                cardRoot.accountSwitched();
-            } else {
-                var errMsg = stderr || stdout || I18n.tr("Exit code %1", exitCode);
-                cardRoot.switchError = I18n.tr("Error switching account: %1", errMsg);
-                if (cardRoot.plasmoidItem) {
-                    cardRoot.plasmoidItem.lastError = cardRoot.switchError;
-                }
-            }
-            disconnectSource(sourceName);
-        }
-    }
-
     Timer {
         id: copiedFeedbackTimer
         interval: 2500
@@ -103,50 +64,15 @@ Rectangle {
         onTriggered: cardRoot.copiedFeedback = false
     }
 
-    Plasma5Support.DataSource {
-        id: clipboardDataSource
-        engine: "executable"
-        connectedSources: []
-        onNewData: (sourceName, data) => {
-            disconnectSource(sourceName);
-        }
-    }
-
-    TextInput {
-        id: clipHelper
-        visible: false
-    }
-
-    function shellQuote(str) {
-        if (str === null || str === undefined) return "''";
-        return "'" + String(str).replace(/'/g, "'\\''") + "'";
-    }
+    // Executor e área de transferência são únicos, do popup (FullRepresentation): o card só pede
+    property var runCollector: function (quotedArgs, onDone) {}
+    property var copyText: function (text) {}
 
     function copyToClipboard(text) {
         if (!text) return;
-        // 1. Cópia local Qt/QML
-        clipHelper.text = text;
-        clipHelper.selectAll();
-        clipHelper.copy();
-
-        // 2. Cópia segura para o clipboard do sistema (Wayland wl-copy ou X11 xclip)
-        // Passa o texto seguro entre aspas simples POSIX como argumento posicional $1 para bash
-        var safeText = shellQuote(text);
-        var cmd = "bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"$1\" | wl-copy; " +
-                  "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; fi' _ " +
-                  safeText;
-        clipboardDataSource.connectSource(cmd);
-
-        // 3. Feedback visual imediato
+        cardRoot.copyText(text);
         cardRoot.copiedFeedback = true;
         copiedFeedbackTimer.restart();
-    }
-
-    function buildCollectorCommand(quotedArgs) {
-        return "bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; " +
-               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; " +
-               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; " +
-               "else python3 -m ai_usage_collector \"$@\"; fi' _ " + (quotedArgs || "");
     }
 
     function switchAccount() {
@@ -161,13 +87,44 @@ Rectangle {
         cardRoot.isSwitching = true;
         cardRoot.switchError = "";
 
-        var safeArgs = shellQuote("--switch-account") + " " +
-                       shellQuote(provClean) + " " +
-                       shellQuote(accId) + " " +
-                       shellQuote("--status");
+        var safeArgs = Collector.shellQuote("--switch-account") + " " +
+                       Collector.shellQuote(provClean) + " " +
+                       Collector.shellQuote(accId) + " " +
+                       Collector.shellQuote("--status");
 
-        var cmd = cardRoot.buildCollectorCommand(safeArgs);
-        switchDataSource.connectSource(cmd);
+        cardRoot.runCollector(safeArgs, cardRoot.onSwitched);
+    }
+
+    function onSwitched(data) {
+        cardRoot.isSwitching = false;
+        var exitCode = data["exit code"];
+        var stdout = (data["stdout"] || "").trim();
+        var stderr = (data["stderr"] || "").trim();
+
+        if (exitCode === 0) {
+            cardRoot.switchError = "";
+            var jsonStart = stdout.indexOf("{");
+            if (jsonStart !== -1) {
+                try {
+                    var parsed = JSON.parse(stdout.substring(jsonStart));
+                    if (cardRoot.plasmoidItem) {
+                        cardRoot.plasmoidItem.statusData = parsed;
+                    }
+                } catch (e) {
+                    // ignore parse error and rely on loadStatus
+                }
+            }
+            if (cardRoot.plasmoidItem && typeof cardRoot.plasmoidItem.loadStatus === "function") {
+                cardRoot.plasmoidItem.loadStatus();
+            }
+            cardRoot.accountSwitched();
+        } else {
+            var errMsg = stderr || stdout || I18n.tr("Exit code %1", exitCode);
+            cardRoot.switchError = I18n.tr("Error switching account: %1", errMsg);
+            if (cardRoot.plasmoidItem) {
+                cardRoot.plasmoidItem.lastError = cardRoot.switchError;
+            }
+        }
     }
 
     function limitChangeText(changes) {

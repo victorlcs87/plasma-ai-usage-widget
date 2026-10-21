@@ -20,7 +20,7 @@ needs_qml = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binary
 TABS = ["tabGeral", "tabPainel", "tabPopup", "tabContas", "tabNotif"]
 # Inventário: cada cfg_* pertence a exatamente uma aba
 CFG_TAB = {
-    "tabGeral": {"refreshIntervalClaude", "refreshIntervalCodex", "refreshIntervalGemini"},
+    "tabGeral": {"refreshIntervalClaude", "refreshIntervalCodex", "refreshIntervalGemini", "collectorPath"},
     "tabPainel": {"providerOrder", "hiddenProviders", "accentPreset", "panelStyle", "panelMode", "ringCenter", "metricSize", "panelMargin",
                  "floatingNotch", "floatEdge", "floatSize", "floatSnap", "floatScreen", "floatOffsetTop", "floatOffsetBottom", "floatOffsetLeft", "floatOffsetRight"},
     "tabPopup": {"hoverOpen", "usageDisplay", "resetDisplay", "popupOpacity", "popupProviderOrder", "popupHiddenProviders"},
@@ -142,7 +142,7 @@ def config(tmp_path, drive="", size=(560, 640), pngs=None):
         (imp / f).write_text(body)
     run = tmp_path / "run"
     run.mkdir()
-    for f in ("Presets.js", "I18n.js", "PanelStyle.js", "ViewPrefs.js", "FloatingGeometry.js"):
+    for f in ("Presets.js", "I18n.js", "Collector.js", "PanelStyle.js", "ViewPrefs.js", "FloatingGeometry.js"):
         shutil.copy(UI_DIR / f, run / f)
     shutil.copy(UI_DIR / "configGeneral.qml", run / "ConfigGeneral.qml")
     (run / "h.qml").write_text(HARNESS % {"w": size[0], "h": size[1], "data": json.dumps(fixture()), "drive": drive, "pngs": json.dumps(pngs or [])})
@@ -203,7 +203,7 @@ def test_apply_and_account_actions_call_the_same_commands(tmp_path):
                    "'--set-update-config' '--update-check' 'on'", "'--reimport-orphan' 'claude' 'orf1'",
                    "'--delete-orphan' 'claude' 'orf1' '--confirm'", "'--rename-account' 'claude' 'p2'", "'--remove-account' 'claude' 'p2'"):
         assert needle in joined, needle
-    assert all(c.startswith("bash -c 'if command -v ai-usage-collector") for c in cmds if not c.startswith("cat "))  # cat = leitura do status (stub, não executa)
+    assert all(c.startswith("bash -c 'c=${1/#\\~/$HOME}; shift; if command -v ai-usage-collector") for c in cmds if not c.startswith("cat "))  # cat = leitura do status (stub, não executa)
 
 
 @needs_qml

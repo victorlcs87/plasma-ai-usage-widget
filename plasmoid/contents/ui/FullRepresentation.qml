@@ -4,10 +4,12 @@ import QtQuick.Controls as QQC2
 import QtQuick.Window
 import org.kde.kirigami as Kirigami
 import org.kde.plasma.plasmoid
+import org.kde.plasma.plasma5support as Plasma5Support
 import "Presets.js" as Presets
 import "NotchModel.js" as NotchModel
 import "ViewPrefs.js" as ViewPrefs
 import "I18n.js" as I18n
+import "Collector.js" as Collector
 
 // Popup: Notch escuro com um bloco por provedor (ordem e visibilidade configuráveis) e um card por Conta.
 // Ações de Conta no popup: Atualizar agora, Configurações (criar, renomear, remover, capturar, login e órfãos
@@ -28,6 +30,37 @@ Item {
     readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
     readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
     readonly property bool spinning: refreshing && isOpen && !reducedMotion  // ícone girando: nunca com o widget oculto
+
+    // Um único executor para todos os cards (Ativar no Sistema, Copiar Link); o resultado volta a quem pediu
+    Plasma5Support.DataSource {
+        id: exec
+        engine: "executable"
+        connectedSources: []
+        property var handlers: ({})
+        onNewData: (sourceName, data) => {
+            var done = handlers[sourceName];
+            delete handlers[sourceName];
+            disconnectSource(sourceName);
+            if (done) done(data);
+        }
+    }
+    TextInput { id: clipHelper; visible: false }
+
+    function runCollector(quotedArgs, onDone) {
+        var cmd = Collector.buildCollectorCommand(quotedArgs, Plasmoid.configuration.collectorPath);
+        exec.handlers[cmd] = onDone;
+        exec.connectSource(cmd);
+    }
+
+    function copyText(text) {
+        // Qt/QML local e, por garantia, o clipboard do sistema (wl-copy ou xclip), com o texto como argumento posicional
+        clipHelper.text = text;
+        clipHelper.selectAll();
+        clipHelper.copy();
+        exec.connectSource("bash -c 'if command -v wl-copy >/dev/null 2>&1; then printf \"%s\" \"$1\" | wl-copy; " +
+                           "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; fi' _ " +
+                           Collector.shellQuote(text));
+    }
 
     activeFocusOnTab: true
     // Mouse sobre o popup: não fecha por hover enquanto estiver nele
@@ -358,6 +391,8 @@ Item {
                                 Layout.fillWidth: true
                                 accountData: modelData
                                 plasmoidItem: fullRoot.plasmoidItem
+                                runCollector: fullRoot.runCollector
+                                copyText: fullRoot.copyText
                                 nowMs: fullRoot.nowMs
                                 prefs: fullRoot.prefs
                                 accent: fullRoot.accent

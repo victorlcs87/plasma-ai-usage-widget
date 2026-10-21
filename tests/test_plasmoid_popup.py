@@ -37,7 +37,7 @@ STUBS = {
 }
 
 FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
-         "DualRing.qml", "SessionMark.qml", "Presets.js", "I18n.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
+         "DualRing.qml", "SessionMark.qml", "Presets.js", "I18n.js", "Collector.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
 import QtQuick
@@ -179,11 +179,9 @@ def test_popup_renders_provider_blocks_and_cards(tmp_path):
     assert out["pct"].count("—") >= 3 and "0%" not in [p for p in out["pct"]]
 
 
-def collector(args):
-    return ("bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; "
-            "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; "
-            "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; "
-            "else python3 -m ai_usage_collector \"$@\"; fi' _ " + args)
+def collector(cmds, args):
+    """Comando do coletor (Collector.js) com este `args`; o caminho configurado (collectorPath) vazio vai como $1."""
+    return any(c.startswith("bash -c 'c=") and c.endswith(" _ '' " + args) for c in cmds)
 
 
 def test_popup_account_actions_call_the_same_commands(tmp_path):
@@ -201,7 +199,7 @@ def test_popup_account_actions_call_the_same_commands(tmp_path):
     assert "refresh" in out["calls"] and out["triggered"] == ["configure"]
     assert out["switchAccount"] and out["busy"] is False
     evil = "'x'\\''; touch /tmp/pwn; '\\'''"
-    assert collector(f"'--switch-account' 'claude' {evil} '--status'") in out["cmds"]
+    assert collector(out["cmds"], f"'--switch-account' 'claude' {evil} '--status'")
     copy = next(c for c in out["cmds"] if "wl-copy" in c)
     assert copy.endswith(" _ 'https://claude.ai/invite/abc'") and "printf" in copy
     assert out["release"]
@@ -358,9 +356,9 @@ def test_error_banner_and_background_opacity_render(tmp_path):
 
 def js(tmp_path, expr):
     """Executa JS puro dos módulos (ViewPrefs/NotchModel) no qml6."""
-    for f in ("ViewPrefs.js", "NotchModel.js", "Presets.js", "PanelStyle.js", "I18n.js"):
+    for f in ("ViewPrefs.js", "NotchModel.js", "Presets.js", "PanelStyle.js", "I18n.js", "Collector.js"):
         (tmp_path / f).write_text((UI_DIR / f).read_text())
-    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nimport "I18n.js" as I18n\nItem { Timer { interval: 50; running: true; onTriggered: { '
+    (tmp_path / "t.qml").write_text('import QtQuick\nimport "ViewPrefs.js" as VP\nimport "NotchModel.js" as NM\nimport "I18n.js" as I18n\nimport "Collector.js" as CJ\nItem { Timer { interval: 50; running: true; onTriggered: { '
                                     'var tr = I18n.tr; '
                                     'console.log("RESULT " + JSON.stringify(EXPR)); Qt.quit() } } }'.replace("EXPR", expr))
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -539,3 +537,42 @@ def test_provider_header_width_does_not_depend_on_its_own_block():
     """Causa do 'recursive rearrange' no Plasma real: Layout.maximumWidth ligado a block.width (do próprio layout)."""
     full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
     assert "block.width" not in full and "flick.width * 0.5" in full
+
+
+def test_collector_command_resolution_in_shell(tmp_path):
+    """Collector.js executado de verdade no bash, com HOME falso: PATH, ~/.local/bin, pipx e collectorPath (último recurso)."""
+    (tmp_path / "js").mkdir()
+
+    def run(home, path_cfg, args="'--version'"):
+        cmd = js(tmp_path / "js", f"CJ.buildCollectorCommand({json.dumps(args)}, {json.dumps(path_cfg)})")
+        env = {"HOME": str(home), "PATH": "/usr/bin:/bin", "PYTHONPATH": str(UI_DIR.parent.parent.parent / "src")}
+        return subprocess.run(["bash", "-c", cmd], capture_output=True, text=True, env=env)
+
+    def fake(path, tag):
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(f"#!/bin/sh\necho {tag} \"$@\"\n")
+        path.chmod(0o755)
+
+    home = tmp_path / "home"
+    custom = home / "meu" / "ai-usage-collector"
+    fake(custom, "custom")
+    assert run(home, "~/meu/ai-usage-collector").stdout.strip() == "custom --version"          # ~ expandido, último recurso
+    fake(home / ".local" / "bin" / "ai-usage-collector", "local")
+    assert run(home, str(custom)).stdout.strip() == "local --version"                         # ~/.local/bin vem antes do configurado
+    home2 = tmp_path / "home2"
+    fake(home2 / ".local/share/pipx/venvs/plasma-ai-usage-collector/bin/ai-usage-collector", "pipx")
+    assert run(home2, "").stdout.strip() == "pipx --version"
+    res = run(tmp_path / "home3", "")                                                        # nada instalado: python3 -m
+    assert res.returncode == 0 and res.stdout.startswith("ai-usage-collector ")
+    res = run(tmp_path / "home3", "/nao/existe")                                             # configurado inexistente: não quebra
+    assert res.returncode == 0
+    # o caminho vai como argumento posicional: nunca interpretado pelo shell
+    pwn = tmp_path / "pwn"
+    assert run(tmp_path / "home3", f"x'; touch {pwn}; '").returncode == 0 and not pwn.exists()
+
+
+def test_session_command_prefers_light_entrypoint_then_collector_then_configured_path(tmp_path):
+    cmd = js(tmp_path, 'CJ.buildSessionCommand("/opt/x/ai-usage-collector")')
+    order = ["command -v ai-usage-session-state", "ai-usage-collector --session-state", '"$c" --session-state', "python3 -m ai_usage_collector --session-state"]
+    assert [cmd.index(o) for o in order] == sorted(cmd.index(o) for o in order)
+    assert cmd.endswith(" _ '/opt/x/ai-usage-collector'") and "repositorios" not in cmd

@@ -204,11 +204,11 @@ def test_account_card_copy_invite_and_clipboard_actions():
     """Verify that AccountCard.qml supports clipboard copy with visual feedback."""
     card_path = UI_DIR / "AccountCard.qml"
     content = card_path.read_text(encoding="utf-8")
+    full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")  # executor e clipboard únicos do popup
 
     # Clipboard function and utilities
-    assert "copyToClipboard" in content
-    assert "wl-copy" in content
-    assert "xclip" in content
+    assert "copyToClipboard" in content and "copyText" in content
+    assert "wl-copy" in full and "xclip" in full and "wl-copy" not in content
 
     # Visual feedback
     assert "copiedFeedback" in content
@@ -370,21 +370,7 @@ def test_main_qml_interactive_contracts():
     assert "loadStatus" in content
 
 
-def test_build_collector_command_resolution_in_shell():
-    """Verify that the shell command construct in QML executes successfully."""
-    venv_bin = REPO_ROOT / ".venv" / "bin" / "ai-usage-collector"
-    assert venv_bin.is_file() and os.access(venv_bin, os.X_OK)
-
-    args = "'--version'"
-    bash_cmd = (
-        f"bash -c 'if command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector \"$@\"; "
-        f"elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" \"$@\"; "
-        f"elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" \"$@\"; "
-        f"else python3 -m ai_usage_collector \"$@\"; fi' _ {args}"
-    )
-    res = subprocess.run(["bash", "-c", bash_cmd], capture_output=True, text=True, check=False)
-    assert res.returncode == 0
-    assert "ai-usage-collector" in res.stdout
+# a resolução do comando do coletor no shell é testada com HOME falso em test_plasmoid_popup.py (test_collector_command_resolution_in_shell)
 
 
 def test_account_card_weekly_meter_reactive_bindings():
@@ -706,9 +692,8 @@ def test_account_card_switch_account_button_and_contracts():
     assert "isSwitching" in content
     assert "enabled: !cardRoot.isSwitching" in content
 
-    # 4. Asynchronous DataSource execution and buildCollectorCommand
-    assert "switchDataSource" in content
-    assert "buildCollectorCommand" in content
+    # 4. Execução assíncrona pelo executor único do popup (sem DataSource por card)
+    assert "runCollector" in content and "DataSource" not in content
     assert "switchAccount" in content
     assert "--switch-account" in content
     assert "--status" in content
@@ -726,15 +711,15 @@ def test_account_card_switch_account_shell_injection_resilience(tmp_path: Path):
     # Locate switchAccount function
     func_start = content.find("function switchAccount()")
     assert func_start != -1, "switchAccount function not found in AccountCard.qml"
-    func_end = content.find("}", content.find("switchDataSource.connectSource", func_start))
+    func_end = content.find("}", content.find("cardRoot.runCollector(", func_start))
     assert func_end != -1
     func_code = content[func_start:func_end]
 
     # Verify shellQuote is applied to all positional arguments
-    assert 'shellQuote("--switch-account")' in func_code
-    assert 'shellQuote(provClean)' in func_code
-    assert 'shellQuote(accId)' in func_code
-    assert 'shellQuote("--status")' in func_code
+    assert 'Collector.shellQuote("--switch-account")' in func_code
+    assert 'Collector.shellQuote(provClean)' in func_code
+    assert 'Collector.shellQuote(accId)' in func_code
+    assert 'Collector.shellQuote("--status")' in func_code
 
     # Test malicious command injection simulation
     pwned_marker = tmp_path / "pwned_switch.txt"

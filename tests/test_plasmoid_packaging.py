@@ -356,7 +356,7 @@ def test_session_state_config_and_ui_wiring():
     assert xml.split('name="sessionState"')[1].split("</entry>")[0].count("<default>false</default>") == 1
     assert xml.split('name="sessionSound"')[1].split("</entry>")[0].count("<default>false</default>") == 1  # som desligado por padrao
     main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
-    assert "ai-usage-session-state" in main and "interval: 5000" in main and "pillHovered" in main and "sessionSound === true" in main
+    assert "ai-usage-session-state" in (UI_DIR / "Collector.js").read_text(encoding="utf-8") and "interval: 5000" in main and "pillHovered" in main and "sessionSound === true" in main
     ring = (UI_DIR / "SessionMark.qml").read_text(encoding="utf-8")  # compartilhado por todos os estilos
     assert "reducedMotion" in ring and "!mark.reducedMotion" in ring and "#f5a524" in ring
 
@@ -376,8 +376,8 @@ def test_session_polling_and_attention_respect_idle_hidden_and_defaults():
     fn = main[main.index("function sessionAttention"):main.index("id: soundDataSource")]
     assert "!root.idleHidden" in fn and "sessionAutoOpen === true" in fn
     # instalacao antiga (sem o entrypoint leve): cai em `ai-usage-collector --session-state` antes do python3 -m
-    cmd = main[main.index("function buildSessionCommand"):main.index("// Executor assíncrono")]
-    assert cmd.index("ai-usage-collector --session-state") < cmd.index("python3 -m ai_usage_collector --session-state")
+    cmd = (UI_DIR / "Collector.js").read_text(encoding="utf-8")
+    assert "repositorios" not in cmd  # nenhum caminho pessoal no código
     assert "sessionFailed" in main
     xml = (PLASMOID_DIR / "contents" / "config" / "main.xml").read_text(encoding="utf-8")
     assert xml.split('name="sessionAutoOpen"')[1].split("</entry>")[0].count("<default>false</default>") == 1
