@@ -52,6 +52,13 @@ ColumnLayout {
         return (p === null || p === undefined) ? "—" : Math.round(p) + "%";
     }
 
+    function modelReset(iso) {
+        if (!iso) return "";
+        var d = new Date(iso);
+        if (isNaN(d.getTime())) return "";
+        return "  ·  " + tr("reinicia %1", Qt.formatDateTime(d, "dd/MM HH:mm"));
+    }
+
     function fmtTokens(n) {
         if (n >= 1e6) return (n / 1e6).toFixed(1) + "M";
         if (n >= 1e3) return (n / 1e3).toFixed(1) + "k";
@@ -59,15 +66,26 @@ ColumnLayout {
     }
 
     QQC2.AbstractButton {
+        id: toggle
         visible: detailsRoot.models.length > 0
         Layout.fillWidth: true
         text: detailsRoot.tr("Cota por modelo (%1)", detailsRoot.models.length)
-        onClicked: detailsRoot.modelsExpanded = !detailsRoot.modelsExpanded
+        checkable: true
+        checked: detailsRoot.modelsExpanded
+        onToggled: detailsRoot.modelsExpanded = checked
         Accessible.role: Accessible.Button
         Accessible.name: text
-        Accessible.description: detailsRoot.modelsExpanded ? detailsRoot.tr("Recolher") : detailsRoot.tr("Expandir")
+        Accessible.checkable: true
+        Accessible.checked: checked
+        Accessible.expanded: checked
+        background: Rectangle {
+            radius: 3
+            color: Kirigami.Theme.highlightColor
+            opacity: toggle.visualFocus ? 0.35 : (toggle.hovered ? 0.18 : 0)
+        }
         contentItem: QQC2.Label {
-            text: (detailsRoot.modelsExpanded ? "▾ " : "▸ ") + parent.text
+            text: (detailsRoot.modelsExpanded ? "▾ " : "▸ ") + toggle.text
+            textFormat: Text.PlainText
             font.pointSize: Kirigami.Theme.smallFont.pointSize
             opacity: 0.8
             elide: Text.ElideRight
@@ -76,15 +94,25 @@ ColumnLayout {
 
     Repeater {
         model: detailsRoot.modelsExpanded ? detailsRoot.models : []
-        delegate: QQC2.Label {
+        delegate: RowLayout {
             required property var modelData
             Layout.fillWidth: true
             Layout.leftMargin: Kirigami.Units.smallSpacing
-            text: modelData.model + "  " + detailsRoot.modelPct(modelData.usage_percentage)
-                + (modelData.reset_time ? "  ·  " + detailsRoot.tr("reinicia %1", Qt.formatDateTime(new Date(modelData.reset_time), "dd/MM HH:mm")) : "")
-            elide: Text.ElideRight
-            font.pointSize: Kirigami.Theme.smallFont.pointSize
-            opacity: 0.8
+            spacing: Kirigami.Units.smallSpacing
+            QQC2.Label {
+                Layout.fillWidth: true
+                text: modelData.model + (modelData.window ? " (" + modelData.window + ")" : "")
+                textFormat: Text.PlainText
+                elide: Text.ElideRight
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                opacity: 0.8
+            }
+            QQC2.Label {
+                text: detailsRoot.modelPct(modelData.usage_percentage) + detailsRoot.modelReset(modelData.reset_time)
+                textFormat: Text.PlainText
+                font.pointSize: Kirigami.Theme.smallFont.pointSize
+                opacity: 0.8
+            }
         }
     }
 
@@ -94,6 +122,7 @@ ColumnLayout {
             required property string modelData
             Layout.fillWidth: true
             text: modelData
+            textFormat: Text.PlainText
             elide: Text.ElideRight
             font.pointSize: Kirigami.Theme.smallFont.pointSize
             opacity: 0.8

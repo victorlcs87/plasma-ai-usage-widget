@@ -225,7 +225,7 @@ def test_collector_exposes_gemini_quota_by_model(tmp_path, monkeypatch):
     assert validate_status_contract(status)
     acc = status["agents"]["gemini"]["accounts"][0]
     assert acc["usage_details"]["quota_by_model"] == [
-        {"model": "gemini-2.5-pro", "usage_percentage": 60.0, "reset_time": None},
-        {"model": "gemini-flash", "usage_percentage": None, "reset_time": None},
+        {"model": "gemini-2.5-pro", "window": None, "usage_percentage": 60.0, "reset_time": None},
+        {"model": "gemini-flash", "window": None, "usage_percentage": None, "reset_time": None},
     ]
     assert json.loads(cache_path.read_text())["agents"]["gemini"]["accounts"][0]["usage_details"]

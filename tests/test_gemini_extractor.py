@@ -767,10 +767,10 @@ def test_gemini_quota_by_model_from_quota_summary(tmp_path):
     res = _status_with_api(_gemini_account(tmp_path), api)
     models = res["usage_details"]["quota_by_model"]
     assert models == [
-        {"model": "gemini-2.5-pro", "usage_percentage": 75.0, "reset_time": "2026-10-20T18:00:00+00:00"},
-        {"model": "gemini-2.5-flash", "usage_percentage": 0.0, "reset_time": None},
+        {"model": "gemini-2.5-pro", "window": None, "usage_percentage": 75.0, "reset_time": "2026-10-20T18:00:00+00:00"},
+        {"model": "gemini-2.5-flash", "window": None, "usage_percentage": 0.0, "reset_time": None},
         # Sem remainingFraction: sem dado (None), nunca 0% falso
-        {"model": "gemini-sem-dado", "usage_percentage": None, "reset_time": None},
+        {"model": "gemini-sem-dado", "window": None, "usage_percentage": None, "reset_time": None},
     ]
     # janelas agregadas intactas
     assert res["native_window"]["usage_percentage"] == 50.0
@@ -787,6 +787,46 @@ def test_gemini_quota_by_model_ignores_malformed_fraction(tmp_path):
         {"model": "m1", "remainingFraction": "abc"},
         {"model": "m2", "remainingFraction": True},
         {"model": "m3", "remainingFraction": 1.5},
+        {"model": "m4", "remainingFraction": float("nan")},
     ]}
     models = _status_with_api(_gemini_account(tmp_path), api)["usage_details"]["quota_by_model"]
-    assert [m["usage_percentage"] for m in models] == [None, None, 0.0]
+    assert [m["usage_percentage"] for m in models] == [None, None, None, None]
+
+
+def test_gemini_absurd_reset_time_does_not_crash(tmp_path):
+    account = _gemini_account(tmp_path)
+    for bad in (1e30, 10**30, "1e30", float("inf")):
+        api = {"buckets": [
+            {"bucketId": "gemini-5h", "remainingFraction": 0.5, "resetTime": bad},
+            {"bucketId": "gemini-weekly", "remainingFraction": 0.5, "resetTime": bad},
+            {"modelId": "m", "remainingFraction": 0.5, "resetTime": bad},
+        ]}
+        res = _status_with_api(account, api)
+        assert res["usage_details"]["quota_by_model"][0]["reset_time"] is None
+        assert res["native_window"]["usage_percentage"] == 50.0
+
+
+def test_gemini_quota_by_model_per_window_and_name_aliases(tmp_path):
+    api = {"buckets": [
+        {"modelName": "pro", "window": "5h", "remainingFraction": 0.5},
+        {"modelName": "pro", "window": "weekly", "remainingFraction": 0.1},
+        {"modelName": "pro", "window": "weekly", "remainingFraction": 0.9},
+        {"displayName": "Flash", "remainingFraction": 0.2},
+    ]}
+    m = _status_with_api(_gemini_account(tmp_path), api)["usage_details"]["quota_by_model"]
+    assert [(x["model"], x["window"], x["usage_percentage"]) for x in m] == [
+        ("pro", "5h", 50.0), ("pro", "weekly", 90.0), ("Flash", None, 80.0)]
+
+
+def test_contract_validates_quota_by_model():
+    from ai_usage_collector.contract import build_agent_account_status, build_empty_status_contract
+    def ok(q):
+        st = build_empty_status_contract()
+        st["agents"]["gemini"]["accounts"] = [build_agent_account_status(
+            "gemini", "g", "G", "auto", {"status": "valid"}, usage_details={"quota_by_model": q})]
+        return validate_status_contract(st)
+    assert ok([{"model": "m", "usage_percentage": None}, {"model": "n", "usage_percentage": 3.5}])
+    assert not ok("x")
+    assert not ok([{"model": 1, "usage_percentage": 1}])
+    assert not ok([{"model": "m", "usage_percentage": "1"}])
+    assert not ok(["m"])

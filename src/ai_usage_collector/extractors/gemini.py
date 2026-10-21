@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import sqlite3
 import subprocess
 import urllib.error
@@ -33,6 +34,9 @@ DEFAULT_GEMINI_CAPACITY_BY_TIER: dict[str, int] = {
 DEFAULT_GEMINI_FALLBACK_CAPACITY = 100
 
 
+_MAX_EPOCH_MS = 253402300799 * 1000  # 9999-12-31 in ms
+
+
 def parse_timestamp(ts: Any) -> float | None:
     """Parse various timestamp formats into UTC epoch seconds."""
     if ts is None:
@@ -40,11 +44,10 @@ def parse_timestamp(ts: Any) -> float | None:
 
     if isinstance(ts, (int, float)):
         # If timestamp is in milliseconds (greater than ~1973 in seconds)
-        if ts > 1e11:
-            return float(ts) / 1000.0
-        if ts > 0:
-            return float(ts)
-        return None
+        # Non-finite or beyond year 9999 would overflow datetime.fromtimestamp: treat as unknown
+        if not (0 < ts <= _MAX_EPOCH_MS):
+            return None
+        return float(ts) / 1000.0 if ts > 1e11 else float(ts)
 
     if isinstance(ts, str):
         ts = ts.strip()
@@ -435,9 +438,13 @@ def parse_gemini_quota_buckets(
 
 
 def parse_gemini_model_quotas(data: Any) -> list[dict[str, Any]]:
-    """Per-model quota entries (buckets carrying "modelId"/"model") from the quota summary.
+    """Per-model quota entries from the quota summary, one per (model, window).
 
-    usage_percentage is None when the model has no usable remainingFraction: never a fake 0%.
+    ASSUMPTION: the real per-model payload is undocumented. Buckets carrying a model name under
+    "modelId"/"model"/"modelName"/"displayName" are taken as per-model, with the same shape as the
+    aggregate buckets (bucketId/window, remainingFraction, resetTime). Adjust if a real sample differs.
+    usage_percentage is None when remainingFraction is missing, non-finite or outside [0, 1]:
+    never a fake 0%.
     """
     if not isinstance(data, dict):
         return []
@@ -449,21 +456,23 @@ def parse_gemini_model_quotas(data: Any) -> list[dict[str, Any]]:
         if isinstance(group, dict) and isinstance(group.get("buckets"), list):
             buckets += group["buckets"]
     out: list[dict[str, Any]] = []
-    seen: set[str] = set()
+    seen: set[tuple[str, str | None]] = set()
     for b in buckets:
         if not isinstance(b, dict):
             continue
-        model = b.get("modelId") or b.get("model")
-        if not isinstance(model, str) or not model or model in seen:
+        model = next((b[k] for k in ("modelId", "model", "modelName", "displayName") if isinstance(b.get(k), str) and b[k]), None)
+        window = b.get("window") if isinstance(b.get("window"), str) and b["window"] else None
+        if model is None or (model, window) in seen:
             continue
-        seen.add(model)
+        seen.add((model, window))
         rem = b.get("remainingFraction")
         pct = None
-        if isinstance(rem, (int, float)) and not isinstance(rem, bool) and rem == rem:
-            pct = round((1.0 - min(1.0, max(0.0, float(rem)))) * 100.0, 1)
+        if isinstance(rem, (int, float)) and not isinstance(rem, bool) and math.isfinite(rem) and 0 <= rem <= 1:
+            pct = round((1.0 - float(rem)) * 100.0, 1)
         reset = parse_timestamp(b.get("resetTime") or b.get("resets_at"))
         out.append({
             "model": model,
+            "window": window,
             "usage_percentage": pct,
             "reset_time": datetime.fromtimestamp(reset, tz=timezone.utc).isoformat() if reset is not None else None,
         })

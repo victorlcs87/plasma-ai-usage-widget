@@ -225,6 +225,18 @@ def validate_status_contract(data: Any) -> bool:
             if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False
 
+            qbm = (acc.get("usage_details") or {}).get("quota_by_model") if isinstance(acc.get("usage_details"), dict) else None
+            if qbm is not None and not (
+                isinstance(qbm, list)
+                and all(
+                    isinstance(m, dict)
+                    and isinstance(m.get("model"), str)
+                    and (m.get("usage_percentage") is None or (isinstance(m["usage_percentage"], (int, float)) and not isinstance(m["usage_percentage"], bool)))
+                    for m in qbm
+                )
+            ):
+                return False
+
             ww = acc.get("weekly_window")
             if not isinstance(ww, dict):
                 return False
