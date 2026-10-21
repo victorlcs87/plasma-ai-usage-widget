@@ -293,7 +293,7 @@ Item {
 
             ColumnLayout {
                 id: list
-                width: flick.width - Kirigami.Units.smallSpacing * 2
+                width: flick.width - Kirigami.Units.gridUnit  // reserva fixa para a barra de rolagem (não muda a largura ao aparecer)
                 spacing: Kirigami.Units.smallSpacing * 1.5
 
                 Repeater {
@@ -330,7 +330,7 @@ Item {
                             }
                             QQC2.Label {
                                 Accessible.ignored: true
-                                Layout.maximumWidth: block.width * 0.5
+                                Layout.maximumWidth: flick.width * 0.5  // da Flickable (estável), nunca do bloco: block.width dependia do próprio layout (laço de rearranjo)
                                 text: block.modelData.name
                                 textFormat: Text.PlainText
                                 elide: Text.ElideRight

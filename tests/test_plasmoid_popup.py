@@ -533,3 +533,9 @@ def test_zero_remaining_keeps_a_level_marker_and_long_provider_names_elide(tmp_p
     """
     out = popup(tmp_path, "zero_remaining", data=data, cfg={"usageDisplay": "remaining"}, drive=drive, size=(460, 1400))
     assert "0%" in out["pcts"] and "\u25A0" in out["texts"] and out["elided"] is True  # 0% restante: forma e palavra do nível seguem
+
+
+def test_provider_header_width_does_not_depend_on_its_own_block():
+    """Causa do 'recursive rearrange' no Plasma real: Layout.maximumWidth ligado a block.width (do próprio layout)."""
+    full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
+    assert "block.width" not in full and "flick.width * 0.5" in full
