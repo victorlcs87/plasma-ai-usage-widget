@@ -235,3 +235,49 @@ def test_collector_never_writes_renewed_token_to_disk(env, monkeypatch):
     env.run("--status")
     assert (pa / "oauth_creds.json").read_bytes() == before
     assert not env.sys_creds.exists()
+
+
+def test_rotated_keyring_without_id_token_does_not_take_identity_of_stale_file(env):
+    pa = env.profile("a", _creds("a@x.com", "tok-a", "ref-a"))
+    pb = env.profile("b", _creds("b@x.com", "tok-b", "ref-b"))
+    env.save_cfg([_acc("a", pa), _acc("b", pb)])
+    env.system(_creds("b@x.com", "tok-b-stale", "ref-b-stale", PAST_MS),
+               keyring_creds={"access_token": "tok-a-rot", "refresh_token": "ref-a-rot", "expiry_date": FUTURE_MS})
+    before = (pb / "oauth_creds.json").read_bytes()
+
+    env.run("--switch-account", "gemini", "b")
+    assert (pb / "oauth_creds.json").read_bytes() == before
+
+
+def test_keyring_store_preserves_nested_format(env):
+    pa = env.profile("a", _creds("a@x.com", "tok-a", "ref-a"))
+    pb = env.profile("b", _creds("b@x.com", "tok-b", "ref-b"))
+    env.save_cfg([_acc("a", pa), _acc("b", pb)])
+    env.system(keyring_creds={"serverName": "antigravity", "token": _creds("a@x.com", "tok-a", "ref-a")})
+
+    assert env.run("--switch-account", "gemini", "b") == 0
+    stored = json.loads(env.kr.payload)
+    assert stored["serverName"] == "antigravity"
+    assert stored["token"]["access_token"] == "tok-b"
+    assert "access_token" not in stored
+
+
+def test_keyring_untouched_when_path_override_is_active(env, monkeypatch, tmp_path):
+    pb = env.profile("b", _creds("b@x.com", "tok-b", "ref-b"))
+    env.save_cfg([_acc("b", pb)])
+    monkeypatch.setenv("GEMINI_CONFIG_DIR", str(tmp_path / "custom"))
+
+    assert env.run("--switch-account", "gemini", "b") == 0
+    assert env.kr.payload is None
+    assert _read(tmp_path / "custom" / "oauth_creds.json")["access_token"] == "tok-b"
+
+
+def test_failed_keyring_store_error_is_actionable_and_leaks_nothing(env, capsys):
+    pb = env.profile("b", _creds("b@x.com", "tok-b", "ref-b"))
+    env.save_cfg([_acc("b", pb)])
+    env.kr.fail_store = True
+    capsys.readouterr()
+
+    assert env.run("--switch-account", "gemini", "b") == 1
+    err = capsys.readouterr().err
+    assert "Secret Service" in err and "tok-b" not in err

@@ -376,7 +376,7 @@ def _capture_current_session(
         return False, err_msg, None
 
     sys_file = get_system_credential_file(prov)
-    sys_identity = creds_identity(prov, creds_data) or credential_identity(prov, sys_file)
+    sys_identity = _system_identity(prov, creds_data, sys_file)
     if sys_identity and sys_identity.email:
         identity = sys_identity.email
 
@@ -1020,7 +1020,7 @@ def find_matching_account(
             if sig.get(key) and sig[key] == acc_sig.get(key):
                 return acc
 
-    ident = creds_identity(prov, creds) or credential_identity(prov, target)  # chaveiro prevalece
+    ident = _system_identity(prov, creds, target)
     if ident:
         for acc, f, _ in candidates:
             acc_ident = credential_identity(prov, f)
@@ -1033,6 +1033,14 @@ def find_matching_account(
         if sig and _signatures_match(sig, acc_sig):
             return acc
     return None
+
+
+def _system_identity(prov: str, creds: dict[str, Any] | None, cred_file: Path | None) -> Any:
+    """Identidade das creds; o arquivo so e fallback se as creds vieram dele (nao do chaveiro defasado)."""
+    ident = creds_identity(prov, creds)
+    if ident or (creds is not None and creds != _read_json_dict(cred_file)):
+        return ident
+    return credential_identity(prov, cred_file)
 
 
 def _expires_at(creds: dict[str, Any] | None) -> float:
@@ -1192,7 +1200,9 @@ def _switch_system_account(
     try:
         save_secure_json(target_creds, sys_file, prefix=f"{prov}_sys_")
         copy_identity_state(prov, source_file, sys_file)
-        if prov == "gemini":
+        if prov == "gemini" and not (
+            os.environ.get("GEMINI_CREDENTIALS_PATH") or os.environ.get("GEMINI_CONFIG_DIR")
+        ):
             _store_gemini_keyring(target_creds)
     except Exception as e:
         failed = _restore(snapshot)
@@ -1207,8 +1217,23 @@ def _switch_system_account(
 
 
 def _store_gemini_keyring(creds: dict[str, Any]) -> None:
-    """Grava a credencial no chaveiro (secret-tool). Sem secret-tool instalado nao ha chaveiro a atualizar."""
+    """Grava a credencial no chaveiro (secret-tool), mantendo o formato anterior (plano ou aninhado em `token`).
+
+    Sem secret-tool instalado nao ha chaveiro a atualizar.
+    """
     try:
+        old = subprocess.run(
+            ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+            capture_output=True, text=True, timeout=3.0, check=False,
+        )
+        try:
+            prev = json.loads(old.stdout) if old.returncode == 0 else None
+        except ValueError:
+            prev = None
+        if isinstance(prev, dict) and isinstance(prev.get("token"), dict):
+            outer = {k: v for k, v in prev.items() if k != "token"}
+            creds = {**{k: creds.get(k, v) for k, v in outer.items()},
+                     "token": {k: v for k, v in creds.items() if k not in outer}}
         proc = subprocess.run(
             ["secret-tool", "store", "--label=Antigravity Token", "service", "gemini", "username", "antigravity"],
             input=json.dumps(creds, ensure_ascii=False),
@@ -1220,12 +1245,15 @@ def _store_gemini_keyring(creds: dict[str, Any]) -> None:
     except FileNotFoundError:
         return
     if proc.returncode != 0:
-        raise RuntimeError("secret-tool não conseguiu gravar a credencial no chaveiro.")
+        raise RuntimeError(
+            "secret-tool não conseguiu gravar a credencial no chaveiro. Verifique se um serviço "
+            "Secret Service (gnome-keyring ou KWallet) está ativo e desbloqueado e tente novamente."
+        )
 
 
 def _auto_label(provider: str, cred_file: Path | None, creds: dict[str, Any] | None = None) -> str:
     """Rotulo que o sistema gera para a Conta: 'Provedor (email)' ou 'Provedor'."""
-    ident = creds_identity(provider, creds) or credential_identity(provider, cred_file)
+    ident = _system_identity(provider, creds, cred_file)
     name = provider.capitalize()
     return f"{name} ({ident.email})" if ident and ident.email else name
 
@@ -1283,7 +1311,7 @@ def _migrate_provider(
             _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
             accounts.remove(acc)
             continue
-        ident = creds_identity(prov, sys_creds) or credential_identity(prov, sys_file)
+        ident = _system_identity(prov, sys_creds, sys_file)
         if _is_auto_label(prov, acc.get("name") or acc.get("label"), sys_file, sys_creds):
             acc["label"] = acc["name"] = _auto_label(prov, sys_file, sys_creds)
         profiles_base = get_profiles_base_dir(config_path)
