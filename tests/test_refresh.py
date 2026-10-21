@@ -91,6 +91,7 @@ def env(tmp_path, monkeypatch):
 
     def run(*args, http):
         monkeypatch.setattr("urllib.request.urlopen", http)
+        monkeypatch.setattr("urllib.request.OpenerDirector.open", lambda _self, req, timeout=None: http(req, timeout))
         rc = main(["--config-path", str(paths["config"]), "--cache-path", str(paths["cache"]), "--refresh", *args])
         assert rc == 0
         return json.loads(paths["cache"].read_text())
@@ -420,3 +421,29 @@ def test_refresh_interval_maximum_is_enforced(env, tmp_path):
     status = env["run"]("--refresh-interval", "claude=99999999999999", http=FakeHttp(claude=[API_OK["claude"]]))
     expected = T0 + timedelta(seconds=refresh.MAX_INTERVAL_SECONDS)
     assert acc_of(status, "claude")["next_check_at"] == expected.isoformat()
+
+
+def test_no_data_after_429_keeps_api_baseline_and_never_notes():
+    from ai_usage_collector.limit_changes import apply_limit_changes
+
+    def win(**kw):
+        return {"usage_percentage": 40.0, "messages_used": 0, "window_seconds": 18000,
+                "release_time": (T0 + timedelta(hours=2)).isoformat(), "source": "api",
+                "api_fields": ["duration", "release"], **kw}
+
+    # cache antigo (sem fetched_at): leitura valida da API
+    previous = {"id": "a", "health": {"status": "valid"}, "native_window": win(), "weekly_window": win()}
+    entry = {"id": "a", "health": {"status": "valid"},
+             "native_window": win(source="local", api_fields=[], window_seconds=10800),
+             "weekly_window": win(source="local", api_fields=[], window_seconds=10800)}
+    outcome = {"kind": "rate_limited", "retry_at": T0.timestamp() + 60, "credential": "claude:x"}
+    refresh.apply_outcome(entry, outcome, previous, T0, 300)
+
+    assert entry["no_data"] is True
+    nw = entry["native_window"]
+    assert (nw["source"], nw["api_fields"], nw["window_seconds"]) == ("api", ["duration", "release"], 18000)
+    assert nw["usage_percentage"] is None and nw["release_time"] is None
+
+    status = {"agents": {"claude": {"accounts": [entry]}}}
+    apply_limit_changes(status, {"agents": {"claude": {"accounts": [previous]}}}, T0)
+    assert "limit_changes" not in entry

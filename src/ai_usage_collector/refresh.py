@@ -111,10 +111,14 @@ def request_json(
     timeout: float,
     now: datetime | None = None,
     valid: Validator | None = None,
+    opener: urllib.request.OpenerDirector | None = None,
 ) -> dict[str, Any]:
-    """Executa a requisicao e devolve o JSON; erros viram FetchError classificado."""
+    """Executa a requisicao e devolve o JSON; erros viram FetchError classificado.
+
+    `opener` permite um OpenerDirector proprio (ex.: sem seguir redirects); o padrao e urlopen.
+    """
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as resp:
+        with (opener.open if opener else urllib.request.urlopen)(request, timeout=timeout) as resp:
             status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
             if status not in (200, 201):
                 raise FetchError("invalid_response")
@@ -181,6 +185,7 @@ class RefreshCycle:
         request: urllib.request.Request,
         timeout: float,
         valid: Validator | None = None,
+        opener: urllib.request.OpenerDirector | None = None,
     ) -> dict[str, Any] | None:
         credential = f"{provider}:{_hash(secret)}"
         pause_key = self._account_key or credential
@@ -190,7 +195,7 @@ class RefreshCycle:
             data, outcome = None, {"kind": "rate_limited", "retry_at": entry["paused_until"]}
         else:
             if credential not in self._memo:
-                self._memo[credential] = self._request(request, timeout, valid, int(entry.get("failures") or 0))
+                self._memo[credential] = self._request(request, timeout, valid, int(entry.get("failures") or 0), opener)
             data, outcome = self._memo[credential]
             if outcome["kind"] == "rate_limited":
                 self.state[pause_key] = {"paused_until": outcome["retry_at"], "failures": outcome["failures"]}
@@ -199,9 +204,9 @@ class RefreshCycle:
         self._pending.append({**outcome, "credential": credential})
         return copy.deepcopy(data)
 
-    def _request(self, request: urllib.request.Request, timeout: float, valid: Validator | None, failures: int):
+    def _request(self, request: urllib.request.Request, timeout: float, valid: Validator | None, failures: int, opener=None):
         try:
-            return request_json(request, timeout, self.now, valid), {"kind": "ok"}
+            return request_json(request, timeout, self.now, valid, opener), {"kind": "ok"}
         except FetchError as e:
             if e.kind != "rate_limited":
                 return None, {"kind": e.kind}
@@ -254,12 +259,13 @@ def fetch_json(
     request: urllib.request.Request,
     timeout: float,
     valid: Validator | None = None,
+    opener: urllib.request.OpenerDirector | None = None,
 ) -> dict[str, Any] | None:
     """Ponto unico de consulta HTTP dos extratores; fora de um ciclo, falhas viram None."""
     if _current is not None:
-        return _current.fetch(provider, secret, request, timeout, valid)
+        return _current.fetch(provider, secret, request, timeout, valid, opener)
     try:
-        return request_json(request, timeout, valid=valid)
+        return request_json(request, timeout, valid=valid, opener=opener)
     except FetchError:
         return None
 
@@ -314,7 +320,13 @@ def apply_outcome(
         if data.get("messages_used"):
             with_history += 1
             continue
+        prev_win = (previous or {}).get(window)
+        baseline = {}
+        if isinstance(prev_win, dict) and prev_win.get("source") in ("api", "api_missing"):
+            # Linha de base de limit_changes: a ultima leitura da API nao se perde com "Sem dados"
+            baseline = {k: prev_win[k] for k in ("source", "api_fields", "window_seconds") if k in prev_win}
         data.update({
+            **baseline,
             "usage_percentage": None,
             "used_capacity": None,
             "available_capacity": None,

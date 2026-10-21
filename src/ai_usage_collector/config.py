@@ -6,14 +6,18 @@ Handles loading, saving, and ensuring Unix 0600 permissions for config files.
 from __future__ import annotations
 
 import copy
+import fcntl
 import json
 import os
 import re
 import stat
 import tempfile
+import threading
 import unicodedata
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Any
+from urllib.parse import urlsplit
 
 DEFAULT_CONFIG_DIR = Path("~/.config/plasma-ai-usage").expanduser()
 DEFAULT_CONFIG_PATH = DEFAULT_CONFIG_DIR / "config.json"
@@ -44,6 +48,34 @@ def ensure_secure_file(file_path: str | Path) -> Path:
     return path
 
 
+_lock_state = threading.local()
+
+
+@contextmanager
+def config_lock(config_path: str | Path | None = None):
+    """Lock exclusivo (flock em `config.lock`, 0600) que serializa migracao, troca e captura.
+
+    Reentrante na mesma thread: chamadas aninhadas reaproveitam o lock ja obtido.
+    """
+    file_path = Path(config_path).expanduser().resolve() if config_path else DEFAULT_CONFIG_PATH
+    lock_path = ensure_secure_dir(file_path.parent) / "config.lock"
+    held: set[Path] = getattr(_lock_state, "held", None) or set()
+    _lock_state.held = held
+    if lock_path in held:
+        yield
+        return
+    fd = os.open(lock_path, os.O_RDWR | os.O_CREAT, 0o600)
+    try:
+        fcntl.flock(fd, fcntl.LOCK_EX)
+        held.add(lock_path)
+        try:
+            yield
+        finally:
+            held.discard(lock_path)
+    finally:
+        os.close(fd)  # fechar libera o flock
+
+
 def get_default_config() -> dict[str, Any]:
     """Return the default configuration dictionary."""
     return {
@@ -51,28 +83,8 @@ def get_default_config() -> dict[str, Any]:
         "agents": {
             # O caminho do sistema nunca e uma Conta (ADR-0008); Contas vem de captura/login.
             "claude": {"accounts": []},
-            "codex": {
-                "accounts": [
-                    {
-                        "id": "default",
-                        "label": "Codex (Padrão)",
-                        "source": "auto",
-                        "credential_path": "~/.codex/auth.json",
-                        "manual_invite_url": None,
-                    }
-                ]
-            },
-            "gemini": {
-                "accounts": [
-                    {
-                        "id": "default",
-                        "label": "Gemini (Padrão)",
-                        "source": "auto",
-                        "credential_path": "~/.gemini/oauth_creds.json",
-                        "manual_invite_url": None,
-                    }
-                ]
-            },
+            "codex": {"accounts": []},
+            "gemini": {"accounts": []},
         },
     }
 
@@ -111,6 +123,12 @@ def save_config(config_data: dict[str, Any], path: str | Path | None = None) -> 
 def load_config(path: str | Path | None = None) -> dict[str, Any]:
     """Load configuration from file, creating default if not found."""
     file_path = Path(path).expanduser().resolve() if path else DEFAULT_CONFIG_PATH
+    # Leitura e migracao sob o lock: leitores concorrentes nao migram a mesma entrada legada.
+    with config_lock(file_path):
+        return _load_config_locked(file_path)
+
+
+def _load_config_locked(file_path: Path) -> dict[str, Any]:
     if not file_path.exists():
         default_cfg = get_default_config()
         save_config(default_cfg, file_path)
@@ -124,11 +142,9 @@ def load_config(path: str | Path | None = None) -> dict[str, Any]:
 
     migrated = copy.deepcopy(data)
     try:
-        changed = migrate_accounts(migrated, file_path)
+        migrate_accounts(migrated, file_path)  # salva a configuracao se algo mudou
     except Exception:
         return data  # nunca impedir a leitura da configuracao por falha na migracao
-    if changed:
-        save_config(migrated, file_path)
     return migrated
 
 
@@ -197,9 +213,10 @@ def add_account(
     config_path: str | Path | None = None,
 ) -> dict[str, Any]:
     """Add or update an account in config and persist atomically with 0600."""
-    cfg = load_config(config_path)
-    updated_cfg = add_account_to_config(cfg, provider, account_data)
-    save_config(updated_cfg, config_path)
+    with config_lock(config_path):  # read-modify-write: recarrega a configuracao dentro do lock
+        cfg = load_config(config_path)
+        updated_cfg = add_account_to_config(cfg, provider, account_data)
+        save_config(updated_cfg, config_path)
     return updated_cfg
 
 
@@ -330,10 +347,11 @@ def rename_account(
     config_path: str | Path | None = None,
 ) -> tuple[dict[str, Any], bool]:
     """Load config, rename account, persist atomically with 0600 if changed, and return (config, was_renamed)."""
-    cfg = load_config(config_path)
-    updated_cfg, was_renamed = rename_account_in_config(cfg, provider, account_id, new_label)
-    if was_renamed:
-        save_config(updated_cfg, config_path)
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        updated_cfg, was_renamed = rename_account_in_config(cfg, provider, account_id, new_label)
+        if was_renamed:
+            save_config(updated_cfg, config_path)
     return updated_cfg, was_renamed
 
 
@@ -378,41 +396,147 @@ def create_account_entry(
     if not clean_cred:
         raise ValueError("Caminho de credenciais não pode ser vazio")
 
-    cfg = load_config(config_path)
-    existing_accs = get_accounts_for_agent(cfg, prov)
-    existing_ids = {str(a.get("id")) for a in existing_accs if isinstance(a, dict) and a.get("id")}
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        existing_accs = get_accounts_for_agent(cfg, prov)
+        existing_ids = {str(a.get("id")) for a in existing_accs if isinstance(a, dict) and a.get("id")}
 
-    unique_slug = generate_account_slug(clean_label, existing_ids)
+        unique_slug = generate_account_slug(clean_label, existing_ids)
 
-    account_entry: dict[str, Any] = {
-        "id": unique_slug,
-        "name": clean_label,
-        "label": clean_label,
-        "source": "manual",
-        "credential_path": clean_cred,
-    }
+        account_entry: dict[str, Any] = {
+            "id": unique_slug,
+            "name": clean_label,
+            "label": clean_label,
+            "source": "manual",
+            "credential_path": clean_cred,
+        }
 
-    # If the user passed a directory, also record the provider's specific dir key
-    cred_p = Path(clean_cred).expanduser()
-    if cred_p.is_dir():
-        if prov == "claude":
-            account_entry["claude_dir"] = clean_cred
-        elif prov == "codex":
-            account_entry["codex_dir"] = clean_cred
-        elif prov == "gemini":
-            account_entry["gemini_dir"] = clean_cred
+        # If the user passed a directory, also record the provider's specific dir key
+        cred_p = Path(clean_cred).expanduser()
+        if cred_p.is_dir():
+            if prov == "claude":
+                account_entry["claude_dir"] = clean_cred
+            elif prov == "codex":
+                account_entry["codex_dir"] = clean_cred
+            elif prov == "gemini":
+                account_entry["gemini_dir"] = clean_cred
 
-    if invite_url and str(invite_url).strip():
-        account_entry["manual_invite_url"] = str(invite_url).strip()
+        if invite_url and str(invite_url).strip():
+            account_entry["manual_invite_url"] = str(invite_url).strip()
 
-    if total_capacity is not None:
-        try:
-            val = int(total_capacity)
-            if val > 0:
-                account_entry["rate_limit_capacity"] = val
-        except (ValueError, TypeError):
-            pass
+        if total_capacity is not None:
+            try:
+                val = int(total_capacity)
+                if val > 0:
+                    account_entry["rate_limit_capacity"] = val
+            except (ValueError, TypeError):
+                pass
 
-    updated_cfg = add_account_to_config(cfg, prov, account_entry)
-    save_config(updated_cfg, config_path)
+        updated_cfg = add_account_to_config(cfg, prov, account_entry)
+        save_config(updated_cfg, config_path)
     return updated_cfg, account_entry
+
+
+_CREDENTIAL_FILENAMES = {"claude": ".credentials.json", "codex": "auth.json", "gemini": "oauth_creds.json"}
+
+
+def credential_override(provider: str, config: dict[str, Any] | str | Path | None = None) -> Path | None:
+    """Caminho de credenciais alternativo do provedor (ticket 38), ou None.
+
+    Aceita arquivo ou pasta (pasta recebe o nome padrao do arquivo). Com `config` caminho/None le o
+    JSON cru, sem migracao nem lock, pois e chamado de dentro deles.
+    """
+    if not isinstance(config, dict):
+        file_path = Path(config).expanduser().resolve() if config else DEFAULT_CONFIG_PATH
+        try:
+            config = json.loads(file_path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return None
+    agents = config.get("agents") if isinstance(config, dict) else None
+    val = (agents or {}).get(provider, {}).get("credential_path") if isinstance(agents, dict) else None
+    if not val or not isinstance(val, str):
+        return None
+    p = Path(val).expanduser()
+    if not p.is_absolute():
+        return None  # edicao manual com caminho relativo: ignorado (a CLI grava sempre absoluto)
+    if not (p.suffix == ".json" or p.is_file()):
+        p = p / _CREDENTIAL_FILENAMES[provider]
+    return p.parent.resolve() / p.name  # preserva symlink do arquivo, como no caminho por env
+
+
+def validate_base_url(url: str) -> str:
+    """Normaliza e valida a URL base do gateway; levanta ValueError se insegura ou malformada."""
+    url = (url or "").strip()
+    msg = "URL base inválida: use https (http só para localhost), sem usuário, query ou fragmento."
+    if not url or url.split("//", 1)[-1].split("/", 1)[0].endswith(":") or any(c.isspace() or ord(c) < 32 for c in url) or "?" in url or "#" in url:
+        raise ValueError(msg)
+    try:
+        parsed = urlsplit(url)
+        parsed.port  # noqa: B018 - valida a porta
+    except ValueError:
+        raise ValueError(msg) from None
+    local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+    scheme = parsed.scheme.lower()
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or scheme not in ("http", "https")
+        or (scheme == "http" and not local)
+    ):
+        raise ValueError(msg)
+    return url.rstrip("/")
+
+
+def provider_settings(config: dict[str, Any], provider: str) -> dict[str, Any]:
+    agent = (config.get("agents") or {}).get(provider)
+    return agent if isinstance(agent, dict) else {}
+
+
+def set_provider_settings(
+    provider: str,
+    credential_path: str | None = None,
+    api_base_url: str | None = None,
+    api_key: str | None = None,
+    config_path: str | Path | None = None,
+    clear_api_key: bool = False,
+) -> tuple[bool, str]:
+    """Grava caminho de credenciais (todos os provedores) e URL base/chave de API (so Claude).
+
+    None mantem o valor atual; string vazia remove (a chave so se remove com `clear_api_key`).
+    A chave fica apenas no config.json (0600). A configuracao explicita vence as variaveis de ambiente.
+    """
+    prov = (provider or "").lower().strip()
+    if prov not in SUPPORTED_PROVIDERS:
+        return False, f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
+    if (api_base_url is not None or api_key is not None) and prov != "claude":
+        return False, "URL base e chave de API personalizadas só existem para o Claude."
+    if api_key is not None and not api_key.strip():
+        return False, "Chave de API vazia; use --clear-api-key para removê-la."
+    if clear_api_key:
+        api_key = ""
+    if api_base_url:
+        try:
+            api_base_url = validate_base_url(api_base_url)
+        except ValueError as e:
+            return False, str(e)
+    if credential_path and credential_path.strip():
+        credential_path = os.path.abspath(os.path.expanduser(credential_path.strip()))
+    updates = {"credential_path": credential_path, "api_base_url": api_base_url, "api_key": api_key}
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        agent = cfg.setdefault("agents", {}).setdefault(prov, {"accounts": []})
+        for key, value in updates.items():
+            if value is None:
+                continue
+            if value.strip():
+                agent[key] = value.strip()
+            else:
+                agent.pop(key, None)
+        save_config(cfg, config_path)
+    msg = f"Configuração de '{prov}' atualizada."
+    if agent.get("credential_path") and not Path(agent["credential_path"]).exists():
+        msg += f" Aviso: '{agent['credential_path']}' ainda não existe."
+    if agent.get("api_key") and not agent.get("api_base_url"):
+        msg += " Aviso: a chave de API só é usada com uma URL base."
+    return True, msg

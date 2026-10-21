@@ -1,18 +1,21 @@
 """Identidade da Conta por provedor (ADR-0008).
 
 Interface unica para responder "qual e a identidade desta credencial?". Cada provedor
-registra um adaptador em `_ADAPTERS`; Codex e Gemini entram depois (tickets 19 e 20)
-apenas adicionando o seu adaptador, sem alterar quem consome esta interface.
+registra um adaptador em `_ADAPTERS`; Codex e Gemini ja registraram os seus,
+sem alterar quem consome esta interface.
 """
 
 from __future__ import annotations
 
+import base64
 import json
 import os
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
+
+from ai_usage_collector.discovery import extract_jwt_identity
 
 
 class Identity(NamedTuple):
@@ -28,6 +31,8 @@ class _Adapter:
     state_file: Callable[[Path], Path | None]
     # Copia os metadados de identidade de `src_cred_file` para junto de `dst_cred_file`.
     copy_state: Callable[[Path, Path], None]
+    # Identidade de credenciais ja em memoria (ex.: chaveiro, que prevalece sobre o arquivo).
+    from_creds: Callable[[dict[str, Any]], Identity | None] | None = None
 
 
 def _load_json(path: Path | None) -> dict[str, Any]:
@@ -41,8 +46,23 @@ def _load_json(path: Path | None) -> dict[str, Any]:
         return {}
 
 
+def _load_json_strict(path: Path) -> dict[str, Any]:
+    """Le um arquivo de estado existente; erro se ilegivel (nunca sobrescrever estado corrompido)."""
+    if not path.exists():
+        return {}
+    with open(path, "r", encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError(f"Arquivo de estado '{path}' não contém um objeto JSON.")
+    return data
+
+
 def write_json_atomic(data: dict[str, Any], path: Path, mode: int = 0o600) -> None:
-    """Grava JSON atomicamente sem alterar as permissoes do diretorio pai (ex.: $HOME)."""
+    """Grava JSON atomicamente no alvo real (preserva symlinks) sem alterar as permissoes do
+    diretorio pai (ex.: $HOME). Rele o arquivo apos gravar: se outro processo o regravou no
+    intervalo, lanca erro para o chamador acionar o rollback.
+    """
+    path = path.expanduser().resolve()
     path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".identity_", suffix=".tmp")
     try:
@@ -54,6 +74,8 @@ def write_json_atomic(data: dict[str, Any], path: Path, mode: int = 0o600) -> No
     except Exception:
         Path(tmp).unlink(missing_ok=True)
         raise
+    if _load_json(path) != data:
+        raise RuntimeError(f"Arquivo '{path}' foi alterado por outro processo durante a gravação.")
 
 
 # --- Claude ------------------------------------------------------------------
@@ -63,10 +85,10 @@ def write_json_atomic(data: dict[str, Any], path: Path, mode: int = 0o600) -> No
 
 
 def _claude_state_file(cred_file: Path) -> Path:
-    config_dir = cred_file.expanduser().resolve().parent
+    config_dir = cred_file.expanduser().absolute().parent.resolve()
     if config_dir == Path("~/.claude").expanduser().resolve():
-        return Path("~/.claude.json").expanduser()
-    return config_dir / ".claude.json"
+        return Path("~/.claude.json").expanduser().resolve()
+    return (config_dir / ".claude.json").resolve()
 
 
 def _claude_read(cred_file: Path) -> Identity | None:
@@ -83,11 +105,11 @@ def _claude_read(cred_file: Path) -> Identity | None:
 
 
 def _claude_copy_state(src_cred_file: Path, dst_cred_file: Path) -> None:
-    oauth = _load_json(_claude_state_file(src_cred_file)).get("oauthAccount")
+    oauth = _load_json_strict(_claude_state_file(src_cred_file)).get("oauthAccount")
     dst = _claude_state_file(dst_cred_file)
     if not dst.exists() and not isinstance(oauth, dict):
         return
-    data = _load_json(dst)  # preserva as demais chaves do estado do Claude Code
+    data = _load_json_strict(dst)  # preserva as demais chaves do estado do Claude Code
     if isinstance(oauth, dict):
         data["oauthAccount"] = oauth
     else:
@@ -96,8 +118,64 @@ def _claude_copy_state(src_cred_file: Path, dst_cred_file: Path) -> None:
     write_json_atomic(data, dst)
 
 
+# --- Codex -------------------------------------------------------------------
+# A identidade vive no proprio auth.json (`tokens.account_id`, ou o claim chatgpt_account_id do
+# id_token), logo nao ha arquivo de estado separado e a identidade nunca fica defasada.
+
+
+def _jwt_claims(token: Any) -> dict[str, Any]:
+    try:
+        payload = str(token).split(".")[1]
+        data = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))
+        return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def _codex_read(cred_file: Path) -> Identity | None:
+    tokens = _load_json(cred_file).get("tokens")
+    if not isinstance(tokens, dict):
+        return None
+    claims = _jwt_claims(tokens.get("id_token"))
+    auth = claims.get("https://api.openai.com/auth")
+    account_id = tokens.get("account_id") or (auth.get("chatgpt_account_id") if isinstance(auth, dict) else None)
+    email = claims.get("email")
+    email = email.strip() or None if isinstance(email, str) else None
+    account_id = account_id.strip() if isinstance(account_id, str) else ""
+    if account_id:
+        return Identity(account_id.lower(), email)
+    if email:
+        return Identity(f"email:{email.lower()}", email)
+    return None
+
+
+# --- Gemini ------------------------------------------------------------------
+# A identidade e o email Google da conta, no proprio `id_token` da credencial (arquivo
+# oauth_creds.json ou payload do chaveiro, plano ou aninhado em `token`); nao ha arquivo de estado.
+
+
+def _gemini_from_creds(creds: dict[str, Any]) -> Identity | None:
+    tok = creds.get("token") if isinstance(creds.get("token"), dict) else {}
+    email = str(creds.get("email") or "").strip()
+    if not email:
+        found = extract_jwt_identity(creds.get("id_token") or tok.get("id_token"))
+        email = found if found and "@" in found else ""  # `sub` nao e email
+    return Identity(f"email:{email.lower()}", email) if email else None
+
+
+def _gemini_read(cred_file: Path) -> Identity | None:
+    return _gemini_from_creds(_load_json(cred_file))
+
+
 _ADAPTERS: dict[str, _Adapter] = {
     "claude": _Adapter(read=_claude_read, state_file=_claude_state_file, copy_state=_claude_copy_state),
+    "codex": _Adapter(read=_codex_read, state_file=lambda _: None, copy_state=lambda *_: None),
+    "gemini": _Adapter(
+        read=_gemini_read,
+        state_file=lambda cred_file: None,
+        copy_state=lambda src, dst: None,
+        from_creds=_gemini_from_creds,
+    ),
 }
 
 
@@ -112,6 +190,17 @@ def credential_identity(provider: str, cred_file: str | Path | None) -> Identity
         return None
     try:
         return adapter.read(Path(cred_file))
+    except Exception:
+        return None
+
+
+def creds_identity(provider: str, creds: dict[str, Any] | None) -> Identity | None:
+    """Identidade de credenciais ja lidas (ex.: do chaveiro), ou None se o provedor nao a traz nelas."""
+    adapter = _ADAPTERS.get(provider.lower().strip())
+    if adapter is None or adapter.from_creds is None or not creds:
+        return None
+    try:
+        return adapter.from_creds(creds)
     except Exception:
         return None
 

@@ -177,11 +177,12 @@ def test_cli_switch_account_codex_success(capsys, tmp_path, monkeypatch):
 def test_cli_switch_account_gemini_with_keyring_call(capsys, tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     cache_path = tmp_path / "status.json"
-    sys_gemini_path = tmp_path / "sys" / "gemini" / "oauth_creds.json"
+    sys_gemini_path = Path(os.environ["HOME"]) / ".gemini" / "oauth_creds.json"  # HOME falso (conftest)
     profile_1 = tmp_path / "profiles" / "gemini-1" / "oauth_creds.json"
     profile_2 = tmp_path / "profiles" / "gemini-2" / "oauth_creds.json"
 
-    monkeypatch.setenv("GEMINI_CREDENTIALS_PATH", str(sys_gemini_path))
+    monkeypatch.delenv("GEMINI_CREDENTIALS_PATH", raising=False)
+    monkeypatch.delenv("GEMINI_CONFIG_DIR", raising=False)
 
     creds_1 = {
         "access_token": "gem-tok-1",
@@ -220,8 +221,8 @@ def test_cli_switch_account_gemini_with_keyring_call(capsys, tmp_path, monkeypat
         if isinstance(cmd, list) and len(cmd) > 1 and cmd[0] == "secret-tool":
             called_commands.append(cmd)
             mock_proc = MagicMock()
-            mock_proc.returncode = 0
-            mock_proc.stdout = "gem-tok-2"
+            mock_proc.returncode = 1 if "lookup" in cmd else 0  # chaveiro vazio
+            mock_proc.stdout = ""
             return mock_proc
         return real_run(cmd, *args, **kwargs)
 
@@ -369,7 +370,7 @@ def test_cli_switch_account_with_status_output(capsys, tmp_path, monkeypatch):
     captured = capsys.readouterr()
 
     assert code == 0
-    assert "Conta 'C1' ativada com sucesso no sistema!" in captured.out
+    assert "Conta 'C1' já está ativa no sistema" in captured.out
     # Output must also include valid JSON payload with isActive: true
     lines = captured.out.strip().split("\n", 1)
     json_part = lines[1] if len(lines) > 1 else ""
@@ -406,7 +407,7 @@ def test_cli_activate_account_alias(capsys, tmp_path, monkeypatch):
     captured = capsys.readouterr()
 
     assert code == 0
-    assert "Conta 'C1' ativada com sucesso no sistema!" in captured.out
+    assert "Conta 'C1' já está ativa no sistema" in captured.out
 
 
 def test_auto_detection_in_collect_and_save(tmp_path, monkeypatch):
@@ -444,3 +445,46 @@ def test_auto_detection_in_collect_and_save(tmp_path, monkeypatch):
 
     assert c_accs[0]["id"] == "c-1" and c_accs[0]["isActive"] is False
     assert c_accs[1]["id"] == "c-2" and c_accs[1]["isActive"] is True
+
+
+def _single_default_cfg(provider: str, sys_path: Path) -> dict:
+    agents = {p: {"accounts": []} for p in ("claude", "codex", "gemini")}
+    agents[provider]["accounts"] = [{
+        "id": "default", "label": f"{provider.capitalize()} (Padrão)", "source": "auto",
+        "credential_path": str(sys_path),
+    }]
+    return {"version": 1, "agents": agents}
+
+
+def test_codex_default_on_system_path_stays_active_without_duplicates(tmp_path, monkeypatch):
+    """Sem adaptador de identidade (ticket 19), Codex mantem o comportamento anterior."""
+    config_path, cache_path = tmp_path / "config.json", tmp_path / "status.json"
+    sys_codex = tmp_path / "sys" / "auth.json"
+    monkeypatch.setenv("CODEX_AUTH_PATH", str(sys_codex))
+    save_secure_json({"tokens": {"access_token": "cx-a", "refresh_token": "cx-r", "account_id": "acct1"}}, sys_codex)
+    save_config(_single_default_cfg("codex", sys_codex), config_path)
+
+    status = collect_and_save(config_path=config_path, cache_path=cache_path)
+    assert [(a["id"], a["isActive"]) for a in status["agents"]["codex"]["accounts"]] == [("default", True)]
+
+    code = main(["--switch-account", "codex", "default",
+                 "--config-path", str(config_path), "--cache-path", str(cache_path)])
+    assert code == 0
+    assert [a["id"] for a in load_config(config_path)["agents"]["codex"]["accounts"]] == ["default"]
+
+
+def test_gemini_default_on_system_path_stays_active_without_duplicates(tmp_path, monkeypatch):
+    """Sem adaptador de identidade (ticket 20), Gemini mantem o comportamento anterior."""
+    config_path, cache_path = tmp_path / "config.json", tmp_path / "status.json"
+    sys_gemini = tmp_path / "sys" / "oauth_creds.json"
+    monkeypatch.setenv("GEMINI_CREDENTIALS_PATH", str(sys_gemini))
+    save_secure_json({"access_token": "g-a", "refresh_token": "g-r", "email": "g@x.com"}, sys_gemini)
+    save_config(_single_default_cfg("gemini", sys_gemini), config_path)
+
+    status = collect_and_save(config_path=config_path, cache_path=cache_path)
+    assert [(a["id"], a["isActive"]) for a in status["agents"]["gemini"]["accounts"]] == [("default", True)]
+
+    code = main(["--switch-account", "gemini", "default",
+                 "--config-path", str(config_path), "--cache-path", str(cache_path)])
+    assert code == 0
+    assert [a["id"] for a in load_config(config_path)["agents"]["gemini"]["accounts"]] == ["default"]

@@ -138,6 +138,24 @@ Kirigami.AbstractCard {
         switchDataSource.connectSource(cmd);
     }
 
+    function limitChangeText(changes) {
+        var now = Date.now();
+        changes = (changes || []).filter(function (c) {
+            return c && c.window && c.kind && !(c.expires_at && Date.parse(c.expires_at) <= now);
+        });
+        if (changes.length === 0) return "";
+        var names = { native: cardRoot.safeI18n("janela ativa"), weekly: cardRoot.safeI18n("janela semanal") };
+        var kinds = {
+            added: cardRoot.safeI18n("nova"),
+            removed: cardRoot.safeI18n("removida"),
+            duration: cardRoot.safeI18n("com duração diferente"),
+            early_reset: cardRoot.safeI18n("com reset antecipado")
+        };
+        return cardRoot.safeI18n("Limites mudaram: %1", changes.map(function (c) {
+            return (names[c.window] || c.window) + " " + (kinds[c.kind] || c.kind);
+        }).join(", "));
+    }
+
     function safeI18n(text, arg1, arg2, arg3) {
         if (typeof i18n === "function") {
             if (arg3 !== undefined) return i18n(text, arg1, arg2, arg3);
@@ -221,6 +239,14 @@ Kirigami.AbstractCard {
 
     Component.onCompleted: {
         updateCountdown();
+    }
+
+    // Fraction of the window already elapsed (live), or -1 when the contract has no duration/release
+    function elapsedFraction(win, liveRemaining) {
+        if (!win || !(win.window_seconds > 0) || win.elapsed_fraction === null || win.elapsed_fraction === undefined) {
+            return -1;
+        }
+        return Math.min(1, Math.max(0, 1 - liveRemaining / win.window_seconds));
     }
 
     function formatCountdown(sec) {
@@ -467,7 +493,6 @@ Kirigami.AbstractCard {
                     text: {
                         var winType = cardRoot.accountData?.native_window?.type || "";
                         if (winType === "5h") return cardRoot.safeI18n("Janela Ativa (5h)");
-                        if (winType === "3h") return cardRoot.safeI18n("Janela Ativa (3h)");
                         if (winType === "daily") return cardRoot.safeI18n("Janela Diária");
                         if (winType) return cardRoot.safeI18n("Janela Ativa (%1)", winType);
                         return cardRoot.safeI18n("Janela Ativa");
@@ -521,6 +546,18 @@ Kirigami.AbstractCard {
                         height: parent.height
                         radius: 3
                         color: cardRoot.getUsageColor(cardRoot.accountData?.native_window?.usage_percentage || 0.0)
+                    }
+                    // Marca de tempo decorrido da Janela Nativa
+                    Rectangle {
+                        id: nativeElapsedMarker
+                        property double frac: cardRoot.elapsedFraction(cardRoot.accountData?.native_window, cardRoot.liveSecondsRemaining)
+                        visible: frac >= 0
+                        x: Math.round(Math.max(0, frac) * (parent.width - width))
+                        y: -2
+                        width: 2
+                        height: parent.height + 4
+                        color: Kirigami.Theme.textColor
+                        opacity: 0.7
                     }
                 }
             }
@@ -640,6 +677,18 @@ Kirigami.AbstractCard {
                         radius: 3
                         color: cardRoot.getUsageColor(cardRoot.accountData?.weekly_window ? cardRoot.accountData.weekly_window.usage_percentage : 0)
                     }
+                    // Marca de tempo decorrido da Janela Semanal
+                    Rectangle {
+                        id: weeklyElapsedMarker
+                        property double frac: cardRoot.elapsedFraction(cardRoot.accountData?.weekly_window, cardRoot.liveWeeklySecondsRemaining)
+                        visible: frac >= 0
+                        x: Math.round(Math.max(0, frac) * (parent.width - width))
+                        y: -2
+                        width: 2
+                        height: parent.height + 4
+                        color: Kirigami.Theme.textColor
+                        opacity: 0.7
+                    }
                 }
             }
 
@@ -692,9 +741,27 @@ Kirigami.AbstractCard {
             }
         }
 
+        // Nota de mudanca de limites (campo opcional "limit_changes", valida por 3 dias)
+        QQC2.Label {
+            Layout.fillWidth: true
+            visible: text.length > 0
+            text: cardRoot.limitChangeText(cardRoot.accountData?.limit_changes)
+            wrapMode: Text.WordWrap
+            textFormat: Text.PlainText
+            color: Kirigami.Theme.neutralTextColor
+            font.pointSize: Kirigami.Theme.smallFont.pointSize
+        }
+
         UsageDetails {
             Layout.fillWidth: true
             details: cardRoot.accountData?.usage_details ?? null
+        }
+
+        // Historico de Tokens (campo opcional do contrato v2)
+        TokenHistory {
+            Layout.fillWidth: true
+            history: cardRoot.accountData?.token_history ?? null
+            barColor: cardRoot.getProviderColor(cardRoot.accountData?.provider)
         }
 
         // ==========================================

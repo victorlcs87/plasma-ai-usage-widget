@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 from typing import Any
 
-from datetime import datetime
+from datetime import datetime, timezone
 
 from ai_usage_collector import refresh
+from ai_usage_collector.orphans import list_orphans
 from ai_usage_collector.capture import (
     find_matching_account,
     get_active_credentials,
@@ -19,9 +21,12 @@ from ai_usage_collector.config import (
     DEFAULT_CACHE_PATH,
     DEFAULT_CONFIG_PATH,
     SUPPORTED_PROVIDERS,
+    config_lock,
     create_account_entry,
+    credential_override,
     get_accounts_for_agent,
     load_config,
+    provider_settings,
     remove_account_from_config,
     rename_account as config_rename_account,
     save_config,
@@ -34,6 +39,8 @@ from ai_usage_collector.contract import (
 )
 from ai_usage_collector.discovery import discover_account
 from ai_usage_collector.identity import credential_identity
+from ai_usage_collector.history import apply_token_history, flush_system_history
+from ai_usage_collector.limit_changes import apply_limit_changes
 from ai_usage_collector.extractors import (
     extract_claude_status,
     extract_codex_status,
@@ -59,7 +66,7 @@ def load_status_cache(path: str | Path | None = None) -> dict[str, Any] | None:
         return None
 
 
-def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> str | None:
+def detect_active_account_id(provider: str, accounts: list[dict[str, Any]], override: Path | None = None) -> str | None:
     """Detect the Conta Ativa no Sistema by Identidade da Conta (ADR-0008).
 
     The `active` config field is not consulted. If the system credential matches no
@@ -68,10 +75,10 @@ def detect_active_account_id(provider: str, accounts: list[dict[str, Any]]) -> s
     if not accounts:
         return None
     prov = provider.lower().strip()
-    sys_creds = get_active_credentials(prov)
+    sys_creds = get_active_credentials(prov, override)
     if sys_creds is None:
         return None
-    match = find_matching_account(prov, accounts, sys_creds, get_system_credential_file(prov))
+    match = find_matching_account(prov, accounts, sys_creds, get_system_credential_file(prov, override))
     return str(match.get("id")) if match else None
 
 
@@ -105,7 +112,8 @@ def _collect(
 ) -> dict[str, Any]:
     config = load_config(config_path)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
-    previous_agents = (load_status_cache(cache_file) or {}).get("agents") or {}
+    previous_status = load_status_cache(cache_file)
+    previous_agents = (previous_status or {}).get("agents") or {}
 
     agents_to_collect = ["claude", "codex", "gemini"]
 
@@ -123,7 +131,7 @@ def _collect(
         account_statuses: list[dict[str, Any]] = []
 
         agent_has_valid_account = False
-        active_acc_id = detect_active_account_id(agent_id, accounts)
+        active_acc_id = detect_active_account_id(agent_id, accounts, credential_override(agent_id, config))
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
@@ -152,7 +160,7 @@ def _collect(
             usage_details = None
 
             if agent_id == "claude":
-                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt)
+                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=provider_settings(config, "claude"))
                 health = claude_data.get("health", health)
                 native_window = claude_data.get("native_window")
                 weekly_window = claude_data.get("weekly_window")
@@ -221,6 +229,22 @@ def _collect(
                     status_payload["agents"][agent_id]["status"] = "warning"
         else:
             status_payload["agents"][agent_id]["status"] = "not_configured"
+
+    try:
+        status_payload["orphan_profiles"] = list_orphans(config_path)
+    except OSError as e:  # Perfis Orfaos sao opcionais; nunca impedem o status
+        sys.stderr.write(f"Aviso: Perfis Orfaos nao listados: {e}\n")
+        status_payload["orphan_profiles"] = []
+
+    try:
+        apply_token_history(status_payload, config, cache_file, now_dt)
+    except Exception as e:  # Historico de Tokens e opcional; nunca impede o status
+        sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
+
+    try:
+        apply_limit_changes(status_payload, previous_status, now_dt)
+    except Exception as e:  # nota de mudanca de limites e opcional; nunca impede o status
+        sys.stderr.write(f"Aviso: Nota de mudanca de limites nao atualizada: {e}\n")
 
     return status_payload
 
@@ -313,17 +337,18 @@ def remove_account(
 def _remove_account_locked(
     prov: str, acc_id: str, account_id: str, provider: str, cfg_file: Path, c_file: Path
 ) -> tuple[bool, str]:
-    try:
-        config_data = load_config(cfg_file)
-    except Exception as e:
-        return False, f"Falha ao ler arquivo de configuração: {e}"
+    with config_lock(cfg_file):  # read-modify-write sob o lock
+        try:
+            config_data = load_config(cfg_file)
+        except Exception as e:
+            return False, f"Falha ao ler arquivo de configuração: {e}"
 
-    updated_cfg, was_removed = remove_account_from_config(config_data, prov, acc_id)
-    if not was_removed:
-        return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
+        updated_cfg, was_removed = remove_account_from_config(config_data, prov, acc_id)
+        if not was_removed:
+            return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'."
 
-    # Persist config atomically with 0600
-    save_config(updated_cfg, cfg_file)
+        # Persist config atomically with 0600
+        save_config(updated_cfg, cfg_file)
 
     # Sync cache if exists
     if c_file.exists():
@@ -569,23 +594,30 @@ def switch_account(
     if not target_acc:
         return False, f"Conta '{account_id}' não encontrada no provedor '{provider}'.", None
 
+    # Antes de trocar a credencial, atribui o consumo dos logs do sistema a identidade que esta saindo.
+    try:
+        flush_system_history(cfg, cache_path, datetime.now(timezone.utc))
+    except Exception as e:  # Historico e opcional; nunca impede a troca
+        sys.stderr.write(f"Aviso: Historico de Tokens nao atualizado: {e}\n")
+
     # Steps 2-4: backup/capture current system credential, apply target (rollback on failure)
-    ok, msg = switch_system_account(prov, acc_id, config_path)
+    ok, msg, already_active = switch_system_account(prov, acc_id, config_path)
     if not ok:
         return False, msg, None
 
     # Step 4: Collect and save updated status
     target_label = target_acc.get("label") or target_acc.get("name") or acc_id
+    done = (
+        f"Conta '{target_label}' já está ativa no sistema; credencial sincronizada no Perfil Isolado."
+        if already_active
+        else f"Conta '{target_label}' ativada com sucesso no sistema!"
+    )
     try:
         status_payload = collect_and_save(config_path=config_path, cache_path=cache_path)
     except Exception as e:
-        return (
-            True,
-            f"Conta '{target_label}' ativada com sucesso no sistema, mas falhou ao sincronizar status: {e}",
-            None,
-        )
+        return True, f"{done} (Aviso: falhou ao sincronizar status: {e})", None
 
-    return True, f"Conta '{target_label}' ativada com sucesso no sistema!", status_payload
+    return True, done, status_payload
 
 
 

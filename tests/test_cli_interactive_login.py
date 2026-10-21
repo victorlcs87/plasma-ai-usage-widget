@@ -374,7 +374,7 @@ def test_interactive_login_with_status_flag(capsys, tmp_path):
     json_start = captured.out.find("{")
     assert json_start != -1
     parsed = json.loads(captured.out[json_start:])
-    assert parsed["version"] == 3
+    assert parsed["version"] == 4
     assert any("status.test@claude.com" in a.get("label", "") for a in parsed["agents"]["claude"]["accounts"])
 
 

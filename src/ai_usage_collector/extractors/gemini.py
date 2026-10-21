@@ -13,12 +13,15 @@ from typing import Any
 
 from ai_usage_collector import refresh
 from ai_usage_collector.config import save_secure_json
+from ai_usage_collector.contract import parse_window_seconds, window_type_from_seconds
 from ai_usage_collector.discovery import (
     discover_gemini,
     extract_jwt_identity,
 )
 
+# Fallback of the local heuristic only; the quota summary reports the real Native Window duration
 GEMINI_DAILY_SECONDS = 24 * 3600  # 86400s
+GEMINI_5H_SECONDS = 5 * 3600  # 18000s, duration of the "gemini-5h" quota bucket
 GEMINI_7D_SECONDS = 7 * 86400  # 604800s
 
 DEFAULT_GEMINI_CAPACITY_BY_TIER: dict[str, int] = {
@@ -422,6 +425,20 @@ def parse_gemini_quota_buckets(
     return bucket_5h, bucket_weekly
 
 
+def gemini_bucket_seconds(bucket: dict[str, Any], default: int) -> int:
+    """Duration of a quota bucket from its window or id suffix ("5h", "gemini-weekly"), else default.
+
+    The quota summary has no explicit duration field: it is deduced from the bucket name.
+    """
+    for key in ("window", "bucketId", "name", "id"):
+        value = bucket.get(key)
+        if isinstance(value, str):
+            seconds = parse_window_seconds(value.rsplit("-", 1)[-1])
+            if seconds:
+                return seconds
+    return default
+
+
 def extract_gemini_status(
     account: dict[str, Any],
     initial_health: dict[str, Any] | None = None,
@@ -493,7 +510,9 @@ def extract_gemini_status(
 
     all_timestamps = deduplicate_timestamps(raw_timestamps)
 
-    # Daily window calculations (last 24 hours)
+    # Daily window calculations (last 24 hours) - local heuristic, overridden by the quota summary
+    native_window_seconds = GEMINI_DAILY_SECONDS
+    weekly_window_seconds = GEMINI_7D_SECONDS
     start_daily_sec = now_sec - GEMINI_DAILY_SECONDS
     in_daily_ts = [t for t in all_timestamps if start_daily_sec <= t <= now_sec]
     used_daily = len(in_daily_ts)
@@ -578,6 +597,10 @@ def extract_gemini_status(
 
     weekly_total_capacity = account.get("weekly_capacity") or (total_capacity * 7)
 
+    native_source = weekly_source = "local"  # "api" | "api_missing" | "local" (ver limit_changes.py)
+    native_api_fields: list[str] = []  # fatos realmente lidos da API: "duration", "release"
+    weekly_api_fields: list[str] = []
+
     # Attempt primary official API usage route
     api_data = None
     if token:
@@ -608,6 +631,11 @@ def extract_gemini_status(
         health["metadata"] = metadata
 
         bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data)
+        has_5h = bool(bucket_5h) and bucket_5h.get("remainingFraction") is not None
+        has_weekly = bool(bucket_weekly) and bucket_weekly.get("remainingFraction") is not None
+        if has_5h or has_weekly:  # resposta sem nenhum bucket reconhecivel nao diz que o limite sumiu
+            native_source = "api" if has_5h else "api_missing"
+            weekly_source = "api" if has_weekly else "api_missing"
 
         # 5h window from official API
         if bucket_5h and bucket_5h.get("remainingFraction") is not None:
@@ -615,14 +643,20 @@ def extract_gemini_status(
             usage_percentage = round((1.0 - rem_5h) * 100.0, 1)
             available_capacity = max(0, round(total_capacity * rem_5h))
             used_daily = total_capacity - available_capacity
+            native_window_seconds = gemini_bucket_seconds(bucket_5h, GEMINI_5H_SECONDS)
+            if gemini_bucket_seconds(bucket_5h, 0):
+                native_api_fields.append("duration")
 
-            reset_5h = bucket_5h.get("resetTime") or bucket_5h.get("resets_at")
-            if reset_5h:
-                r_sec = parse_timestamp(reset_5h)
-                if r_sec is not None:
-                    release_sec = r_sec
-                    seconds_remaining = max(0, int(release_sec - now_sec))
-                    release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+            r_sec = parse_timestamp(bucket_5h.get("resetTime") or bucket_5h.get("resets_at"))
+            if r_sec is not None:
+                native_api_fields.append("release")
+                release_sec = r_sec
+                seconds_remaining = max(0, int(release_sec - now_sec))
+                release_time = datetime.fromtimestamp(release_sec, tz=timezone.utc).isoformat()
+            elif native_window_seconds != GEMINI_DAILY_SECONDS:
+                # Bucket duration without a reset: the daily heuristic release would be wrong
+                seconds_remaining = None
+                release_time = None
 
         # Weekly window from official API
         if bucket_weekly and bucket_weekly.get("remainingFraction") is not None:
@@ -630,14 +664,19 @@ def extract_gemini_status(
             weekly_usage_percentage = round((1.0 - rem_w) * 100.0, 1)
             weekly_available_capacity = max(0, round(weekly_total_capacity * rem_w))
             weekly_used_capacity = weekly_total_capacity - weekly_available_capacity
+            weekly_window_seconds = gemini_bucket_seconds(bucket_weekly, GEMINI_7D_SECONDS)
+            if gemini_bucket_seconds(bucket_weekly, 0):
+                weekly_api_fields.append("duration")
 
-            reset_w = bucket_weekly.get("resetTime") or bucket_weekly.get("resets_at")
-            if reset_w:
-                w_sec = parse_timestamp(reset_w)
-                if w_sec is not None:
-                    cycle_reset_sec = w_sec
-                    weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
-                    cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+            w_sec = parse_timestamp(bucket_weekly.get("resetTime") or bucket_weekly.get("resets_at"))
+            if w_sec is not None:
+                weekly_api_fields.append("release")
+                cycle_reset_sec = w_sec
+                weekly_seconds_remaining = max(0, int(cycle_reset_sec - now_sec))
+                cycle_reset_time = datetime.fromtimestamp(cycle_reset_sec, tz=timezone.utc).isoformat()
+            elif weekly_window_seconds != GEMINI_7D_SECONDS:
+                weekly_seconds_remaining = None
+                cycle_reset_time = None
         else:
             weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
             weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
@@ -668,7 +707,10 @@ def extract_gemini_status(
         weekly_used_capacity = used_7d
 
     native_window = {
-        "type": "daily",
+        "type": window_type_from_seconds(native_window_seconds),
+        "source": native_source,
+        "api_fields": native_api_fields,
+        "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
         "used_capacity": used_daily,
         "available_capacity": available_capacity,
@@ -687,8 +729,11 @@ def extract_gemini_status(
         "usage_percentage": weekly_usage_percentage,
         "messages_used": used_7d,
         "tokens_used": 0,
+        "source": weekly_source,
+        "api_fields": weekly_api_fields,
         "cycle_reset_time": cycle_reset_time,
         "seconds_remaining": weekly_seconds_remaining,
+        "window_seconds": weekly_window_seconds,
     }
 
     return {
