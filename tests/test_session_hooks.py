@@ -137,10 +137,24 @@ def test_hook_never_fails_on_garbage(tmp_path):
 
 
 def hook(monkeypatch, tmp_path, state, stdin: bytes):
-    import io
+    import threading
 
-    monkeypatch.setattr(sys, "stdin", type("S", (), {"buffer": io.BytesIO(stdin)})())
-    assert session_state.hook_main([state, str(tmp_path / "s")]) == 0
+    r, w = os.pipe()
+
+    def feed():
+        with os.fdopen(w, "wb") as f:
+            try:
+                f.write(stdin)
+            except BrokenPipeError:
+                pass
+
+    t = threading.Thread(target=feed)
+    t.start()
+    try:
+        assert session_state.hook_main([state, str(tmp_path / "s")], fd=r) == 0
+    finally:
+        os.close(r)
+        t.join()
     return session_state.read_sessions(tmp_path / "s")
 
 
@@ -168,6 +182,46 @@ def test_huge_stdin_real_process_no_epipe(tmp_path):
     r = subprocess.run([sys.executable, "-I", session_state.__file__, "waiting", str(tmp_path / "s")], input=big, capture_output=True)
     assert r.returncode == 0 and r.stderr == b""
     assert [x["state"] for x in session_state.read_sessions(tmp_path / "s")] == ["waiting"]
+
+
+def test_only_root_level_fields_count(tmp_path, monkeypatch):
+    # session_id/notification_type dentro do prompt ou de objetos aninhados nunca valem
+    evil = json.dumps({"prompt": '"session_id": "forjado", "notification_type": "permission_prompt"', "x": {"session_id": "aninhado"},
+                       "session_id": "real"}).encode()
+    assert hook(monkeypatch, tmp_path, "busy", evil) and (tmp_path / "s" / (session_state.hashlib.sha256(b"real").hexdigest()[:16] + ".json")).exists()
+    forged = b'{"prompt": "\\"notification_type\\": \\"permission_prompt\\"", "session_id": "q"' + b", " + b'"big": "' + b"z" * (2 << 20)
+    assert hook(monkeypatch, tmp_path / "w", "waiting", forged) == []
+
+
+@pytest.mark.parametrize("mode", ["open", "drip"])
+def test_stdin_left_open_does_not_hang_hook(tmp_path, mode):
+    import time as _t
+
+    p = subprocess.Popen([sys.executable, "-I", session_state.__file__, "busy", str(tmp_path / "s")],
+                         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+    t0 = _t.monotonic()
+    p.stdin.write(b'{"session_id": "abc", "p": "')
+    p.stdin.flush()
+    if mode == "drip":
+        while p.poll() is None and _t.monotonic() - t0 < 6:
+            try:
+                p.stdin.write(b"x" * 10)
+                p.stdin.flush()
+            except BrokenPipeError:
+                break
+            _t.sleep(0.2)
+    out, err = p.communicate(timeout=6) if mode == "drip" else (p.wait(timeout=6), None)[::1]
+    assert p.returncode == 0 and _t.monotonic() - t0 <= 3.0
+    assert [r["state"] for r in session_state.read_sessions(tmp_path / "s")] == ["busy"]
+
+
+def test_accounts_map_failure_keeps_contract_field(tmp_path):
+    cache = tmp_path / "c" / "status.json"
+    (cache.parent / session_state.ACCOUNTS_FILENAME).mkdir(parents=True)  # os.replace vai falhar
+    session_state.write_event(session_state.state_dir_for(cache), "busy", "s")
+    status = {"agents": {"claude": {"accounts": [{"id": "a", "isActive": True}]}}}
+    session_state.apply_session_state(status, {}, cache)
+    assert status["agents"]["claude"]["accounts"][0]["session_state"] == "busy"
 
 
 def test_truncated_prefix_ignores_unsafe_session_id(tmp_path, monkeypatch):

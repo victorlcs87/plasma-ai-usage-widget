@@ -17,6 +17,8 @@ Item {
     readonly property int count: Math.max(1, rings.length)
     readonly property color accent: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.accentColor : Kirigami.Theme.highlightColor
     readonly property int totalInvites: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.totalInvites : 0
+    // Modo "ocultar sem o processo da CLI": pílula some e resta uma fatia fina (alvo do botão direito e do clique)
+    readonly property bool idle: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.idleHidden === true : false
     readonly property string health: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.worstHealthStatus : ""
 
     // Tamanho-base do anel e folga da pílula; o anel encolhe até o mínimo (cabe a inicial em 8 px)
@@ -44,10 +46,11 @@ Item {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.closePopup();
     }
 
-    Layout.minimumWidth: vertical ? ringMin + 2 * pad : runLength(ringMin)
-    Layout.minimumHeight: vertical ? runLength(ringMin) : ringMin + 2 * pad
-    Layout.preferredWidth: vertical ? ringBase + 2 * pad : runLength(ringBase)
-    Layout.preferredHeight: vertical ? runLength(ringBase) : ringBase + 2 * pad
+    readonly property int sliver: Kirigami.Units.gridUnit
+    Layout.minimumWidth: vertical ? ringMin + 2 * pad : (idle ? sliver : runLength(ringMin))
+    Layout.minimumHeight: vertical ? (idle ? sliver : runLength(ringMin)) : ringMin + 2 * pad
+    Layout.preferredWidth: vertical ? ringBase + 2 * pad : (idle ? sliver : runLength(ringBase))
+    Layout.preferredHeight: vertical ? (idle ? sliver : runLength(ringBase)) : ringBase + 2 * pad
 
     activeFocusOnTab: true
     // Destruído com o mouse em cima (formFactor, reconfiguração): não deixa o hover preso
@@ -58,13 +61,15 @@ Item {
     Keys.onEscapePressed: closePopup()
 
     Accessible.role: Accessible.Button
-    Accessible.name: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : ""
+    Accessible.name: compactRoot.idle ? compactRoot.tr("Monitor de IA oculto: nenhuma CLI em execução. Ative para abrir")
+        : (compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipMainText : "")
     Accessible.description: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.toolTipSubText : ""
     Accessible.onPressAction: toggle()
 
     // Pílula sempre escura, independente do tema
     Rectangle {
         id: pill
+        visible: !compactRoot.idle
         anchors.centerIn: parent
         width: Math.min(parent.width, vertical ? compactRoot.ringSize + 2 * pad : compactRoot.runLength(compactRoot.ringSize))
         height: Math.min(parent.height, vertical ? compactRoot.runLength(compactRoot.ringSize) : compactRoot.ringSize + 2 * pad)
@@ -95,6 +100,7 @@ Item {
                     innerColor: Presets.levelColor(modelData.innerLevel, compactRoot.accent)
                     letter: modelData.letter
                     sessionState: modelData.sessionState
+                    active: !compactRoot.idle
                     reducedMotion: Kirigami.Units.longDuration === 0  // animações desligadas no Plasma
                     Accessible.role: Accessible.StaticText
                     Accessible.name: modelData.name
@@ -154,6 +160,17 @@ Item {
             }
         }
     }
+
+    Rectangle {
+        visible: compactRoot.idle
+        anchors.centerIn: parent
+        width: vertical ? parent.width * 0.7 : Math.max(4, compactRoot.sliver / 3)
+        height: vertical ? Math.max(4, compactRoot.sliver / 3) : parent.height * 0.7
+        radius: Math.min(width, height) / 2
+        color: compactRoot.accent
+        opacity: mouseArea.containsMouse ? 1 : 0.8
+    }
+
 
     MouseArea {
         id: mouseArea

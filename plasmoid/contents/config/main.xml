@@ -42,7 +42,7 @@
     </entry>
     <entry name="sessionAutoOpen" type="Bool">
       <label>Abrir o Notch por 5 s quando a sessão termina ou pede algo</label>
-      <default>true</default>
+      <default>false</default>
     </entry>
     <entry name="sessionSound" type="Bool">
       <label>Tocar um som quando a sessão termina ou pede algo</label>

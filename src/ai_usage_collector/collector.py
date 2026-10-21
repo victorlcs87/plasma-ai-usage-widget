@@ -42,6 +42,7 @@ from ai_usage_collector.identity import credential_identity
 from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.limit_changes import apply_limit_changes
 from ai_usage_collector.notifications import apply_notifications, deliver, notify_settings
+from ai_usage_collector.running import apply_running, visibility_settings
 from ai_usage_collector.pace import alert_settings, apply_pace, reapply_levels
 from ai_usage_collector.session_state import apply_session_state
 from ai_usage_collector.extractors import (
@@ -268,6 +269,8 @@ def _collect(
     except Exception as e:  # notificacoes sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Notificacoes de limite nao processadas: {e}\n")
 
+    apply_running(status_payload, config, now_dt)  # nunca levanta: detect_running trata todo erro de /proc
+
     return status_payload
 
 
@@ -280,6 +283,7 @@ def reapply_alert_levels(config_path: str | Path | None = None, cache_path: str 
             config = load_config(config_path)
             reapply_levels(status, alert_settings(config))
             status["notifications"] = notify_settings(config)  # a tela de configuracao le daqui
+            status["visibility"] = visibility_settings(config)
             save_status_cache(status, cache_file)
 
 

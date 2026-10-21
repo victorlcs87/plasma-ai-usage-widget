@@ -138,3 +138,21 @@ def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):
     agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
     out = render(tmp_path, "h2", agents, drive="tc.mouseMove(c, 20, 20); c.destroy(); skipGrab = true;")
     assert out["calls"] == ["hover:true", "hover:false"]
+
+
+def test_session_animations_stop_when_hidden_by_idle(tmp_path):
+    """Widget oculto por ociosidade (active: false) ou janela oculta: nenhuma animacao roda."""
+    (tmp_path / "imp").mkdir()
+    shutil.copy(UI_DIR / "DualRing.qml", tmp_path / "DualRing.qml")
+    (tmp_path / "h.qml").write_text("""
+import QtQuick
+import QtQuick.Window
+Window { visible: true; width: 40; height: 40
+  DualRing { id: a; anchors.fill: parent; sessionState: "busy"; active: true }
+  DualRing { id: b; width: 20; height: 20; sessionState: "waiting"; active: false }
+  Timer { interval: 300; running: true; onTriggered: { console.log("RESULT " + JSON.stringify([a.shown, b.shown])); Qt.quit() } }
+}""")
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
+    res = subprocess.run(["qml6", str(tmp_path / "h.qml")], env=env, capture_output=True, text=True, timeout=60)
+    line = next(l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l)
+    assert json.loads(line.split("RESULT ", 1)[1]) == [True, False]

@@ -588,3 +588,17 @@ def set_notify_settings(
     yn = lambda b: "sim" if b else "não"  # noqa: E731
     return True, (f"Notificações atualizadas: aviso {new['warning']:g}%, crítico {new['critical']:g}%, "
                   f"antecipado {yn(new['early'])}, reset {yn(new['reset'])}, silenciados: {', '.join(new['muted']) or 'nenhum'}.")
+
+
+def set_visibility_settings(mode: str | None = None, config_path: str | Path | None = None) -> tuple[bool, str]:
+    """Grava quando ocultar o Plasmoid sem o processo da CLI: off (padrao) | widget | provider."""
+    from ai_usage_collector.running import validate_visibility, visibility_settings
+
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        mode = visibility_settings(cfg)["hide_when_not_running"] if mode is None else mode
+        if error := validate_visibility(mode):
+            return False, error
+        cfg["visibility"] = {"hide_when_not_running": mode}
+        save_config(cfg, config_path)
+    return True, f"Ocultar sem o processo da CLI: {mode}."

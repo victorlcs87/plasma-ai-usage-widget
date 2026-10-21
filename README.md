@@ -26,3 +26,12 @@ A classe é o pior nível de alerta entre as Contas Ativas no Sistema (contas in
 ```
 
 Notas: `text` pode mostrar o % de uma janela com leitura local enquanto a classe fica `unknown` (leitura local não recebe nível); `percentage` considera só janelas com nível. Percentuais fora de 0..100 são limitados e NaN/Infinity são ignorados. A saída é JSON ASCII (acentos escapados como `\uXXXX`, válido para o Waybar), o tooltip mostra no máximo 20 linhas, e `--waybar` ignora as demais opções (só `--cache-path` vale).
+
+## Estado da Sessão (Claude Code, opt-in)
+
+`ai-usage-collector --install-hooks` registra hooks no `settings.json` do Claude Code (`CLAUDE_CONFIG_DIR`
+absoluto ou `~/.claude`); `--uninstall-hooks` remove só os do widget (pode reindentar o arquivo). Perfil
+isolado: rode com o `CLAUDE_CONFIG_DIR` de cada perfil. Ative "Mostrar o estado da sessão" na configuração
+do plasmoid. O caminho leve de consulta (`ai-usage-session-state`) exige reinstalar o pacote
+(`pip install -e .`); ele lê `session-accounts.json`, atualizado a cada refresh. Detalhes e limitações no
+ADR-0009.

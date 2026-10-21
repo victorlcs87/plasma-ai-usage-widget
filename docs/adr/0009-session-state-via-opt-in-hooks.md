@@ -30,3 +30,19 @@ comando usa so `-I`.
   (absoluto) de cada perfil.
 - O hook grava apenas estado, horario, hash do `session_id` e o diretorio de configuracao; nunca o prompt.
 - A abertura automatica do Notch pode roubar o foco do teclado; por isso e desligavel.
+
+## Caminho leve, mapa de Contas e defasagens
+
+- O plasmoid consulta o estado a cada 5 s pelo entrypoint `ai-usage-session-state` (modulo
+  `session_state`, so biblioteca padrao). Ele so existe depois de **reinstalar o pacote**
+  (`pip install -e .`); sem ele o plasmoid cai em `ai-usage-collector --session-state` (mais pesado) e
+  mostra um aviso no tooltip se a consulta falhar.
+- Em cada refresh o coletor grava `session-accounts.json` ao lado do `status.json` (Conta -> diretorios
+  de configuracao). O caminho leve usa esse mapa: apos login externo, troca ou remocao de Conta o
+  estado fica defasado ate o proximo refresh.
+- O hook le o stdin com teto de 2 s (select), nunca ficando preso a uma entrada aberta, e so considera
+  campos de nivel raiz do JSON.
+- `--uninstall-hooks` (e o install) regrava o settings.json inteiro: preserva chaves e ordem, mas pode
+  reindentar o arquivo se o estilo original nao for o detectado.
+- `sessionAutoOpen` (abrir o Notch por 5 s) vem **desligado por padrao**: abrir o popup pode roubar o
+  foco do teclado, o que nao foi verificado no Plasma real.

@@ -20,7 +20,8 @@ Item {
     property string sessionState: ""
     property bool reducedMotion: false
     // Sem animar (nem gastar CPU) com o widget oculto
-    readonly property bool shown: visible && (Window.window ? Window.window.visible : true)
+    property bool active: true  // false com o widget oculto por ociosidade (idleHidden)
+    readonly property bool shown: active && visible && (Window.window ? Window.window.visible : true)
 
     implicitWidth: 24
     implicitHeight: 24

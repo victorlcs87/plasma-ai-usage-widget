@@ -47,8 +47,43 @@ PlasmoidItem {
     // Notch compacto: provedores visíveis, na ordem escolhida, com a Conta Ativa no Sistema de cada um
     // Estado da Sessão ao vivo (--session-state), por id de Conta Claude; vence o campo do contrato
     property var sessionOverlay: ({})
-    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n)
+    property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n, root.nowMs)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
+    // Timer de 15 s e a cada status lido, para uma leitura velha deixar de esconder mesmo sem status novo.
+    property double nowMs: Date.now()
+    property int idleDelayMs: 20000
+    // Opção "ocultar sem o processo da CLI" (modo widget; desligada por padrão). Recuperação: nunca oculta
+    // com o popup aberto, o mouse sobre o widget ou a configuração aberta; no painel resta uma fatia clicável
+    // (botão direito abre "Configurar"), e na bandeja o status Passivo mantém o widget nos itens ocultos.
+    // Histerese: some só depois de `idleDelayMs` ininterruptos (sem tremor); reaparece na hora.
+    readonly property bool idleWanted: NotchModel.widgetIdle(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs)
+        && !root.expanded && !Plasmoid.userConfiguring && !root.pillHovered && !root.pinned && !root.popupHovered
+    property bool idleHidden: false
+    onIdleWantedChanged: {
+        if (idleWanted) idleDelay.restart();
+        else { idleDelay.stop(); idleHidden = false; }
+    }
+    // Modo "provider": o provedor só some após `idleDelayMs` parado (sem reflow a cada oscilação); volta na hora
+    // string (não array): recalcular sem mudança não reinicia o atraso
+    readonly property string rawIdle: NotchModel.idleProviders(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, root.nowMs).join(",")
+    property var confirmedIdle: []
+    onRawIdleChanged: {
+        var raw = rawIdle === "" ? [] : rawIdle.split(",");
+        confirmedIdle = confirmedIdle.filter(function (k) { return raw.indexOf(k) >= 0; });
+        if (raw.length > confirmedIdle.length) providerIdleDelay.restart(); else providerIdleDelay.stop();
+    }
+    Timer {
+        id: providerIdleDelay
+        interval: root.idleDelayMs
+        onTriggered: root.confirmedIdle = root.rawIdle === "" ? [] : root.rawIdle.split(",")
+    }
+    Timer {
+        id: idleDelay
+        interval: root.idleDelayMs
+        onTriggered: root.idleHidden = root.idleWanted
+    }
+    Plasmoid.status: root.idleHidden ? PlasmaCore.Types.PassiveStatus : PlasmaCore.Types.ActiveStatus
     readonly property color accentColor: Presets.accentColor(Plasmoid.configuration.accentPreset, Kirigami.Theme.highlightColor)
 
     function safeI18n(text, arg1, arg2) {
@@ -104,6 +139,9 @@ PlasmoidItem {
         var lines = [NotchModel.tooltipText(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders }, safeI18n, now)];
         if (totalInvites > 0) {
             lines.push(safeI18n("%1 convites disponíveis", totalInvites));
+        }
+        if (sessionFailed && Plasmoid.configuration.sessionState === true) {
+            lines.push(safeI18n("Estado da sessão indisponível: reinstale o pacote do coletor (pip install -e .)"));
         }
         return lines.join("\n");
     }
@@ -185,7 +223,10 @@ PlasmoidItem {
         return "bash -c 'if command -v ai-usage-session-state >/dev/null 2>&1; then ai-usage-session-state; " +
                "elif [ -x \"$HOME/.local/bin/ai-usage-session-state\" ]; then \"$HOME/.local/bin/ai-usage-session-state\"; " +
                "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-session-state\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-session-state\"; " +
-               "else python3 -m ai_usage_collector.session_state --states; fi'";
+               "elif command -v ai-usage-collector >/dev/null 2>&1; then ai-usage-collector --session-state; " +  // instalação antiga, sem o caminho leve
+               "elif [ -x \"$HOME/.local/bin/ai-usage-collector\" ]; then \"$HOME/.local/bin/ai-usage-collector\" --session-state; " +
+               "elif [ -x \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" ]; then \"$HOME/repositorios/plasma-ai-usage-widget/.venv/bin/ai-usage-collector\" --session-state; " +
+               "else python3 -m ai_usage_collector --session-state; fi'";
     }
 
     // Executor assíncrono de comandos do coletor (refresh / remoção)
@@ -281,6 +322,30 @@ PlasmoidItem {
         }
     }
 
+    // Execução da CLI de cada provedor: leitura barata de /proc pelo coletor, só com a opção ligada
+    Plasma5Support.DataSource {
+        id: runningDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            if (data["exit code"] === 0) root.loadStatus();
+            disconnectSource(sourceName);
+        }
+    }
+
+    Timer {
+        interval: 15000
+        repeat: true
+        running: NotchModel.hideMode(root.statusData) !== "off"
+        triggeredOnStart: true
+        onTriggered: {
+            root.nowMs = Date.now();  // antes da chamada: se o coletor falhar, a leitura velha ainda expira
+            if (runningDataSource.connectedSources.length === 0)
+                runningDataSource.connectSource(root.buildCollectorCommand(root.shellQuote("--detect-running")));
+        }
+    }
+
     function removeAccount(provider, accountId) {
         if (!provider || !accountId) return;
         var provClean = String(provider).toLowerCase().trim();
@@ -313,6 +378,7 @@ PlasmoidItem {
             if (exitCode === 0 && stdout && stdout.trim().length > 0) {
                 try {
                     var parsed = JSON.parse(stdout);
+                    root.nowMs = Date.now();
                     root.statusData = parsed;
                     root.lastError = "";
                 } catch (e) {
@@ -330,6 +396,7 @@ PlasmoidItem {
     // Estado da Sessão (ADR-0009): só consulta com a opção ligada; nada toca em hooks aqui
     property bool sessionPolling: false
     property bool autoOpened: false
+    property bool sessionFailed: false  // consulta do estado falhou: aviso discreto na configuração e no tooltip
 
     function applySessionStates(map) {
         var prev = root.sessionOverlay || {};
@@ -349,7 +416,7 @@ PlasmoidItem {
     // aberto (nem fixado) e não altera pinned. Limitação: abrir o popup pode roubar o foco do teclado do
     // terminal onde o usuário digita; por isso a abertura automática é desligável (sessionAutoOpen).
     function sessionAttention() {
-        if (Plasmoid.configuration.sessionAutoOpen !== false && !root.expanded && !root.pinned) {
+        if (Plasmoid.configuration.sessionAutoOpen === true && !root.expanded && !root.pinned && !root.idleHidden) {
             root.autoOpened = true;
             root.expanded = true;
             sessionCloseTimer.restart();
@@ -386,8 +453,9 @@ PlasmoidItem {
         onNewData: (sourceName, data) => {
             root.sessionPolling = false;
             try {
-                if (data["exit code"] === 0) root.applySessionStates(JSON.parse(data["stdout"]).claude);
-            } catch (e) { /* leitura inválida: mantém o último estado */ }
+                root.sessionFailed = data["exit code"] !== 0;
+                if (!root.sessionFailed) root.applySessionStates(JSON.parse(data["stdout"]).claude);
+            } catch (e) { root.sessionFailed = true; /* leitura inválida: mantém o último estado */ }
             disconnectSource(sourceName);
         }
     }
@@ -395,7 +463,7 @@ PlasmoidItem {
     Timer {
         interval: 5000
         repeat: true
-        running: Plasmoid.configuration.sessionState === true && root.visible
+        running: Plasmoid.configuration.sessionState === true && root.visible && !root.idleHidden
         triggeredOnStart: true
         onTriggered: {
             if (root.sessionPolling) return;
@@ -428,6 +496,8 @@ PlasmoidItem {
     }
 
     Component.onCompleted: {
+        if (root.idleWanted) idleDelay.restart();
+        if (root.rawIdle !== "") providerIdleDelay.restart();
         root.loadStatus();
     }
 

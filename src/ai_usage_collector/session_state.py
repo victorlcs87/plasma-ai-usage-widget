@@ -12,6 +12,7 @@ import hashlib
 import json
 import os
 import re
+import select
 import sys
 import time
 from pathlib import Path
@@ -30,10 +31,9 @@ _PURGE_SECONDS = 86400
 _TMP_PURGE_SECONDS = 60
 _MAX_STDIN = 1 << 20  # prefixo analisado como JSON; o resto da entrada e lido e descartado
 _DRAIN_MAX_BYTES = 256 << 20
-_DRAIN_MAX_SECONDS = 2.0
-_HEAD = 4096  # session_id e notification_type vem no inicio do JSON do Claude Code
-_SID_RE = re.compile(rb'"session_id"\s*:\s*"([A-Za-z0-9_-]{1,128})"')
-_NTYPE_RE = re.compile(rb'"notification_type"\s*:\s*"([a-z_]{1,64})"')
+_DRAIN_MAX_SECONDS = 2.0  # teto total de leitura do stdin, mesmo que o Claude Code o deixe aberto
+_SID_RE = re.compile(r"[A-Za-z0-9_-]{1,128}")
+_NTYPE_RE = re.compile(r"[a-z_]{1,64}")
 ACCOUNTS_FILENAME = "session-accounts.json"
 _FUTURE_SKEW = 300  # relogio adiantado alem disso invalida o registro
 
@@ -150,12 +150,15 @@ def apply_session_state(status: dict[str, Any], config: dict[str, Any], cache_pa
     """
     dirs = account_dirs(status, config)
     cache_dir = Path(cache_path).expanduser().resolve().parent
-    tmp = cache_dir / f".{ACCOUNTS_FILENAME}.{os.getpid()}.tmp"
-    cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
-    fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as f:
-        json.dump(dirs, f)
-    os.replace(tmp, cache_dir / ACCOUNTS_FILENAME)
+    try:  # o mapa e so para o caminho leve: falhar aqui nunca pode custar o campo do contrato
+        cache_dir.mkdir(parents=True, exist_ok=True, mode=0o700)
+        tmp = cache_dir / f".{ACCOUNTS_FILENAME}.{os.getpid()}.tmp"
+        fd = os.open(tmp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(dirs, f)
+        os.replace(tmp, cache_dir / ACCOUNTS_FILENAME)
+    except OSError as e:
+        sys.stderr.write(f"Aviso: mapa de Contas do Estado da Sessao nao gravado: {e}\n")
     states = states_from_dirs(dirs, cache_dir / STATE_DIRNAME, now)
     for acc in _claude_accounts(status):
         if str(acc.get("id")) in states:
@@ -181,33 +184,64 @@ def states_main(argv: list[str] | None = None) -> int:
     return 0
 
 
-def _drain(stream: Any) -> None:
-    """Le e descarta o resto da entrada (evita EPIPE no Claude Code), com limite de bytes e tempo."""
-    total, deadline = 0, time.monotonic() + _DRAIN_MAX_SECONDS
-    while total < _DRAIN_MAX_BYTES and time.monotonic() < deadline:
-        chunk = stream.read(65536)
+def _read_stdin(fd: int) -> bytes:
+    """Prefixo (ate 1 MiB) da entrada; o resto e lido e descartado (evita EPIPE no Claude Code).
+    Limite de bytes e de tempo total, com select: entrada que fica aberta nao prende o hook.
+    """
+    head, total = bytearray(), 0
+    deadline = time.monotonic() + _DRAIN_MAX_SECONDS
+    while total < _DRAIN_MAX_BYTES:
+        left = deadline - time.monotonic()
+        if left <= 0 or not select.select([fd], [], [], left)[0]:
+            break
+        chunk = os.read(fd, 65536)
         if not chunk:
-            return
+            break
         total += len(chunk)
+        head += chunk[: max(0, _MAX_STDIN - len(head))]
+    return bytes(head)
 
 
-def hook_main(argv: list[str]) -> int:
+def _root_fields(raw: bytes) -> dict[str, Any]:
+    """Campos de nivel raiz de um JSON possivelmente truncado: le pares chave/valor em sequencia e
+    para no primeiro que nao fecha. Nunca olha dentro de valores aninhados (ex.: o prompt).
+    """
+    text, dec, out = raw.decode("utf-8", "ignore"), json.JSONDecoder(), {}
+    i = text.find("{")
+    if i < 0 or text[:i].strip():
+        return out
+    i += 1
+    try:
+        while True:
+            while text[i] in " \t\r\n,":
+                i += 1
+            if text[i] == "}":
+                return out
+            key, i = dec.raw_decode(text, i)
+            while text[i] in " \t\r\n":
+                i += 1
+            if text[i] != ":":
+                return out
+            i += 1
+            while text[i] in " \t\r\n":
+                i += 1
+            val, i = dec.raw_decode(text, i)
+            if isinstance(key, str):
+                out.setdefault(key, val)
+    except (ValueError, IndexError):
+        return out
+
+
+def hook_main(argv: list[str], fd: int = 0) -> int:
     """Corpo do hook: `<estado> <diretorio>`; qualquer falha e engolida (exit 0, sem saida)."""
     try:
         state, state_dir = argv[0], argv[1]
-        raw = sys.stdin.buffer.read(_MAX_STDIN)
-        _drain(sys.stdin.buffer)
-        sid = ntype = None
-        try:
-            payload = json.loads(raw) if raw.strip() else {}
-            payload = payload if isinstance(payload, dict) else {}
-            sid, ntype = payload.get("session_id"), payload.get("notification_type")
-        except ValueError:  # JSON truncado (entrada grande): so o prefixo, com regex restrita
-            m, n = _SID_RE.search(raw[:_HEAD]), _NTYPE_RE.search(raw[:_HEAD])
-            sid, ntype = m and m.group(1).decode(), n and n.group(1).decode()
-        if state == "waiting" and ntype not in WAITING_NOTIFICATION_TYPES:
+        fields = _root_fields(_read_stdin(fd))
+        sid, ntype = fields.get("session_id"), fields.get("notification_type")
+        if state == "waiting" and not (isinstance(ntype, str) and ntype in WAITING_NOTIFICATION_TYPES):
             return 0  # auth_success, idle_prompt, tipo ausente/desconhecido: nao espera o usuario
-        write_event(state_dir, state, sid if isinstance(sid, str) and sid else "unknown")
+        ok = isinstance(sid, str) and _SID_RE.fullmatch(sid)
+        write_event(state_dir, state, sid if ok else "unknown")
     except BaseException:  # noqa: BLE001 - o hook nunca pode falhar o Claude Code
         pass
     return 0
