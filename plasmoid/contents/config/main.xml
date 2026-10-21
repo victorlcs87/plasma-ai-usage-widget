@@ -36,6 +36,10 @@
       <label>Cor de destaque do Notch (plasma = cor de realce do Plasma)</label>
       <default>plasma</default>
     </entry>
+    <entry name="hoverOpen" type="Bool">
+      <label>Abrir o popup ao passar o mouse sobre o Notch (desligado: só o clique)</label>
+      <default>true</default>
+    </entry>
   </group>
 
 </kcfg>

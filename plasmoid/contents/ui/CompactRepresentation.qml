@@ -37,8 +37,13 @@ Item {
 
     function runLength(size) { return count * size + (count - 1) * gap + badgeLength + 2 * pad; }
 
+    // Clique do mouse: abre/fixa/solta (main.qml); teclado: abre/fecha como antes
     function toggle() {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.expanded = !compactRoot.plasmoidItem.expanded;
+    }
+
+    function closePopup() {
+        if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.closePopup();
     }
 
     readonly property int sliver: Kirigami.Units.gridUnit
@@ -48,9 +53,12 @@ Item {
     Layout.preferredHeight: vertical ? (idle ? sliver : runLength(ringBase)) : ringBase + 2 * pad
 
     activeFocusOnTab: true
+    // Destruído com o mouse em cima (formFactor, reconfiguração): não deixa o hover preso
+    Component.onDestruction: if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.setPillHovered(false)
     Keys.onReturnPressed: toggle()
     Keys.onEnterPressed: toggle()
     Keys.onSpacePressed: toggle()
+    Keys.onEscapePressed: closePopup()
 
     Accessible.role: Accessible.Button
     Accessible.name: compactRoot.idle ? compactRoot.tr("Monitor de IA oculto: nenhuma CLI em execução. Ative para abrir")
@@ -160,19 +168,13 @@ Item {
         opacity: mouseArea.containsMouse ? 1 : 0.8
     }
 
-    // Histerese: o mouse sobre a fatia/pílula impede reduzir (ver idleWanted em main.qml)
-    Binding {
-        target: compactRoot.plasmoidItem
-        property: "compactHovered"
-        value: mouseArea.containsMouse
-        when: compactRoot.plasmoidItem !== null
-    }
 
     MouseArea {
         id: mouseArea
         anchors.fill: parent
         hoverEnabled: true
         cursorShape: Qt.PointingHandCursor
-        onClicked: compactRoot.toggle()
+        onContainsMouseChanged: if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.setPillHovered(containsMouse)
+        onClicked: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.pillClicked() : compactRoot.toggle()
     }
 }

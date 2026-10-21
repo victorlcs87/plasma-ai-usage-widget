@@ -14,6 +14,14 @@ PlasmaExtras.Representation {
 
     collapseMarginsHint: true
 
+    // Mouse sobre o popup: não fecha por hover enquanto estiver nele
+    HoverHandler {
+        onHoveredChanged: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.setPopupHovered(hovered)
+    }
+    // Foco no popup ao abrir, para o Escape funcionar (precisa de verificação no Plasma real)
+    onVisibleChanged: if (visible) fullRoot.forceActiveFocus()
+    Keys.onEscapePressed: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup()
+
     Layout.minimumWidth: Kirigami.Units.gridUnit * 20
     Layout.preferredWidth: Kirigami.Units.gridUnit * 25
     Layout.maximumWidth: Kirigami.Units.gridUnit * 35
