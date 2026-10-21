@@ -51,8 +51,9 @@ function compactNumber(n) {
     var units = [[1e9, "B"], [1e6, "M"], [1e3, "k"]];
     for (var i = 0; i < units.length; i++)
         if (n >= units[i][0]) {
-            var v = Math.round(n / units[i][0] * 10) / 10;   // 410000 -> "410k", 12400 -> "12,4k"
-            return v.toLocaleString(Qt.locale(), "f", (v % 1 === 0 || v >= 100) ? 0 : 1) + units[i][1];
+            var u = units[i], v = Math.round(n / u[0] * 10) / 10;   // 410000 -> "410k", 12400 -> "12,4k"
+            if (v >= 1000 && i > 0) { u = units[i - 1]; v = Math.round(n / u[0] * 10) / 10; }   // 999999 -> "1M", nao "1000k"
+            return v.toLocaleString(Qt.locale(), "f", (v % 1 === 0 || v >= 100) ? 0 : 1) + u[1];
         }
     return String(n);
 }
