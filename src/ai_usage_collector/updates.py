@@ -289,7 +289,10 @@ def run_plan(plan: dict[str, bool], cache_file: Path) -> tuple[dict[str, Any], d
     def work() -> None:
         for source, fetch in plan.items():
             if fetch:
-                results[source] = {"got": _fetch_latest(source, deadline)}
+                try:
+                    results[source] = {"got": _fetch_latest(source, deadline)}
+                except Exception:  # noqa: BLE001 - nada na consulta pode derrubar a thread nem a coleta
+                    results[source] = {"got": None}
 
     worker = threading.Thread(target=work, daemon=True)  # a thread cobre tambem DNS lento; se estourar, e abandonada
     worker.start()

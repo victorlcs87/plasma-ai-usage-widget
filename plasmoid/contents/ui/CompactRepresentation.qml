@@ -142,8 +142,12 @@ Item {
                 implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
                 implicitHeight: implicitWidth
                 radius: implicitWidth / 2
-                color: "#3daee9"
+                color: Kirigami.Theme.highlightColor  // sobre a pílula escura (#15171b) passa de 4,5:1 nos temas Breeze
+                Accessible.role: Accessible.Indicator
                 Accessible.name: compactRoot.tr("Nova versão de CLI disponível")
+                HoverHandler { id: updateDotHover }
+                QQC2.ToolTip.visible: updateDotHover.hovered
+                QQC2.ToolTip.text: compactRoot.tr("Nova versão de CLI disponível")
             }
 
             // Selo: nova versão do widget
@@ -154,7 +158,8 @@ Item {
                 implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
                 implicitWidth: implicitHeight
                 radius: implicitHeight / 2
-                color: "#3daee9"
+                color: Kirigami.Theme.highlightColor
+                Accessible.role: Accessible.Indicator
                 Accessible.name: compactRoot.tr("Nova versão do widget disponível")
 
                 QQC2.Label {
@@ -162,7 +167,7 @@ Item {
                     text: "\u2191"
                     font.bold: true
                     font.pointSize: Kirigami.Theme.smallFont.pointSize * 0.8
-                    color: "white"
+                    color: Kirigami.Theme.highlightedTextColor
                     textFormat: Text.PlainText
                 }
             }

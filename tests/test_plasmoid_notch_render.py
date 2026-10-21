@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binar
 STUBS = {
     "org/kde/kirigami": ("module org.kde.kirigami\nsingleton Units 1.0 Units.qml\nsingleton Theme 1.0 Theme.qml\n", {
         "Units.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var iconSizes: ({small:16, smallMedium:22, medium:32}); property int smallSpacing: 4; property int gridUnit: 18 }",
-        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property var smallFont: ({pointSize: 9}) }"}),
+        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property color highlightedTextColor: '#ffffff'; property var smallFont: ({pointSize: 9}) }"}),
     "org/kde/plasma/plasmoid": ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\n", {
         "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int formFactor: 2 }"}),
     "org/kde/plasma/core": ("module org.kde.plasma.core\nsingleton Types 1.0 Types.qml\n", {
@@ -122,6 +122,11 @@ def test_update_badge_model_ignores_untrusted_values(tmp_path):
     assert out["model"][0]["update"]["latest"] == "2.1.0" and "nova versão 2.1.0" in out["model"][0]["description"]
     items["widget"]["url"] = ok
     assert render(tmp_path / "b", "u2", agents, updates={"enabled": True, "items": items})["update"]["widget"]["url"] == ok
+    for n, bad in enumerate((ok + "/../../x", ok + "/%2E%2e/x", ok + "..%2fx", ok + "%5Cx",
+                             "https://github.com/victorlcs87/plasma-ai-usage-widget/tree/main")):
+        items["widget"]["url"] = bad
+        got = render(tmp_path / f"c{n}", f"u3{n}", agents, updates={"enabled": True, "items": items})
+        assert got["update"]["widget"]["url"] == "", bad
 
 
 def test_pill_forwards_mouse_and_escape_to_popup_logic(tmp_path):

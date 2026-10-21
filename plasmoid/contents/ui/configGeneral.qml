@@ -62,6 +62,7 @@ Item {
     // Verificação diária de atualização (config.json do coletor, lida do status.json)
     property bool updateCheck: true
     property bool isSavingUpdates: false
+    property bool updateCheckBefore: true  // valor anterior, restaurado se o coletor falhar
 
     property var statusData: null
     property bool isLoading: false
@@ -324,6 +325,7 @@ Item {
     }
 
     function saveUpdateSetting(enabled) {
+        configRoot.updateCheckBefore = !enabled;
         configRoot.isSavingUpdates = true;
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
@@ -344,6 +346,8 @@ Item {
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
+                configRoot.updateCheck = configRoot.updateCheckBefore;
+                updateCheckBox.checked = configRoot.updateCheckBefore;
                 configRoot.errorMessage = stderr || stdout || configRoot.safeI18n("Erro desconhecido");
             }
             disconnectSource(sourceName);
@@ -940,6 +944,7 @@ Item {
 
         // Atualizações: uma consulta por dia ao GitHub Releases e ao npm (sem credenciais; nada é baixado)
         QQC2.CheckBox {
+            id: updateCheckBox
             text: configRoot.safeI18n("Verificar novas versões uma vez por dia")
             checked: configRoot.updateCheck
             enabled: !configRoot.isBusy && !configRoot.isSavingUpdates
