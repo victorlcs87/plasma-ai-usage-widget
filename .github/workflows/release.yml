@@ -1,0 +1,66 @@
+name: Release Automation
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build and Release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install build tools
+        run: |
+          python -m pip install --upgrade pip
+          pip install build
+
+      - name: Package artifacts
+        run: |
+          chmod +x scripts/package-release.sh
+          ./scripts/package-release.sh
+
+      - name: Determine release tag and title
+        id: release_info
+        shell: bash
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            TAG="${{ github.ref_name }}"
+            TITLE="Release ${TAG}"
+          else
+            TAG="latest"
+            TITLE="Continuous Release (${GITHUB_SHA::7})"
+          fi
+          echo "tag_name=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "title=${TITLE}" >> "$GITHUB_OUTPUT"
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.release_info.outputs.tag_name }}
+          name: ${{ steps.release_info.outputs.title }}
+          target_commitish: ${{ github.sha }}
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+          files: |
+            dist/*.plasmoid
+            dist/*.whl
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
