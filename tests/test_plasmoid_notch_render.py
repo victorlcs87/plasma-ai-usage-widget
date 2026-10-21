@@ -25,6 +25,7 @@ STUBS = {
 HARNESS = """
 import QtQuick
 import QtQuick.Window
+import QtTest
 import org.kde.plasma.plasmoid
 import "NotchModel.js" as NotchModel
 Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
@@ -37,20 +38,29 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
     property string toolTipMainText: "AI"
     property string toolTipSubText: ""
     property bool expanded: false
+    property var calls: []
+    function setPillHovered(h) { calls.push("hover:" + h) }
+    function pillClicked() { calls.push("click") }
+    function closePopup() { calls.push("close") }
     function safeI18n(t, a, b) { var r = t; if (a !== undefined) r = r.replace("%%1", a); if (b !== undefined) r = r.replace("%%2", b); return r }
   }
   CompactRepresentation { id: c; plasmoidItem: logic; anchors.fill: parent }
+  property bool skipGrab: false
+  Timer { id: fin; interval: 100; onTriggered: { console.log("RESULT " + JSON.stringify({calls: logic.calls})); Qt.quit() } }
+  TestCase { id: tc; when: false }
   Component.onCompleted: Plasmoid.formFactor = %(ff)d
   Timer { interval: 600; running: true; onTriggered: {
+    %(drive)s
+    if (skipGrab) { fin.start(); return }
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
-      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo}));
+      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo, calls: logic.calls}));
       Qt.quit() }) } }
 }
 """
 
 
-def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", updates=None):
+def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", updates=None):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -67,7 +77,7 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", updates
     (run / "h.qml").write_text(HARNESS % {
         "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents, "updates": updates}),
         "cfg": json.dumps(cfg), "invites": invites, "ff": 3 if vertical else 2,
-        "png": f"{png_dir}/{name}.png" if png_dir else ""})
+        "png": f"{png_dir}/{name}.png" if png_dir else "", "drive": drive})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
     res = subprocess.run(["qml6", "-I", str(imp), str(run / "h.qml")], env=env, capture_output=True, text=True, timeout=60)
     line = next((l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l), None)
@@ -112,3 +122,22 @@ def test_update_badge_model_ignores_untrusted_values(tmp_path):
     assert out["model"][0]["update"]["latest"] == "2.1.0" and "nova versão 2.1.0" in out["model"][0]["description"]
     items["widget"]["url"] = ok
     assert render(tmp_path / "b", "u2", agents, updates={"enabled": True, "items": items})["update"]["widget"]["url"] == ok
+
+
+def test_pill_forwards_mouse_and_escape_to_popup_logic(tmp_path):
+    """Eventos sintéticos (QtTest): hover/clique vão para a lógica do popup; Escape fecha."""
+    drive = """
+    tc.mouseMove(c, 20, 20);
+    tc.mouseClick(c, 20, 20);
+    c.forceActiveFocus();
+    tc.keyClick(Qt.Key_Escape);
+    """
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    assert render(tmp_path, "h1", agents, drive=drive)["calls"] == ["hover:true", "click", "close"]
+
+
+def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):
+    """M2: representação destruída com o mouse em cima não deixa pillHovered preso."""
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    out = render(tmp_path, "h2", agents, drive="tc.mouseMove(c, 20, 20); c.destroy(); skipGrab = true;")
+    assert out["calls"] == ["hover:true", "hover:false"]

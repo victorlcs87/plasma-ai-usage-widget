@@ -25,6 +25,7 @@ Item {
     property string cfg_providerOrder: "claude,codex,gemini"
     property string cfg_hiddenProviders: ""
     property string cfg_accentPreset: "plasma"
+    property bool cfg_hoverOpen: true
     readonly property var providerOrderList: Presets.normalizeOrder(cfg_providerOrder)
 
     function moveProvider(index, delta) {
@@ -753,6 +754,12 @@ Item {
                     }
                 }
             }
+        }
+
+        QQC2.CheckBox {
+            text: configRoot.safeI18n("Abrir o popup ao passar o mouse (desligado: só o clique)")
+            checked: configRoot.cfg_hoverOpen
+            onToggled: configRoot.cfg_hoverOpen = checked
         }
 
         // Intervalo de Atualização por provedor (mínimo de 60 s)
