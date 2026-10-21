@@ -590,6 +590,15 @@ def set_notify_settings(
                   f"antecipado {yn(new['early'])}, reset {yn(new['reset'])}, silenciados: {', '.join(new['muted']) or 'nenhum'}.")
 
 
+def set_update_settings(check: bool, config_path: str | Path | None = None) -> tuple[bool, str]:
+    """Liga/desliga a verificacao diaria de atualizacao (ticket 39)."""
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        cfg["updates"] = {"check": check}
+        save_config(cfg, config_path)
+    return True, f"Verificação de atualização {'ligada' if check else 'desligada'}."
+
+
 def set_visibility_settings(mode: str | None = None, config_path: str | Path | None = None) -> tuple[bool, str]:
     """Grava quando ocultar o Plasmoid sem o processo da CLI: off (padrao) | widget | provider."""
     from ai_usage_collector.running import validate_visibility, visibility_settings

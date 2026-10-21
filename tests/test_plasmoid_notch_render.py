@@ -15,7 +15,7 @@ pytestmark = pytest.mark.skipif(shutil.which("qml6") is None, reason="qml6 binar
 STUBS = {
     "org/kde/kirigami": ("module org.kde.kirigami\nsingleton Units 1.0 Units.qml\nsingleton Theme 1.0 Theme.qml\n", {
         "Units.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var iconSizes: ({small:16, smallMedium:22, medium:32}); property int smallSpacing: 4; property int gridUnit: 18 }",
-        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property var smallFont: ({pointSize: 9}) }"}),
+        "Theme.qml": "pragma Singleton\nimport QtQuick\nQtObject { property color highlightColor: '#3daee9'; property color highlightedTextColor: '#ffffff'; property var smallFont: ({pointSize: 9}) }"}),
     "org/kde/plasma/plasmoid": ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\n", {
         "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property int formFactor: 2 }"}),
     "org/kde/plasma/core": ("module org.kde.plasma.core\nsingleton Types 1.0 Types.qml\n", {
@@ -32,6 +32,7 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
   Item { id: logic
     property var compactModel: NotchModel.buildModel(%(data)s, %(cfg)s, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
+    property var updateInfo: NotchModel.updateSummary(%(data)s, safeI18n)
     property int totalInvites: %(invites)d
     property color accentColor: "#3daee9"
     property string toolTipMainText: "AI"
@@ -53,13 +54,13 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "#303236"
     if (skipGrab) { fin.start(); return }
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
-      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, calls: logic.calls}));
+      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo, calls: logic.calls}));
       Qt.quit() }) } }
 }
 """
 
 
-def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", extra_cfg=None):
+def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="", extra_cfg=None, updates=None):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -74,7 +75,7 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="
     png_dir = os.environ.get("AIU_PNG_DIR", "")
     cfg = {"providerOrder": "claude,codex,gemini", "hiddenProviders": hidden, **(extra_cfg or {})}
     (run / "h.qml").write_text(HARNESS % {
-        "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents}),
+        "w": 40 if vertical else 300, "h": 160 if vertical else 40, "data": json.dumps({"agents": agents, "updates": updates}),
         "cfg": json.dumps(cfg), "invites": invites, "ff": 3 if vertical else 2,
         "png": f"{png_dir}/{name}.png" if png_dir else "", "drive": drive})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -106,6 +107,26 @@ def test_no_active_account_shows_neutral_provider_without_health_badge(tmp_path)
     assert claude["innerPct"] == -1 and claude["outerPct"] == -1
     assert "sem conta ativa" in claude["description"]
     assert out["health"] == ""
+
+
+def test_update_badge_model_ignores_untrusted_values(tmp_path):
+    ok = "https://github.com/victorlcs87/plasma-ai-usage-widget/releases/tag/v9.0.0"
+    items = {"widget": {"latest": "9.0.0", "available": True, "url": "https://evil.example/x"},
+             "claude": {"latest": "2.1.0", "available": True}, "codex": {"latest": "1.0.0", "available": False},
+             "gemini": {"latest": 5, "available": True}}
+    agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
+    out = render(tmp_path, "u1", agents, updates={"enabled": True, "items": items})
+    info = out["update"]
+    assert info["widget"]["url"] == "" and info["clis"] == ["claude"]
+    assert [l["text"] for l in info["lines"]] == ["Nova versão do widget: 9.0.0", "Nova versão do Claude Code: 2.1.0"]
+    assert out["model"][0]["update"]["latest"] == "2.1.0" and "nova versão 2.1.0" in out["model"][0]["description"]
+    items["widget"]["url"] = ok
+    assert render(tmp_path / "b", "u2", agents, updates={"enabled": True, "items": items})["update"]["widget"]["url"] == ok
+    for n, bad in enumerate((ok + "/../../x", ok + "/%2E%2e/x", ok + "..%2fx", ok + "%5Cx", ok + "%zz",
+                             "https://github.com/victorlcs87/plasma-ai-usage-widget/tree/main")):
+        items["widget"]["url"] = bad
+        got = render(tmp_path / f"c{n}", f"u3{n}", agents, updates={"enabled": True, "items": items})
+        assert got["update"]["widget"]["url"] == "", bad
 
 
 def test_session_state_in_model_and_rings_render(tmp_path):
@@ -160,3 +181,30 @@ Window { visible: true; width: 40; height: 40
     res = subprocess.run(["qml6", str(tmp_path / "h.qml")], env=env, capture_output=True, text=True, timeout=60)
     line = next(l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l)
     assert json.loads(line.split("RESULT ", 1)[1]) == [True, False]
+
+
+def test_update_marks_meet_contrast_for_any_highlight(tmp_path):
+    """Selo e ponto de atualização: >= 4,5:1 sobre a pílula (#15171b) mesmo com realce escuro ou claro demais."""
+    (tmp_path / "p").mkdir()
+    shutil.copy(UI_DIR / "Presets.js", tmp_path / "p" / "Presets.js")
+    colors = ["#3daee9", "#2980b9", "#1d3557", "#000000", "#ffffff", "#8e44ad", "#16a085"]
+    (tmp_path / "p" / "t.qml").write_text("""
+import QtQuick
+import "Presets.js" as P
+Item { Component.onCompleted: {
+  var out = %s.map(function (h) { var c = Qt.color(h); return P.onPill(c.r, c.g, c.b) });
+  console.log("RESULT " + JSON.stringify(out)); Qt.quit() } }
+""" % json.dumps(colors))
+    env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
+    res = subprocess.run(["qml6", str(tmp_path / "p" / "t.qml")], env=env, capture_output=True, text=True, timeout=60)
+    line = next(l for l in (res.stdout + res.stderr).splitlines() if "RESULT " in l)
+    out = json.loads(line.split("RESULT ", 1)[1])
+
+    def lum(h):
+        c = [int(h[i:i + 2], 16) / 255 for i in (1, 3, 5)]
+        c = [v / 12.92 if v <= 0.03928 else ((v + 0.055) / 1.055) ** 2.4 for v in c]
+        return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]
+
+    for given, got in zip(colors, out):
+        assert (lum(got) + 0.05) / (lum("#15171b") + 0.05) >= 4.5, (given, got)  # glifo (#15171b) e forma
+    assert out[0] == "#3daee9"  # Breeze ja passa: cor preservada

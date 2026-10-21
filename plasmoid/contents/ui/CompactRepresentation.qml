@@ -21,6 +21,10 @@ Item {
     readonly property bool idle: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.idleHidden === true : false
     readonly property string health: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.worstHealthStatus : ""
 
+    readonly property bool widgetUpdate: !!(compactRoot.plasmoidItem && compactRoot.plasmoidItem.updateInfo && compactRoot.plasmoidItem.updateInfo.widget)
+    readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
+    readonly property bool cliUpdate: rings.some(function (r) { return !!r.update; })
+
     // Tamanho-base do anel e folga da pílula; o anel encolhe até o mínimo (cabe a inicial em 8 px)
     readonly property int ringBase: Kirigami.Units.iconSizes.smallMedium
     readonly property int ringMin: Math.round(Kirigami.Units.gridUnit * 1.1)
@@ -29,6 +33,8 @@ Item {
     readonly property int ringSize: Math.min(ringBase, Math.max(ringMin, (vertical ? width : height) - 2 * pad))
     // Selos entram no fluxo da pílula, depois dos anéis: nunca cobrem um anel
     readonly property int badgeLength: (health !== "" ? healthDot.implicitWidth + gap : 0)
+        + (cliUpdate ? updateDot.implicitWidth + gap : 0)
+        + (widgetUpdate ? (vertical ? widgetBadge.implicitHeight : widgetBadge.implicitWidth) + gap : 0)
         + (totalInvites > 0 ? (vertical ? inviteBadge.implicitHeight : inviteBadge.implicitWidth) + gap : 0)
 
     function tr(text, arg) {
@@ -80,7 +86,7 @@ Item {
 
         GridLayout {
             anchors.centerIn: parent
-            columns: compactRoot.vertical ? 1 : compactRoot.count + 2
+            columns: compactRoot.vertical ? 1 : compactRoot.count + 4
             rowSpacing: compactRoot.gap
             columnSpacing: compactRoot.gap
 
@@ -135,6 +141,44 @@ Item {
                      : compactRoot.health === "not_configured" ? "#8a9099" : "#ff4d4f"
                 Accessible.name: compactRoot.health === "session_expired" ? compactRoot.tr("Sessão expirada")
                                : compactRoot.health === "not_configured" ? compactRoot.tr("Conta não configurada") : compactRoot.tr("Erro na conta")
+            }
+
+            // Ponto azul: nova versão de Claude Code, Codex ou Gemini CLI
+            Rectangle {
+                id: updateDot
+                visible: compactRoot.cliUpdate
+                Layout.alignment: Qt.AlignCenter
+                implicitWidth: Math.max(8, Kirigami.Units.smallSpacing * 1.8)
+                implicitHeight: implicitWidth
+                radius: implicitWidth / 2
+                color: compactRoot.updateColor  // >= 4,5:1 sobre a pílula, qualquer realce (Presets.onPill)
+                Accessible.role: Accessible.Indicator
+                Accessible.name: compactRoot.tr("Nova versão de CLI disponível")
+                HoverHandler { id: updateDotHover }
+                QQC2.ToolTip.visible: updateDotHover.hovered
+                QQC2.ToolTip.text: compactRoot.tr("Nova versão de CLI disponível")
+            }
+
+            // Selo: nova versão do widget
+            Rectangle {
+                id: widgetBadge
+                visible: compactRoot.widgetUpdate
+                Layout.alignment: Qt.AlignCenter
+                implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
+                implicitWidth: implicitHeight
+                radius: implicitHeight / 2
+                color: compactRoot.updateColor
+                Accessible.role: Accessible.Indicator
+                Accessible.name: compactRoot.tr("Nova versão do widget disponível")
+
+                QQC2.Label {
+                    anchors.centerIn: parent
+                    text: "\u2191"
+                    font.bold: true
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.1
+                    color: "#15171b"  // cor da pílula sobre o realce clareado: >= 4,5:1
+                    textFormat: Text.PlainText
+                }
             }
 
             // Selo numérico de convites

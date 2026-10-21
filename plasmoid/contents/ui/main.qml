@@ -48,6 +48,7 @@ PlasmoidItem {
     // Estado da Sessão ao vivo (--session-state), por id de Conta Claude; vence o campo do contrato
     property var sessionOverlay: ({})
     property var compactModel: NotchModel.buildModel(statusData, { providerOrder: Plasmoid.configuration.providerOrder, hiddenProviders: Plasmoid.configuration.hiddenProviders, idleProviders: root.confirmedIdle, showSession: Plasmoid.configuration.sessionState === true, sessionOverlay: sessionOverlay }, safeI18n, root.nowMs)
+    property var updateInfo: NotchModel.updateSummary(statusData, safeI18n)
     property string worstHealthStatus: NotchModel.worstHealth(compactModel)
     // Relógio observável para a frescura de `running` (Date.now() não dispara reavaliação): atualizado pelo
     // Timer de 15 s e a cada status lido, para uma leitura velha deixar de esconder mesmo sem status novo.

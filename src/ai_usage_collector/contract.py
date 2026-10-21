@@ -24,6 +24,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     "alerts" {mode, warning, critical} (ticket 24)
 #     Top-level "notifications" {warning, critical, early, reset, muted} (ticket 25) is a new optional
 #     key read by the settings screen: no version bump
+#     Top-level "updates" {enabled, items: {widget|claude|codex|gemini: {latest, current, available, url?}}}
+#     (ticket 39) is a new optional key: no version bump
 #     Per-account "session_state" ("busy"|"waiting"|"idle"|"unknown"; Claude and Codex (ticket 36), present once the
 #     opt-in session hooks have written state or Codex rollouts are active; ticket 35) is a new optional key: no version bump
 #     Ticket 37: optional per-agent "running" (bool|null: the CLI process runs for the current user; null =
@@ -226,6 +228,21 @@ def validate_status_contract(data: Any) -> bool:
     ):
         return False
 
+    upd = data.get("updates")
+    if upd is not None and not (
+        isinstance(upd, dict)
+        and isinstance(upd.get("enabled"), bool)
+        and isinstance(upd.get("items"), dict)
+        and set(upd["items"]) <= {"widget", "claude", "codex", "gemini"}
+        and all(
+            isinstance(i, dict) and isinstance(i.get("latest"), str) and len(i["latest"]) <= 64
+            and isinstance(i.get("available"), bool)
+            and (i.get("current") is None or (isinstance(i["current"], str) and len(i["current"]) <= 64))
+            and (i.get("url") is None or (isinstance(i["url"], str) and len(i["url"]) <= 300))
+            for i in upd["items"].values()
+        )
+    ):
+        return False
     vis = data.get("visibility")
     if vis is not None and not (isinstance(vis, dict) and vis.get("hide_when_not_running") in ("off", "widget", "provider")):
         return False

@@ -104,6 +104,37 @@ function sessionWord(state, tr) {
     return "";
 }
 
+// Atualizações (ticket 39): texto do status.json é não confiável, então só versão curta e URL da release do widget
+var RELEASE_URL = /^https:\/\/github\.com\/victorlcs87\/plasma-ai-usage-widget\/releases\/(?:[A-Za-z0-9._~\/+-]|%[0-9A-Fa-f]{2}){0,200}$/;
+var URL_FORBIDDEN = /\.\.|%2e|%2f|%5c/i;  // igual ao coletor (updates.py)
+function validReleaseUrl(u) { return typeof u === "string" && RELEASE_URL.test(u) && !URL_FORBIDDEN.test(u); }
+var CLI_NAMES = { claude: "Claude Code", codex: "Codex", gemini: "Gemini CLI" };
+
+// Item com nova versão disponível, ou null
+function updateItem(statusData, key) {
+    var u = statusData && statusData.updates;
+    var it = u && u.items && u.items[key];
+    if (!it || it.available !== true || typeof it.latest !== "string" || it.latest.length > 64) return null;
+    return {
+        latest: it.latest,
+        url: validReleaseUrl(it.url) ? it.url : ""
+    };
+}
+
+// {widget, clis, lines}: lines = textos do popup (url só no widget)
+function updateSummary(statusData, tr) {
+    var widget = updateItem(statusData, "widget");
+    var clis = [], lines = [];
+    if (widget) lines.push({ text: tr("Nova versão do widget: %1", widget.latest), url: widget.url });
+    ["claude", "codex", "gemini"].forEach(function (k) {
+        var it = updateItem(statusData, k);
+        if (!it) return;
+        clis.push(k);
+        lines.push({ text: tr("Nova versão do %1: %2", CLI_NAMES[k], it.latest), url: "" });
+    });
+    return { widget: widget, clis: clis, lines: lines };
+}
+
 function buildModel(statusData, cfg, tr, nowMs) {
     var agents = (statusData && statusData.agents) || {};
     // cfg.idleProviders (já confirmados com atraso pelo chamador) tem precedência sobre a leitura direta
@@ -117,7 +148,7 @@ function buildModel(statusData, cfg, tr, nowMs) {
         var m = {
             provider: key, name: (ag && ag.name) || info.name, letter: info.letter,
             innerPct: -1, outerPct: -1, innerLevel: "", outerLevel: "", innerElapsed: -1, outerElapsed: -1,
-            health: "", sessionState: ""
+            health: "", sessionState: "", update: updateItem(statusData, key)
         };
         if (!acc) {
             var hasAccounts = ag && ag.accounts && ag.accounts.length > 0;
@@ -137,6 +168,7 @@ function buildModel(statusData, cfg, tr, nowMs) {
         var tail = acc.stale === true ? tr("dados desatualizados") : "";
         if (acc.limit_changes && acc.limit_changes.length > 0) tail += (tail ? ", " : "") + tr("limites mudaram");
         if (m.sessionState) tail += (tail ? ", " : "") + sessionWord(m.sessionState, tr);
+        if (m.update) tail += (tail ? ", " : "") + tr("nova versão %1", m.update.latest);
         m.description = tr("Janela nativa %1 (%2)", pctWord(m.innerPct), levelWord(m.innerLevel, tr))
             + ", " + tr("semanal %1 (%2)", pctWord(m.outerPct), levelWord(m.outerLevel, tr))
             + (tail ? ", " + tail : "");
