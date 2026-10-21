@@ -137,72 +137,70 @@ def get_active_codex_credentials(override: Path | None = None) -> tuple[dict[str
     return None, str(p)
 
 
+_ANTIGRAVITY_TOKEN = Path("antigravity-cli") / "antigravity-oauth-token"
+
+
+def _read_gemini_file(p: Path) -> dict[str, Any] | None:
+    """Le um JSON de credencial Gemini (somente leitura); formato aninhado em `token` vira o plano interno."""
+    if not p.is_file():
+        return None
+    try:
+        data = json.loads(p.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+    if not isinstance(data, dict):
+        return None
+    tok = data.get("token")
+    if isinstance(tok, dict):  # CLI Antigravity: {"token": {...}, "auth_method", "id_token"}
+        return {**{k: v for k, v in data.items() if k != "token"}, **tok}
+    return data
+
+
 def get_active_gemini_credentials(override: Path | None = None) -> tuple[dict[str, Any] | None, str]:
-    """Retrieve active Gemini credentials from secret-tool keyring or fallback file."""
+    """Credencial Gemini ativa. Ordem: chaveiro, oauth_creds.json, token da CLI Antigravity.
+
+    Somente leitura: nunca grava no chaveiro nem nos arquivos da CLI (rotacionar o refresh_token deslogaria a CLI).
+    """
     env_path = str(override) if override else os.environ.get("GEMINI_CREDENTIALS_PATH")
     if env_path:
         p = override if override else Path(env_path).expanduser().resolve()  # override preserva symlink
-        if p.exists() and p.is_file():
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return data, str(p)
-            except Exception:
-                pass
-        return None, str(p)
+        return _read_gemini_file(p), str(p)
 
     env_dir = os.environ.get("GEMINI_CONFIG_DIR")
-    if env_dir:
-        p = Path(env_dir).expanduser().resolve() / "oauth_creds.json"
-        if p.exists() and p.is_file():
-            try:
-                with open(p, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                if isinstance(data, dict):
-                    return data, str(p)
-            except Exception:
-                pass
-        return None, str(p)
+    base = Path(env_dir).expanduser().resolve() if env_dir else Path("~/.gemini").expanduser().resolve()
+    files = [base / "oauth_creds.json", base / _ANTIGRAVITY_TOKEN]
 
-    # Keyring via secret-tool
-    keyring_data = None
-    try:
-        proc = subprocess.run(
-            ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
-            capture_output=True,
-            text=True,
-            timeout=3.0,
-            check=False,
-        )
-        if proc.returncode == 0:
-            raw = proc.stdout.strip()
-            if raw:
-                try:
-                    parsed = json.loads(raw)
-                    if isinstance(parsed, dict):
-                        keyring_data = parsed
-                except Exception:
-                    pass
-                if not keyring_data:
-                    keyring_data = {"access_token": raw, "token_type": "Bearer"}
-    except Exception:
-        pass
-
-    if keyring_data:
-        return keyring_data, "keyring (secret-tool)"
-
-    default_p = Path("~/.gemini/oauth_creds.json").expanduser().resolve()
-    if default_p.exists() and default_p.is_file():
+    if not env_dir:  # chaveiro so no caminho padrao
+        keyring_data = None
         try:
-            with open(default_p, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            if isinstance(data, dict):
-                return data, str(default_p)
+            proc = subprocess.run(
+                ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+                capture_output=True,
+                text=True,
+                timeout=3.0,
+                check=False,
+            )
+            if proc.returncode == 0:
+                raw = proc.stdout.strip()
+                if raw:
+                    try:
+                        parsed = json.loads(raw)
+                        if isinstance(parsed, dict):
+                            keyring_data = parsed
+                    except Exception:
+                        pass
+                    if not keyring_data:
+                        keyring_data = {"access_token": raw, "token_type": "Bearer"}
         except Exception:
             pass
+        if keyring_data:
+            return keyring_data, "keyring (secret-tool)"
 
-    return None, str(default_p)
+    for f in files:
+        data = _read_gemini_file(f)
+        if data:
+            return data, str(f)
+    return None, str(files[0])
 
 
 def inspect_and_validate_active_session(
@@ -313,7 +311,7 @@ def inspect_and_validate_active_session(
         if creds is None:
             return (
                 False,
-                "Nenhuma sessão ativa encontrada para Gemini no chaveiro do sistema ou em ~/.gemini/oauth_creds.json. Faça login antes de capturar.",
+                "Nenhuma sessão ativa encontrada para Gemini no chaveiro do sistema, em ~/.gemini/oauth_creds.json ou em ~/.gemini/antigravity-cli/antigravity-oauth-token. Faça login antes de capturar.",
                 None,
                 None,
                 "oauth_creds.json",
