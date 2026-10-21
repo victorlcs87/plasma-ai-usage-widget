@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 # Script de empacotamento de release do Plasmoid AI Usage Widget e do coletor Python.
+# BUILD_ARGS opcional (ex.: --no-isolation para build offline).
 # Gera os artefatos em dist/ (ou no diretório especificado como argumento):
 #   - org.kde.plasma.aiusage.plasmoid
 #   - plasma_ai_usage_collector-*.whl
@@ -35,41 +36,35 @@ elif command -v python >/dev/null 2>&1; then
     PYTHON_BIN="python"
 fi
 
-# 1. Empacotar Plasmoid
+# 1. Empacotar Plasmoid (a partir de uma cópia com os catálogos .mo compilados)
 echo "==> Gerando ${PLUGIN_ID}.plasmoid..."
 if [ ! -f "${PLASMOID_DIR}/metadata.json" ]; then
     echo "Erro: ${PLASMOID_DIR}/metadata.json não encontrado." >&2
     exit 1
 fi
 
-if [ -n "${PYTHON_BIN}" ]; then
-    "${PYTHON_BIN}" - << 'EOF' "$PLASMOID_DIR" "$PLASMOID_FILE"
+source "${SCRIPT_DIR}/stage-plasmoid.sh"
+STAGE_DIR="$(mktemp -d)"
+trap 'rm -rf "${STAGE_DIR}"' EXIT
+stage_plasmoid "${REPO_ROOT}" "${STAGE_DIR}"
+
+python3 - "${STAGE_DIR}" "${PLASMOID_FILE}" << 'EOF'
 import os
 import sys
 import zipfile
 
-plasmoid_dir = os.path.abspath(sys.argv[1])
-plasmoid_file = os.path.abspath(sys.argv[2])
-
+stage, out = os.path.abspath(sys.argv[1]), os.path.abspath(sys.argv[2])
 ignore_names = {".git", ".DS_Store", "__pycache__"}
 
-with zipfile.ZipFile(plasmoid_file, "w", zipfile.ZIP_DEFLATED) as zf:
-    for root, dirs, files in os.walk(plasmoid_dir):
-        # Excluir pastas ignoradas in-place
-        dirs[:] = [d for d in dirs if d not in ignore_names and not d.startswith(".")]
+with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(stage):
+        dirs[:] = sorted(d for d in dirs if d not in ignore_names and not d.startswith("."))
         for file in sorted(files):
-            if file.startswith(".") or file.endswith("~") or file.endswith(".swp") or file.endswith(".bak"):
+            if file.startswith(".") or file.endswith(("~", ".swp", ".bak")):
                 continue
             abs_path = os.path.join(root, file)
-            rel_path = os.path.relpath(abs_path, plasmoid_dir)
-            zf.write(abs_path, rel_path)
+            zf.write(abs_path, os.path.relpath(abs_path, stage))
 EOF
-elif command -v zip >/dev/null 2>&1; then
-    (cd "${PLASMOID_DIR}" && zip -r -q "${PLASMOID_FILE}" . -x "*.git*" "*~" "*.swp" "*__pycache__*" "*.DS_Store*")
-else
-    echo "Erro: Nem Python nem utilitário 'zip' encontrados para criar o pacote Plasmoid." >&2
-    exit 1
-fi
 
 if [ ! -f "${PLASMOID_FILE}" ]; then
     echo "Erro: Falha ao gerar ${PLASMOID_FILE}." >&2
@@ -86,7 +81,7 @@ fi
 
 if "${PYTHON_BIN}" -m build --version >/dev/null 2>&1; then
     echo "==> Compilando wheel com 'python -m build --wheel'..."
-    "${PYTHON_BIN}" -m build --wheel --outdir "${DIST_DIR}" "${REPO_ROOT}"
+    "${PYTHON_BIN}" -m build ${BUILD_ARGS:-} --wheel --outdir "${DIST_DIR}" "${REPO_ROOT}"
 elif "${PYTHON_BIN}" -m pip --version >/dev/null 2>&1; then
     echo "==> Compilando wheel com 'pip wheel'..."
     "${PYTHON_BIN}" -m pip wheel --no-deps -w "${DIST_DIR}" "${REPO_ROOT}"

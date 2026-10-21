@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import importlib.util
 import os
+import re
 from pathlib import Path
 import shutil
 import subprocess
+import sys
 import zipfile
 
 import pytest
@@ -381,18 +384,22 @@ def test_session_polling_and_attention_respect_idle_hidden_and_defaults():
     assert "property bool cfg_sessionAutoOpen: false" in (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
 
 
+def _package(tmp_path):
+    """Roda package-release.sh; --no-isolation (offline) se setuptools e wheel estiverem instalados."""
+    env = dict(os.environ)
+    if importlib.util.find_spec("setuptools") and importlib.util.find_spec("wheel"):
+        env["BUILD_ARGS"] = "--no-isolation"
+    env["PYTHON"] = sys.executable
+    result = subprocess.run([str(PACKAGE_SCRIPT), str(tmp_path)], capture_output=True, text=True, check=False, env=env)
+    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+
+
 def test_package_release_script_attributes_and_execution(tmp_path):
     """Verify package-release.sh exists, is executable, and produces plasmoid and wheel."""
     assert PACKAGE_SCRIPT.is_file(), "package-release.sh script must exist"
     assert os.access(PACKAGE_SCRIPT, os.X_OK), "package-release.sh must have executable bit set"
 
-    result = subprocess.run(
-        [str(PACKAGE_SCRIPT), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+    _package(tmp_path)
 
     plasmoid_file = tmp_path / "org.kde.plasma.aiusage.plasmoid"
     assert plasmoid_file.is_file(), "Plasmoid package must be generated in target directory"
@@ -403,13 +410,7 @@ def test_package_release_script_attributes_and_execution(tmp_path):
 
 def test_plasmoid_package_archive_contents(tmp_path):
     """Verify generated .plasmoid package is a valid zip with metadata at root and required QML files."""
-    result = subprocess.run(
-        [str(PACKAGE_SCRIPT), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+    _package(tmp_path)
 
     plasmoid_file = tmp_path / "org.kde.plasma.aiusage.plasmoid"
     assert plasmoid_file.is_file()
@@ -442,6 +443,11 @@ def test_plasmoid_package_archive_contents(tmp_path):
             assert ".git" not in name, f"Git file found in plasmoid: {name}"
             assert ".DS_Store" not in name, f"macOS artifact found in plasmoid: {name}"
 
+        # Traduções: os .mo não são versionados, então só chegam ao pacote se o script os compilar
+        for lang in ("en", "pt_BR"):
+            assert f"contents/locale/{lang}/LC_MESSAGES/plasma_applet_org.kde.plasma.aiusage.mo" in namelist
+        assert not any(n.startswith(".venv") or ".venv/" in n for n in namelist)
+
         # Verify metadata validity inside package
         meta_data = json.loads(zf.read("metadata.json").decode("utf-8"))
         assert meta_data.get("KPlugin", {}).get("Id") == "org.kde.plasma.aiusage"
@@ -450,13 +456,7 @@ def test_plasmoid_package_archive_contents(tmp_path):
 
 def test_collector_wheel_contents_and_entrypoint(tmp_path):
     """Verify generated wheel contains collector packages and ai-usage-collector entrypoint."""
-    result = subprocess.run(
-        [str(PACKAGE_SCRIPT), str(tmp_path)],
-        capture_output=True,
-        text=True,
-        check=False,
-    )
-    assert result.returncode == 0, f"package-release.sh failed: stdout={result.stdout}, stderr={result.stderr}"
+    _package(tmp_path)
 
     wheels = list(tmp_path.glob("plasma_ai_usage_collector-*.whl"))
     assert len(wheels) == 1, f"Expected exactly one wheel in {tmp_path}, found: {wheels}"
@@ -486,6 +486,7 @@ def test_collector_wheel_contents_and_entrypoint(tmp_path):
         assert ep_files, "entry_points.txt must be present in wheel dist-info"
         ep_content = zf.read(ep_files[0]).decode("utf-8")
         assert "ai-usage-collector = ai_usage_collector.cli:main" in ep_content
+        assert "ai-usage-session-state = ai_usage_collector.session_state:states_main" in ep_content
 
 
 def test_github_actions_release_workflow_configuration():
@@ -500,16 +501,16 @@ def test_github_actions_release_workflow_configuration():
     assert "workflow_dispatch:" in content
 
     # Permissions
-    assert "contents: write" in content
+    assert "contents: write" in content  # só no job (ver teste de segurança)
 
     # Steps
-    assert "actions/checkout@v4" in content
+    assert "actions/checkout@" in content
     assert "fetch-depth: 0" in content
-    assert "actions/setup-python@v5" in content
+    assert "actions/setup-python@" in content
     assert "3.12" in content
     assert "pip install build" in content
     assert "scripts/package-release.sh" in content
-    assert "softprops/action-gh-release@v2" in content
+    assert "softprops/action-gh-release@" in content
 
     # Artifacts attached
     assert "dist/*.plasmoid" in content
@@ -519,4 +520,39 @@ def test_github_actions_release_workflow_configuration():
     assert "latest" in content
 
 
+def test_package_release_fails_without_catalog(tmp_path):
+    """Sem o .po de um idioma o script falha em vez de publicar pacote sem traduções."""
+    repo = tmp_path / "repo"
+    shutil.copytree(REPO_ROOT, repo, ignore=shutil.ignore_patterns(".git", ".venv", "dist", "build", "__pycache__", "*.egg-info", ".scratch"))
+    (repo / "po" / "pt_BR.po").unlink()
+    result = subprocess.run([str(repo / "scripts" / "package-release.sh"), str(tmp_path / "out")], capture_output=True, text=True, check=False)
+    assert result.returncode != 0
 
+
+def test_versions_stay_in_sync():
+    import ai_usage_collector
+
+    pyproject = (REPO_ROOT / "pyproject.toml").read_text(encoding="utf-8")
+    version = re.search(r'^version = "([^"]+)"', pyproject, re.M).group(1)
+    meta = json.loads(METADATA_PATH.read_text(encoding="utf-8"))
+    assert ai_usage_collector.__version__ == version == meta["KPlugin"]["Version"]
+
+
+def test_release_workflow_security_hardening():
+    content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    # nenhuma expressão github.* dentro de run: (injeção); passa por env:
+    for block in re.findall(r"^\s+run:\s*[|>]?-?\s*\n((?:\s{10,}.*\n?)+)|^\s+run:\s*(.+)$", content, re.M):
+        assert "${{" not in "".join(block)
+    assert "pull_request_target" not in content
+    # actions fixadas em SHA completo de commit
+    uses = re.findall(r"^\s+uses:\s*(\S+)", content, re.M)
+    assert len(uses) == 3
+    for ref in uses:
+        assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", ref), ref
+    # permissão de escrita só no job; workflow sem permissões
+    assert re.search(r"^permissions:\s*\{\}\s*$", content, re.M)
+    assert not re.search(r"^permissions:\s*\n\s+contents: write", content, re.M)
+    job = content[content.index("jobs:"):]
+    assert re.search(r"^    permissions:\n      contents: write", job, re.M)
+    assert "TAG_REF: ${{ github.ref_name }}" in content and '"$TAG_REF"' in content
+    assert "[0-9]+\\.[0-9]+\\.[0-9]+" in content

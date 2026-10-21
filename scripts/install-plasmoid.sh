@@ -19,8 +19,8 @@ fi
 # temporária (os .mo não são versionados) e instala essa cópia.
 STAGE_DIR="$(mktemp -d)"
 trap 'rm -rf "${STAGE_DIR}"' EXIT
-cp -r "${PLASMOID_DIR}/." "${STAGE_DIR}/"
-python3 "${REPO_ROOT}/tools/i18n.py" compile "${STAGE_DIR}/contents/locale" >/dev/null
+source "${SCRIPT_DIR}/stage-plasmoid.sh"
+stage_plasmoid "${REPO_ROOT}" "${STAGE_DIR}"
 PLASMOID_DIR="${STAGE_DIR}"
 
 if command -v kpackagetool6 >/dev/null 2>&1; then
