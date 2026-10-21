@@ -1,8 +1,8 @@
 """Identidade da Conta por provedor (ADR-0008).
 
 Interface unica para responder "qual e a identidade desta credencial?". Cada provedor
-registra um adaptador em `_ADAPTERS`; o Gemini entra depois (ticket 20) apenas
-adicionando o seu adaptador, sem alterar quem consome esta interface.
+registra um adaptador em `_ADAPTERS`; Codex e Gemini ja registraram os seus,
+sem alterar quem consome esta interface.
 """
 
 from __future__ import annotations
@@ -14,6 +14,8 @@ import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Callable, NamedTuple
+
+from ai_usage_collector.discovery import extract_jwt_identity
 
 
 class Identity(NamedTuple):
@@ -29,6 +31,8 @@ class _Adapter:
     state_file: Callable[[Path], Path | None]
     # Copia os metadados de identidade de `src_cred_file` para junto de `dst_cred_file`.
     copy_state: Callable[[Path, Path], None]
+    # Identidade de credenciais ja em memoria (ex.: chaveiro, que prevalece sobre o arquivo).
+    from_creds: Callable[[dict[str, Any]], Identity | None] | None = None
 
 
 def _load_json(path: Path | None) -> dict[str, Any]:
@@ -135,8 +139,9 @@ def _codex_read(cred_file: Path) -> Identity | None:
     claims = _jwt_claims(tokens.get("id_token"))
     auth = claims.get("https://api.openai.com/auth")
     account_id = tokens.get("account_id") or (auth.get("chatgpt_account_id") if isinstance(auth, dict) else None)
-    email = str(claims.get("email") or "").strip() or None
-    account_id = str(account_id or "").strip()
+    email = claims.get("email")
+    email = email.strip() or None if isinstance(email, str) else None
+    account_id = account_id.strip() if isinstance(account_id, str) else ""
     if account_id:
         return Identity(account_id.lower(), email)
     if email:
@@ -144,9 +149,33 @@ def _codex_read(cred_file: Path) -> Identity | None:
     return None
 
 
+# --- Gemini ------------------------------------------------------------------
+# A identidade e o email Google da conta, no proprio `id_token` da credencial (arquivo
+# oauth_creds.json ou payload do chaveiro, plano ou aninhado em `token`); nao ha arquivo de estado.
+
+
+def _gemini_from_creds(creds: dict[str, Any]) -> Identity | None:
+    tok = creds.get("token") if isinstance(creds.get("token"), dict) else {}
+    email = str(creds.get("email") or "").strip()
+    if not email:
+        found = extract_jwt_identity(creds.get("id_token") or tok.get("id_token"))
+        email = found if found and "@" in found else ""  # `sub` nao e email
+    return Identity(f"email:{email.lower()}", email) if email else None
+
+
+def _gemini_read(cred_file: Path) -> Identity | None:
+    return _gemini_from_creds(_load_json(cred_file))
+
+
 _ADAPTERS: dict[str, _Adapter] = {
     "claude": _Adapter(read=_claude_read, state_file=_claude_state_file, copy_state=_claude_copy_state),
     "codex": _Adapter(read=_codex_read, state_file=lambda _: None, copy_state=lambda *_: None),
+    "gemini": _Adapter(
+        read=_gemini_read,
+        state_file=lambda cred_file: None,
+        copy_state=lambda src, dst: None,
+        from_creds=_gemini_from_creds,
+    ),
 }
 
 
@@ -161,6 +190,17 @@ def credential_identity(provider: str, cred_file: str | Path | None) -> Identity
         return None
     try:
         return adapter.read(Path(cred_file))
+    except Exception:
+        return None
+
+
+def creds_identity(provider: str, creds: dict[str, Any] | None) -> Identity | None:
+    """Identidade de credenciais ja lidas (ex.: do chaveiro), ou None se o provedor nao a traz nelas."""
+    adapter = _ADAPTERS.get(provider.lower().strip())
+    if adapter is None or adapter.from_creds is None or not creds:
+        return None
+    try:
+        return adapter.from_creds(creds)
     except Exception:
         return None
 

@@ -34,9 +34,10 @@ from ai_usage_collector.config import (
     save_config,
     save_secure_json,
 )
-from ai_usage_collector.discovery import extract_jwt_identity
+from ai_usage_collector.discovery import extract_jwt_identity, parse_timestamp
 from ai_usage_collector.identity import (
     copy_identity_state,
+    creds_identity,
     credential_identity,
     identity_state_file,
     supports_identity,
@@ -382,7 +383,7 @@ def _capture_current_session(
         return False, err_msg, None
 
     sys_file = get_system_credential_file(prov, override)
-    sys_identity = credential_identity(prov, sys_file)
+    sys_identity = _system_identity(prov, creds_data, sys_file)
     if sys_identity and sys_identity.email:
         identity = sys_identity.email
 
@@ -983,7 +984,10 @@ def get_active_credentials(provider: str, override: Path | None = None) -> dict[
     if prov == "codex":
         return get_active_codex_credentials(override)[0]
     if prov == "gemini":
-        return get_active_gemini_credentials(override)[0]
+        creds = get_active_gemini_credentials(override)[0]
+        tok = (creds or {}).get("token")
+        # Payload do chaveiro pode vir aninhado; o arquivo do Perfil Isolado e plano.
+        return {**{k: v for k, v in creds.items() if k != "token"}, **tok} if isinstance(tok, dict) else creds
     return None
 
 
@@ -1025,7 +1029,7 @@ def find_matching_account(
             if sig.get(key) and sig[key] == acc_sig.get(key):
                 return acc
 
-    ident = credential_identity(prov, target)
+    ident = _system_identity(prov, creds, target)
     if ident:
         for acc, f, _ in candidates:
             acc_ident = credential_identity(prov, f)
@@ -1040,7 +1044,21 @@ def find_matching_account(
     return None
 
 
+def _system_identity(prov: str, creds: dict[str, Any] | None, cred_file: Path | None) -> Any:
+    """Identidade das creds; o arquivo so e fallback se as creds vieram dele (nao do chaveiro defasado)."""
+    ident = creds_identity(prov, creds)
+    if ident or (creds is not None and creds != _read_json_dict(cred_file)):
+        return ident
+    return credential_identity(prov, cred_file)
+
+
 def _expires_at(creds: dict[str, Any] | None) -> float:
+    if creds and "last_refresh" in creds:  # Codex: ISO do ultimo refresh
+        sec = parse_timestamp(creds["last_refresh"])
+        return sec * 1000 if sec else 0.0
+    if creds and "claudeAiOauth" not in creds:  # Gemini: expiry_date (ms) ou expiry do chaveiro
+        sec = parse_timestamp(creds.get("expiry_date") or creds.get("expiry"))
+        return sec * 1000 if sec else 0.0
     oauth = (creds or {}).get("claudeAiOauth")
     val = oauth.get("expiresAt") if isinstance(oauth, dict) else None
     return float(val) if isinstance(val, (int, float)) and not isinstance(val, bool) else 0.0
@@ -1195,6 +1213,10 @@ def _switch_system_account(
     try:
         save_secure_json(target_creds, sys_file, prefix=f"{prov}_sys_")
         copy_identity_state(prov, source_file, sys_file)
+        if prov == "gemini" and not (
+            override or os.environ.get("GEMINI_CREDENTIALS_PATH") or os.environ.get("GEMINI_CONFIG_DIR")
+        ):
+            _store_gemini_keyring(target_creds)
     except Exception as e:
         failed = _restore(snapshot)
         if failed:
@@ -1204,44 +1226,58 @@ def _switch_system_account(
             ), False
         return False, f"Falha ao aplicar a conta '{account_id}' no sistema (estado anterior restaurado): {e}", False
 
-    # For Gemini, update system keyring via secret-tool
-    if prov == "gemini" and not override and not os.environ.get("GEMINI_CREDENTIALS_PATH") and not os.environ.get("GEMINI_CONFIG_DIR"):
-        try:
-            raw_payload = json.dumps(target_creds, ensure_ascii=False)
-            subprocess.run(
-                [
-                    "secret-tool",
-                    "store",
-                    "--label=Antigravity Token",
-                    "service",
-                    "gemini",
-                    "username",
-                    "antigravity",
-                ],
-                input=raw_payload,
-                text=True,
-                capture_output=True,
-                timeout=3.0,
-                check=False,
-            )
-        except Exception:
-            pass
-
     return True, f"Conta '{account_id}' ativada com sucesso no sistema para '{provider}'.", False
 
 
-def _auto_label(provider: str, cred_file: Path | None) -> str:
+def _store_gemini_keyring(creds: dict[str, Any]) -> None:
+    """Grava a credencial no chaveiro (secret-tool), mantendo o formato anterior (plano ou aninhado em `token`).
+
+    Sem secret-tool instalado nao ha chaveiro a atualizar.
+    """
+    try:
+        old = subprocess.run(
+            ["secret-tool", "lookup", "service", "gemini", "username", "antigravity"],
+            capture_output=True, text=True, timeout=3.0, check=False,
+        )
+        try:
+            prev = json.loads(old.stdout) if old.returncode == 0 else None
+        except ValueError:
+            prev = None
+        if isinstance(prev, dict) and isinstance(prev.get("token"), dict):
+            outer = {k: v for k, v in prev.items() if k != "token"}
+            creds = {**{k: creds.get(k, v) for k, v in outer.items()},
+                     "token": {k: v for k, v in creds.items() if k not in outer}}
+        proc = subprocess.run(
+            ["secret-tool", "store", "--label=Antigravity Token", "service", "gemini", "username", "antigravity"],
+            input=json.dumps(creds, ensure_ascii=False),
+            text=True,
+            capture_output=True,
+            timeout=3.0,
+            check=False,
+        )
+    except FileNotFoundError:
+        return
+    if proc.returncode != 0:
+        raise RuntimeError(
+            "secret-tool não conseguiu gravar a credencial no chaveiro. Verifique se um serviço "
+            "Secret Service (gnome-keyring ou KWallet) está ativo e desbloqueado e tente novamente."
+        )
+
+
+def _auto_label(provider: str, cred_file: Path | None, creds: dict[str, Any] | None = None) -> str:
     """Rotulo que o sistema gera para a Conta: 'Provedor (email)' ou 'Provedor'."""
-    ident = credential_identity(provider, cred_file)
+    ident = _system_identity(provider, creds, cred_file)
     name = provider.capitalize()
     return f"{name} ({ident.email})" if ident and ident.email else name
 
 
-def _is_auto_label(provider: str, label: str | None, cred_file: Path | None) -> bool:
+def _is_auto_label(
+    provider: str, label: str | None, cred_file: Path | None, creds: dict[str, Any] | None = None
+) -> bool:
     """So e automatico o rotulo que bate exatamente com um dos gerados pelo sistema para a Conta."""
     text = (label or "").strip()
     name = provider.capitalize()
-    generated = {"", name, f"{name} (Padrão)", _auto_label(provider, cred_file)}
+    generated = {"", name, f"{name} (Padrão)", _auto_label(provider, cred_file, creds)}
     oauth = (_read_json_dict(cred_file) or {}).get("claudeAiOauth") if cred_file else None
     if isinstance(oauth, dict):
         for key in ("subscriptionType", "rateLimitTier"):  # fallback da captura sem email
@@ -1275,7 +1311,7 @@ def _migrate_provider(
     for acc in list(accounts):
         if account_credential_file(prov, acc) != sys_file.resolve():
             continue
-        sys_creds = _read_json_dict(sys_file)
+        sys_creds = get_active_credentials(prov) if prov == "gemini" else _read_json_dict(sys_file)  # chaveiro prevalece
         if sys_creds is None and sys_file.is_file():
             continue  # ilegivel (transitorio?): adia a migracao em vez de apagar a entrada
         changed = True
@@ -1289,9 +1325,9 @@ def _migrate_provider(
             _store_into_profile(prov, sys_creds, sys_file, account_credential_file(prov, match))
             accounts.remove(acc)
             continue
-        ident = credential_identity(prov, sys_file)
-        if _is_auto_label(prov, acc.get("name") or acc.get("label"), sys_file):
-            acc["label"] = acc["name"] = _auto_label(prov, sys_file)
+        ident = _system_identity(prov, sys_creds, sys_file)
+        if _is_auto_label(prov, acc.get("name") or acc.get("label"), sys_file, sys_creds):
+            acc["label"] = acc["name"] = _auto_label(prov, sys_file, sys_creds)
         profiles_base = get_profiles_base_dir(config_path)
         existing_ids = {str(a.get("id")) for a in others}
         slug_label = f"{prov.capitalize()} ({ident.email})" if ident and ident.email else (acc.get("label") or prov)
