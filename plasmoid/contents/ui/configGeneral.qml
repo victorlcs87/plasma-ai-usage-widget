@@ -1978,7 +1978,7 @@ Item {
                         // Estado da Sessão do Claude Code e do Codex (ADR-0009): arco girando = ocupada, âmbar pulsando = aguardando
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing  // separa "Silenciar:" do checkbox anterior
 
                             QQC2.CheckBox {
                                 text: I18n.tr("Show the session state (Claude and Codex)")
