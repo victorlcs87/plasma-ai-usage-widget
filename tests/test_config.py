@@ -48,6 +48,7 @@ def test_load_config_creates_default_when_missing(tmp_path):
 
     # O caminho do sistema nunca e uma Conta (ADR-0008).
     assert cfg["agents"]["claude"]["accounts"] == []
+    assert cfg["agents"]["gemini"]["accounts"] == []
 
 
 def test_save_config_persists_with_0600(tmp_path):

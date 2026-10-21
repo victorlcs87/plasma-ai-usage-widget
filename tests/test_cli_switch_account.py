@@ -177,11 +177,12 @@ def test_cli_switch_account_codex_success(capsys, tmp_path, monkeypatch):
 def test_cli_switch_account_gemini_with_keyring_call(capsys, tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     cache_path = tmp_path / "status.json"
-    sys_gemini_path = tmp_path / "sys" / "gemini" / "oauth_creds.json"
+    sys_gemini_path = Path(os.environ["HOME"]) / ".gemini" / "oauth_creds.json"  # HOME falso (conftest)
     profile_1 = tmp_path / "profiles" / "gemini-1" / "oauth_creds.json"
     profile_2 = tmp_path / "profiles" / "gemini-2" / "oauth_creds.json"
 
-    monkeypatch.setenv("GEMINI_CREDENTIALS_PATH", str(sys_gemini_path))
+    monkeypatch.delenv("GEMINI_CREDENTIALS_PATH", raising=False)
+    monkeypatch.delenv("GEMINI_CONFIG_DIR", raising=False)
 
     creds_1 = {
         "access_token": "gem-tok-1",
@@ -220,8 +221,8 @@ def test_cli_switch_account_gemini_with_keyring_call(capsys, tmp_path, monkeypat
         if isinstance(cmd, list) and len(cmd) > 1 and cmd[0] == "secret-tool":
             called_commands.append(cmd)
             mock_proc = MagicMock()
-            mock_proc.returncode = 0
-            mock_proc.stdout = "gem-tok-2"
+            mock_proc.returncode = 1 if "lookup" in cmd else 0  # chaveiro vazio
+            mock_proc.stdout = ""
             return mock_proc
         return real_run(cmd, *args, **kwargs)
 

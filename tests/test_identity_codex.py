@@ -248,3 +248,20 @@ def test_switch_to_already_active_account_reports_it(env, capsys):
     env.system(_creds("tok-a-new", "ref-a-new", "acc-a"))
     assert env.run("--switch-account", "codex", "a") == 0
     assert _tok(env.sys_creds) == "tok-a-new"  # nao regrava tokens possivelmente rotacionados
+
+
+def test_profile_with_newer_last_refresh_is_not_regressed_by_system(env):
+    pa = env.profile("a", {**_creds("tok-a-new", "ref-a-new", "acc-a"), "last_refresh": "2026-05-02T00:00:00Z"})
+    pb = env.profile("b", _creds("tok-b", "ref-b", "acc-b"))
+    env.save_cfg([_acc("a", pa), _acc("b", pb)])
+    env.system({**_creds("tok-a-old", "ref-a-old", "acc-a"), "last_refresh": "2026-05-01T00:00:00Z"})
+
+    assert env.run("--switch-account", "codex", "b") == 0
+    assert _tok(pa / "auth.json", "refresh_token") == "ref-a-new"
+    assert len(list(pa.glob("auth.json.bak-*"))) == 1
+
+
+def test_non_string_account_id_and_email_are_ignored(tmp_path):
+    f = tmp_path / "auth.json"
+    save_secure_json({"tokens": {"access_token": "t", "account_id": 123, "id_token": _jwt({"email": 5})}}, f)
+    assert credential_identity("codex", f) is None
