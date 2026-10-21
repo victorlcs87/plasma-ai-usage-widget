@@ -28,7 +28,7 @@ def env(tmp_path, monkeypatch):
     config_path = tmp_path / "config.json"
     save_config(cfg, config_path)
     state = {"native": _native(), "weekly": _weekly(), "health": {"status": "valid"}}
-    monkeypatch.setattr(collector, "extract_claude_status", lambda acc, initial_health=None, now=None: {
+    monkeypatch.setattr(collector, "extract_claude_status", lambda acc, initial_health=None, now=None, **kw: {
         "health": state["health"], "native_window": state["native"], "weekly_window": state["weekly"]})
     monkeypatch.setattr(collector, "apply_token_history", lambda *a, **k: None)
     cache_path = tmp_path / "cache" / "status.json"
