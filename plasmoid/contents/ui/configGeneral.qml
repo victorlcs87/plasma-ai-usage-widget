@@ -33,6 +33,7 @@ Item {
     property bool notifyEarly: true
     property bool notifyReset: false
     property var notifyMuted: []
+    property bool notifyThresholdsEdited: false  // limiares só são enviados se editados: valores fracionários existentes não são arredondados
     property bool isSavingNotify: false
     property bool notifyDirty: false  // edição em curso (não aplicada): o status recarregado não a sobrescreve
 
@@ -283,10 +284,12 @@ Item {
         configRoot.isSavingNotify = true;
         configRoot.statusMessage = "";
         configRoot.errorMessage = "";
-        var args = shellQuote("--set-notify-config")
-            + " " + shellQuote("--notify-warning") + " " + shellQuote(configRoot.notifyWarning)
-            + " " + shellQuote("--notify-critical") + " " + shellQuote(configRoot.notifyCritical)
-            + " " + shellQuote("--notify-early") + " " + shellQuote(configRoot.notifyEarly ? "on" : "off")
+        var args = shellQuote("--set-notify-config");
+        if (configRoot.notifyThresholdsEdited) {
+            args += " " + shellQuote("--notify-warning") + " " + shellQuote(configRoot.notifyWarning)
+                + " " + shellQuote("--notify-critical") + " " + shellQuote(configRoot.notifyCritical);
+        }
+        args += " " + shellQuote("--notify-early") + " " + shellQuote(configRoot.notifyEarly ? "on" : "off")
             + " " + shellQuote("--notify-reset") + " " + shellQuote(configRoot.notifyReset ? "on" : "off")
             + " " + shellQuote("--notify-mute") + " " + shellQuote(configRoot.notifyMuted.join(","));
         notifyDataSource.connectSource(configRoot.buildCollectorCommand(args));
@@ -310,6 +313,7 @@ Item {
             var stderr = (data["stderr"] || "").trim();
             if (data["exit code"] === 0) {
                 configRoot.notifyDirty = false;
+                configRoot.notifyThresholdsEdited = false;
                 configRoot.statusMessage = stdout.split("\n")[0];
                 configRoot.loadStatus();
             } else {
@@ -758,7 +762,7 @@ Item {
                 to: 99
                 editable: true
                 value: configRoot.notifyWarning
-                onValueModified: { configRoot.notifyWarning = value; configRoot.notifyDirty = true; }
+                onValueModified: { configRoot.notifyWarning = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
                 Accessible.name: configRoot.safeI18n("Notificar ao atingir esta porcentagem de uso")
             }
 
@@ -772,7 +776,7 @@ Item {
                 to: 100
                 editable: true
                 value: configRoot.notifyCritical
-                onValueModified: { configRoot.notifyCritical = value; configRoot.notifyDirty = true; }
+                onValueModified: { configRoot.notifyCritical = value; configRoot.notifyThresholdsEdited = true; configRoot.notifyDirty = true; }
                 Accessible.name: configRoot.safeI18n("Notificar com urgência ao atingir esta porcentagem de uso")
             }
 
@@ -780,16 +784,18 @@ Item {
                 text: configRoot.safeI18n("Avisar antes de esgotar")
                 checked: configRoot.notifyEarly
                 onToggled: { configRoot.notifyEarly = checked; configRoot.notifyDirty = true; }
-                QQC2.ToolTip.text: configRoot.safeI18n("Janela nativa: previsão de esgotamento em 30 min; semanal: em 24 h (uma vez por janela)")
-                QQC2.ToolTip.visible: hovered
+                Accessible.description: configRoot.safeI18n("Janela nativa: previsão de esgotamento em 30 min; semanal: em 24 h (uma vez por janela)")
+                QQC2.ToolTip.text: Accessible.description
+                QQC2.ToolTip.visible: hovered || activeFocus
             }
 
             QQC2.CheckBox {
                 text: configRoot.safeI18n("Avisar quando o limite for liberado")
                 checked: configRoot.notifyReset
                 onToggled: { configRoot.notifyReset = checked; configRoot.notifyDirty = true; }
-                QQC2.ToolTip.text: configRoot.safeI18n("Só para limites que já geraram aviso")
-                QQC2.ToolTip.visible: hovered
+                Accessible.description: configRoot.safeI18n("Só para limites que já geraram aviso")
+                QQC2.ToolTip.text: Accessible.description
+                QQC2.ToolTip.visible: hovered || activeFocus
             }
 
             QQC2.Label {

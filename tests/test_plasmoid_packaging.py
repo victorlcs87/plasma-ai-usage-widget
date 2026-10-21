@@ -321,3 +321,4 @@ def test_config_general_exposes_notification_settings():
         assert needle in cfg
     section = cfg[cfg.index("function saveNotifySettings"):cfg.index("// Executor de remoção de conta")]
     assert "shellQuote(configRoot.notifyMuted.join" in section  # nada vai ao shell sem aspas
+    assert "notifyThresholdsEdited" in section and "hovered || activeFocus" in cfg and "Accessible.description" in cfg

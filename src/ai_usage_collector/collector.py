@@ -41,7 +41,7 @@ from ai_usage_collector.discovery import discover_account
 from ai_usage_collector.identity import credential_identity
 from ai_usage_collector.history import apply_token_history, flush_system_history
 from ai_usage_collector.limit_changes import apply_limit_changes
-from ai_usage_collector.notifications import apply_notifications, notify_settings
+from ai_usage_collector.notifications import apply_notifications, deliver, notify_settings
 from ai_usage_collector.pace import alert_settings, apply_pace, reapply_levels
 from ai_usage_collector.extractors import (
     extract_claude_status,
@@ -98,9 +98,11 @@ def collect_and_save(
     """
     cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
     now_dt = now or refresh.utcnow()
+    outbox: list[dict[str, Any]] = []
     with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
-        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc)
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox)
         save_status_cache(status_payload, cache_file)
+    deliver(outbox, cache_file)  # fora do lock: D-Bus lento nao segura o status.json
     return status_payload
 
 
@@ -111,6 +113,7 @@ def _collect(
     providers: list[str] | None,
     intervals: dict[str, int],
     cyc: refresh.RefreshCycle,
+    outbox: list[dict[str, Any]],
 ) -> dict[str, Any]:
     config = load_config(config_path)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
@@ -255,7 +258,7 @@ def _collect(
         sys.stderr.write(f"Aviso: Ritmo de Uso e previsao nao atualizados: {e}\n")
 
     try:
-        apply_notifications(status_payload, config, cache_file, now_dt, {a for a in agents_to_collect if not providers or a in providers})
+        apply_notifications(status_payload, config, cache_file, now_dt, {a for a in agents_to_collect if not providers or a in providers}, outbox)
     except Exception as e:  # notificacoes sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Notificacoes de limite nao processadas: {e}\n")
 

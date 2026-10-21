@@ -47,11 +47,15 @@ def validate_alerts(mode: Any, warning: Any, critical: Any) -> str | None:
 
 
 def alert_settings(config: Any) -> dict[str, Any]:
-    """Configuracao de alerta; qualquer valor invalido volta ao padrao (ritmo, 70/90)."""
+    """Configuracao de alerta; modo e limiares invalidos voltam ao padrao, cada grupo sem afetar o outro."""
     raw = config.get("alerts") if isinstance(config, dict) else None
     raw = raw if isinstance(raw, dict) else {}
-    merged = {**DEFAULT_ALERTS, **{k: raw[k] for k in DEFAULT_ALERTS if k in raw}}
-    return merged if validate_alerts(**merged) is None else dict(DEFAULT_ALERTS)
+    out = dict(DEFAULT_ALERTS)
+    if raw.get("mode") in ("pace", "threshold"):
+        out["mode"] = raw["mode"]
+    if validate_alerts("pace", raw.get("warning"), raw.get("critical")) is None:
+        out["warning"], out["critical"] = raw["warning"], raw["critical"]
+    return out
 
 
 def _num(value: Any) -> float | None:

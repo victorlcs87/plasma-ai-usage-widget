@@ -238,6 +238,7 @@ def test_set_notify_config_updates_existing_status_without_collecting(env):
 
 
 def test_real_transport_uses_argument_list_without_shell(notified, monkeypatch):
+    monkeypatch.setenv("DBUS_SESSION_BUS_ADDRESS", "unix:path=/nonexistent")
     seen = {}
 
     def fake_run(cmd, **kw):
@@ -261,3 +262,86 @@ def test_real_transport_uses_argument_list_without_shell(notified, monkeypatch):
         assert notified.real("a", "b") is False
     monkeypatch.setattr(subprocess, "run", lambda c, **k: subprocess.CompletedProcess(c, 1))
     assert notified.real("a", "b") is False
+
+
+def test_real_transport_skips_notify_send_without_session_bus(notified, monkeypatch, tmp_path):
+    monkeypatch.delenv("DBUS_SESSION_BUS_ADDRESS", raising=False)
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(tmp_path))
+    monkeypatch.setattr(subprocess, "run", lambda *a, **k: pytest.fail("autolaunch do dbus-daemon"))
+    assert notified.real("a", "b") is False
+
+
+def test_delivery_runs_outside_the_lock_and_stops_after_first_failure(env, notified, monkeypatch):
+    import fcntl
+    import time
+
+    lock = env.cache_path.with_name("refresh_state.lock")
+    calls, free = [], []
+
+    def slow_fail(summary, body, critical=False):
+        calls.append(summary)
+        fd = os.open(lock, os.O_RDWR)
+        try:
+            fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)  # lock liberado durante o envio
+            free.append(True)
+        except BlockingIOError:
+            free.append(False)
+        finally:
+            os.close(fd)
+        time.sleep(0.2)
+        return False
+
+    monkeypatch.setattr(notifications, "dbus_notify", slow_fail)
+    start = time.monotonic()
+    env(minutes=0, native=96.0, weekly=96.0)  # dois avisos devidos
+    assert len(calls) == 1 and free == [True]  # parou no primeiro erro
+    assert time.monotonic() - start < 1.5
+    assert json.loads(env.cache_path.read_text())["agents"]["claude"]["accounts"][0]  # status salvo
+    monkeypatch.setattr(notifications, "dbus_notify", notified)
+    env(minutes=1, native=96.0, weekly=96.0)  # nao entregues foram desmarcados: tenta de novo
+    assert len(notified) == 2
+
+
+def test_notices_per_cycle_are_capped_and_rest_goes_next_cycle(env, notified, monkeypatch):
+    monkeypatch.setattr(notifications, "MAX_PER_CYCLE", 1)
+    env(minutes=0, native=96.0, weekly=96.0)
+    assert len(notified) == 1
+    env(minutes=1, native=96.0, weekly=96.0)
+    assert len(notified) == 2
+    env(minutes=2, native=96.0, weekly=96.0)
+    assert len(notified) == 2
+
+
+def test_one_invalid_field_keeps_muted_and_the_other_fields(env, notified):
+    configure(env, "--notify-mute", "claude,codex", "--notify-reset", "on")
+    cfg = json.loads(env.config_path.read_text())
+    cfg["notifications"].update(warning="abc", early="sim")
+    env.config_path.write_text(json.dumps(cfg))
+    env(minutes=0, native=99.0)
+    assert notified == []  # claude segue silenciado
+    n = json.loads(env.cache_path.read_text())["notifications"]
+    assert n["muted"] == ["claude", "codex"] and n["reset"] is True and n["warning"] == 80.0 and n["early"] is True
+
+
+def test_invalid_alert_threshold_keeps_alert_mode(env):
+    cfg = json.loads(env.config_path.read_text())
+    cfg["alerts"] = {"mode": "threshold", "warning": 99, "critical": 10}
+    env.config_path.write_text(json.dumps(cfg))
+    env(minutes=0)
+    assert json.loads(env.cache_path.read_text())["alerts"] == {"mode": "threshold", "warning": 70.0, "critical": 90.0}
+
+
+def test_state_write_failure_is_reported_and_does_not_break_or_send(env, notified, monkeypatch, capsys):
+    def boom(*a, **k):
+        raise OSError("disco cheio")
+
+    monkeypatch.setattr(notifications, "save_secure_json", boom)
+    env(minutes=0, native=96.0)
+    assert notified == [] and "nao gravados" in capsys.readouterr().err
+
+
+def test_contract_rejects_non_string_muted(env):
+    env(minutes=0)
+    status = json.loads(env.cache_path.read_text())
+    status["notifications"]["muted"] = [1]
+    assert not validate_status_contract(status)

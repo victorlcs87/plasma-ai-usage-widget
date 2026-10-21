@@ -219,7 +219,7 @@ def validate_status_contract(data: Any) -> bool:
         isinstance(notify, dict)
         and all(isinstance(notify.get(k), (int, float)) and not isinstance(notify.get(k), bool) for k in ("warning", "critical"))
         and all(isinstance(notify.get(k), bool) for k in ("early", "reset"))
-        and isinstance(notify.get("muted"), list)
+        and isinstance(notify.get("muted"), list) and all(isinstance(m, str) for m in notify["muted"])
     ):
         return False
 
