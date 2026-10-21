@@ -124,7 +124,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--set-provider-config",
         metavar="PROVIDER",
-        help="Define caminho de credenciais (--credential-path) e, no Claude, --api-base-url/--api-key-stdin; valor vazio remove",
+        help="Define caminho de credenciais (--credential-path) e, no Claude, --api-base-url/--api-key-stdin/--clear-api-key; valor vazio remove. A configuração explícita vence as variáveis de ambiente",
     )
     parser.add_argument("--api-base-url", type=str, default=None, help="URL base do gateway de uso (Claude)")
     parser.add_argument(
@@ -132,6 +132,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Le a chave de API da entrada padrao (nunca por argumento); vazia remove",
     )
+    parser.add_argument("--clear-api-key", action="store_true", help="Remove a chave de API personalizada")
     parser.add_argument(
         "--provider",
         type=str,
@@ -199,7 +200,8 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.set_provider_config:
             key = sys.stdin.read().strip() if args.api_key_stdin else None
             ok, message = set_provider_settings(
-                args.set_provider_config, args.credential_path, args.api_base_url, key, config_path
+                args.set_provider_config, args.credential_path, args.api_base_url, key, config_path,
+                clear_api_key=args.clear_api_key,
             )
             if ok:
                 collect_and_save(config_path=config_path, cache_path=cache_path)

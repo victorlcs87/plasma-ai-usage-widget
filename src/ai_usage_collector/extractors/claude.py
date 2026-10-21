@@ -11,6 +11,7 @@ from datetime import datetime, timezone, timedelta
 from pathlib import Path
 from typing import Any
 
+from ai_usage_collector.config import validate_base_url
 from ai_usage_collector.discovery import discover_claude
 
 CLAUDE_5H_SECONDS = 5 * 3600  # 18000s
@@ -356,6 +357,16 @@ def resolve_tier_capacity(account: dict[str, Any], health: dict[str, Any]) -> in
     return DEFAULT_FALLBACK_CAPACITY
 
 
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Nunca segue redirects: o Authorization nao pode ser reenviado a outro host."""
+
+    def redirect_request(self, *args, **kwargs):
+        return None
+
+
+_NO_REDIRECT = urllib.request.build_opener(_NoRedirect)
+
+
 def fetch_claude_usage_api(
     access_token: str,
     timeout: float = 3.0,
@@ -364,7 +375,10 @@ def fetch_claude_usage_api(
     """Fetch official usage metrics from Anthropic API (or a custom gateway via `base_url`)."""
     if not access_token:
         return None
-    url = f"{base_url.rstrip('/')}/api/oauth/usage"
+    try:
+        url = f"{validate_base_url(base_url)}/api/oauth/usage"
+    except ValueError:
+        return None
     req = urllib.request.Request(
         url,
         headers={
@@ -375,7 +389,7 @@ def fetch_claude_usage_api(
         method="GET",
     )
     try:
-        with urllib.request.urlopen(req, timeout=timeout) as resp:
+        with _NO_REDIRECT.open(req, timeout=timeout) as resp:
             status = getattr(resp, "status", None) or (resp.getcode() if hasattr(resp, "getcode") else None)
             if status in (200, 201):
                 body = resp.read()

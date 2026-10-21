@@ -466,8 +466,34 @@ def credential_override(provider: str, config: dict[str, Any] | str | Path | Non
     val = (agents or {}).get(provider, {}).get("credential_path") if isinstance(agents, dict) else None
     if not val or not isinstance(val, str):
         return None
-    p = Path(val).expanduser().resolve()
-    return p if p.suffix == ".json" or p.is_file() else p / _CREDENTIAL_FILENAMES[provider]
+    p = Path(val).expanduser()
+    if not (p.suffix == ".json" or p.is_file()):
+        p = p / _CREDENTIAL_FILENAMES[provider]
+    return p.parent.resolve() / p.name  # preserva symlink do arquivo, como no caminho por env
+
+
+def validate_base_url(url: str) -> str:
+    """Normaliza e valida a URL base do gateway; levanta ValueError se insegura ou malformada."""
+    url = (url or "").strip()
+    msg = "URL base inválida: use https (http só para localhost), sem usuário, query ou fragmento."
+    if not url or any(c.isspace() or ord(c) < 32 for c in url) or "?" in url or "#" in url:
+        raise ValueError(msg)
+    try:
+        parsed = urlsplit(url)
+        parsed.port  # noqa: B018 - valida a porta
+    except ValueError:
+        raise ValueError(msg) from None
+    local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
+    scheme = parsed.scheme.lower()
+    if (
+        not parsed.hostname
+        or parsed.username is not None
+        or parsed.password is not None
+        or scheme not in ("http", "https")
+        or (scheme == "http" and not local)
+    ):
+        raise ValueError(msg)
+    return url.rstrip("/")
 
 
 def provider_settings(config: dict[str, Any], provider: str) -> dict[str, Any]:
@@ -481,22 +507,29 @@ def set_provider_settings(
     api_base_url: str | None = None,
     api_key: str | None = None,
     config_path: str | Path | None = None,
+    clear_api_key: bool = False,
 ) -> tuple[bool, str]:
     """Grava caminho de credenciais (todos os provedores) e URL base/chave de API (so Claude).
 
-    None mantem o valor atual; string vazia remove. A chave fica apenas no config.json (0600).
+    None mantem o valor atual; string vazia remove (a chave so se remove com `clear_api_key`).
+    A chave fica apenas no config.json (0600). A configuracao explicita vence as variaveis de ambiente.
     """
     prov = (provider or "").lower().strip()
     if prov not in SUPPORTED_PROVIDERS:
         return False, f"Provedor inválido '{provider}'. Provedores válidos: {', '.join(SUPPORTED_PROVIDERS)}"
     if (api_base_url is not None or api_key is not None) and prov != "claude":
         return False, "URL base e chave de API personalizadas só existem para o Claude."
+    if api_key is not None and not api_key.strip():
+        return False, "Chave de API vazia; use --clear-api-key para removê-la."
+    if clear_api_key:
+        api_key = ""
     if api_base_url:
-        api_base_url = api_base_url.strip().rstrip("/")
-        parsed = urlsplit(api_base_url)
-        local = parsed.hostname in ("localhost", "127.0.0.1", "::1")
-        if not parsed.hostname or parsed.scheme not in ("http", "https") or (parsed.scheme == "http" and not local):
-            return False, "URL base inválida: use https (http só para localhost)."
+        try:
+            api_base_url = validate_base_url(api_base_url)
+        except ValueError as e:
+            return False, str(e)
+    if credential_path and credential_path.strip():
+        credential_path = os.path.abspath(os.path.expanduser(credential_path.strip()))
     updates = {"credential_path": credential_path, "api_base_url": api_base_url, "api_key": api_key}
     with config_lock(config_path):
         cfg = load_config(config_path)
@@ -509,4 +542,9 @@ def set_provider_settings(
             else:
                 agent.pop(key, None)
         save_config(cfg, config_path)
-    return True, f"Configuração de '{prov}' atualizada."
+    msg = f"Configuração de '{prov}' atualizada."
+    if agent.get("credential_path") and not Path(agent["credential_path"]).exists():
+        msg += f" Aviso: '{agent['credential_path']}' ainda não existe."
+    if agent.get("api_key") and not agent.get("api_base_url"):
+        msg += " Aviso: a chave de API só é usada com uma URL base."
+    return True, msg

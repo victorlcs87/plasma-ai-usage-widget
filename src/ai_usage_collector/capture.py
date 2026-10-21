@@ -1205,7 +1205,7 @@ def _switch_system_account(
         return False, f"Falha ao aplicar a conta '{account_id}' no sistema (estado anterior restaurado): {e}", False
 
     # For Gemini, update system keyring via secret-tool
-    if prov == "gemini":
+    if prov == "gemini" and not override and not os.environ.get("GEMINI_CREDENTIALS_PATH") and not os.environ.get("GEMINI_CONFIG_DIR"):
         try:
             raw_payload = json.dumps(target_creds, ensure_ascii=False)
             subprocess.run(

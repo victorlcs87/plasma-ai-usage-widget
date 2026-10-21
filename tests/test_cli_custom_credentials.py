@@ -101,7 +101,7 @@ def test_custom_base_url_queries_gateway_with_configured_key(tmp_path, capsys):
     base_cfg(tmp_path, [{"id": "a", "label": "A", "credential_path": str(prof)}])
     run(tmp_path, "--set-provider-config", "claude", "--api-base-url", "https://gw.example.com",
         "--api-key-stdin", stdin=KEY)
-    with patch("urllib.request.urlopen", return_value=_usage_response()) as op:
+    with patch("urllib.request.OpenerDirector.open", return_value=_usage_response()) as op:
         assert run(tmp_path, "--refresh") == 0
     req = op.call_args[0][0]
     assert req.full_url == "https://gw.example.com/api/oauth/usage"
@@ -116,6 +116,119 @@ def test_custom_base_url_without_key_never_sends_oauth_token(tmp_path):
     save_secure_json(creds("a"), prof)
     base_cfg(tmp_path, [{"id": "a", "label": "A", "credential_path": str(prof)}])
     run(tmp_path, "--set-provider-config", "claude", "--api-base-url", "https://gw.example.com")
-    with patch("urllib.request.urlopen", return_value=_usage_response()) as op:
+    with patch("urllib.request.OpenerDirector.open", return_value=_usage_response()) as op:
         assert run(tmp_path, "--refresh") == 0
     op.assert_not_called()
+
+
+# --- Correcoes da revisao do ticket 38 ---------------------------------------
+
+import http.server
+import threading
+
+import pytest
+
+from ai_usage_collector.config import validate_base_url
+from ai_usage_collector.extractors.claude import fetch_claude_usage_api
+
+
+def _server(handler_cls):
+    srv = http.server.HTTPServer(("127.0.0.1", 0), handler_cls)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    return srv
+
+
+def test_a1_redirect_is_not_followed_and_token_not_forwarded():
+    seen = []
+
+    class Target(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            seen.append(self.headers.get("Authorization"))
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(b"{}")
+
+        def log_message(self, *a):
+            pass
+
+    target = _server(Target)
+
+    class Redirector(Target):
+        def do_GET(self):
+            self.send_response(302)
+            self.send_header("Location", f"http://127.0.0.1:{target.server_port}/x")
+            self.end_headers()
+
+    gw = _server(Redirector)
+    try:
+        assert fetch_claude_usage_api("tok", base_url=f"http://127.0.0.1:{gw.server_port}") is None
+    finally:
+        gw.shutdown()
+        target.shutdown()
+    assert seen == []
+
+
+@pytest.mark.parametrize("url", [
+    "https://user:pw@gw.example.com", "https://gw.example.com?x=1", "https://gw.example.com/#f",
+    "https://gw.example.com:99999", "https://gw example.com", "ftp://gw.example.com",
+    "http://gw.example.com", "https://gw.example.com?",
+])
+def test_a2_invalid_urls_rejected_and_extractor_sends_nothing(url):
+    with pytest.raises(ValueError):
+        validate_base_url(url)
+    with patch("urllib.request.OpenerDirector.open") as op:
+        assert fetch_claude_usage_api("tok", base_url=url) is None
+    op.assert_not_called()
+
+
+def test_a2_scheme_case_insensitive():
+    assert validate_base_url("HTTPS://gw.example.com/") == "HTTPS://gw.example.com"
+
+
+def test_m1_relative_path_stored_absolute(tmp_path, monkeypatch):
+    base_cfg(tmp_path)
+    monkeypatch.chdir(tmp_path)
+    run(tmp_path, "--set-provider-config", "claude", "--credential-path", "rel/dir")
+    assert read_cfg(tmp_path)["agents"]["claude"]["credential_path"] == str(tmp_path / "rel" / "dir")
+
+
+def test_m2_override_preserves_final_symlink(tmp_path):
+    from ai_usage_collector.config import credential_override
+    real = tmp_path / "real.json"
+    real.write_text("{}")
+    link = tmp_path / "link.json"
+    link.symlink_to(real)
+    base_cfg(tmp_path)
+    run(tmp_path, "--set-provider-config", "claude", "--credential-path", str(link))
+    assert credential_override("claude", tmp_path / "cfg" / "config.json") == link
+
+
+def test_m3_gemini_override_skips_keyring_on_switch(tmp_path, monkeypatch):
+    for k in ("GEMINI_CREDENTIALS_PATH", "GEMINI_CONFIG_DIR"):
+        monkeypatch.delenv(k, raising=False)
+    prof = tmp_path / "profiles" / "g" / "oauth_creds.json"
+    save_secure_json({"access_token": "t", "refresh_token": "r"}, prof)
+    cfg = {"version": 1, "agents": {"claude": {"accounts": []}, "codex": {"accounts": []},
+           "gemini": {"accounts": [{"id": "g", "label": "G", "credential_path": str(prof)}]}}}
+    save_config(cfg, tmp_path / "cfg" / "config.json")
+    run(tmp_path, "--set-provider-config", "gemini", "--credential-path", str(tmp_path / "alt-gem"))
+    with patch("subprocess.run") as sp:
+        run(tmp_path, "--switch-account", "gemini", "g")
+    assert not any("secret-tool" in str(c) for c in sp.call_args_list)
+
+
+def test_m4_empty_stdin_fails_and_clear_flag_removes(tmp_path, capsys):
+    base_cfg(tmp_path)
+    run(tmp_path, "--set-provider-config", "claude", "--api-base-url", "https://g.io", "--api-key-stdin", stdin=KEY)
+    assert run(tmp_path, "--set-provider-config", "claude", "--api-key-stdin", stdin="\n") == 1
+    assert read_cfg(tmp_path)["agents"]["claude"]["api_key"] == KEY
+    assert run(tmp_path, "--set-provider-config", "claude", "--clear-api-key") == 0
+    assert "api_key" not in read_cfg(tmp_path)["agents"]["claude"]
+    capsys.readouterr()
+
+
+def test_b_warnings(tmp_path, capsys):
+    base_cfg(tmp_path)
+    run(tmp_path, "--set-provider-config", "claude", "--credential-path", str(tmp_path / "nope"), "--api-key-stdin", stdin=KEY)
+    out = capsys.readouterr().out
+    assert "ainda não existe" in out and "URL base" in out and KEY not in out
