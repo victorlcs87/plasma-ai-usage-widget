@@ -15,7 +15,7 @@ Item {
     property color innerColor: Presets.neutral
     property string outerLevel: ""
     property string innerLevel: ""
-    property string letter: ""
+    property string provider: ""
     // Estado da Sessão: "busy" = arco girando, "waiting" = anel âmbar pulsando. reducedMotion = formas
     // estáticas (arco parado, anel fixo), sem nenhuma animação.
     property string sessionState: ""
@@ -91,25 +91,23 @@ Item {
         }
     }
 
-    // Centro: inicial do provedor (distingue os anéis sem depender de cor), % ou os dois. Sem espaço
-    // para o % legível, cai na inicial; "pct" sem dado mostra "—", nunca 0.
+    // Centro: logo do provedor (distingue os anéis sem depender de cor), % ou os dois. Sem espaço
+    // para o % legível, cai no logo; "pct" sem dado mostra "—", nunca 0.
     property string centerMode: "logo"  // "logo" | "pct" | "logopct"
     property string centerPct: ""
     property bool centerDim: false  // dado obsoleto: % do centro esmaecido
     readonly property bool roomPct: width >= 28
     readonly property bool showPct: centerMode !== "logo" && roomPct && centerPct.length > 0
-    readonly property bool showLetter: letter.length > 0 && width >= 20 && (centerMode !== "pct" || !showPct)
+    readonly property bool showLogo: provider.length > 0 && width >= 20 && (centerMode !== "pct" || !showPct)
     Column {
         anchors.centerIn: parent
-        Text {
-            Accessible.ignored: true
-            visible: ring.showLetter
+        ProviderLogo {
+            visible: ring.showLogo
             anchors.horizontalCenter: parent.horizontalCenter
-            text: ring.letter
-            color: Presets.ui.letter
-            font.pixelSize: Math.max(8, Math.round(ring.width * (ring.showPct ? 0.2 : 0.3)))
-            font.bold: true
-            textFormat: Text.PlainText
+            provider: ring.provider
+            color: Presets.ui.logo
+            width: Math.max(8, Math.round(ring.width * (ring.showPct ? 0.2 : 0.36)))
+            height: width
         }
         Text {
             Accessible.ignored: true
@@ -118,7 +116,7 @@ Item {
             anchors.horizontalCenter: parent.horizontalCenter
             text: ring.centerPct
             color: "#ffffff"
-            font.pixelSize: Math.max(7, Math.round(ring.width * (ring.showLetter ? 0.2 : 0.26)))
+            font.pixelSize: Math.max(7, Math.round(ring.width * (ring.showLogo ? 0.2 : 0.26)))
             font.bold: true
             textFormat: Text.PlainText
         }

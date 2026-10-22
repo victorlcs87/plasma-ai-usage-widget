@@ -346,19 +346,17 @@ Item {
                             Accessible.name: block.modelData.accounts.length > 0
                                 ? I18n.tr("%1, %2", block.modelData.name, fullRoot.countText(block.modelData.accounts.length)) : block.modelData.name
 
-                            Rectangle {  // inicial do provedor: identifica sem depender de cor
+                            Rectangle {  // logo do provedor: identifica sem depender de cor
                                 Accessible.ignored: true
                                 implicitWidth: Kirigami.Units.gridUnit * 1.3
                                 implicitHeight: implicitWidth
                                 radius: width / 2
                                 color: Presets.ui.chip
-                                QQC2.Label {
-                                    Accessible.ignored: true
+                                ProviderLogo {
                                     anchors.centerIn: parent
-                                    text: block.modelData.letter
-                                    textFormat: Text.PlainText
-                                    font.bold: true
-                                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                    width: Math.round(parent.width * 0.65)
+                                    height: width
+                                    provider: block.modelData.key
                                     color: Presets.ui.fg
                                 }
                             }

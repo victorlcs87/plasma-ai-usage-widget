@@ -142,7 +142,7 @@ def config(tmp_path, drive="", size=(560, 640), pngs=None):
         (imp / f).write_text(body)
     run = tmp_path / "run"
     run.mkdir()
-    for f in ("Presets.js", "I18n.js", "Collector.js", "PanelStyle.js", "ViewPrefs.js", "FloatingGeometry.js"):
+    for f in ("Presets.js", "I18n.js", "Collector.js", "PanelStyle.js", "ViewPrefs.js", "FloatingGeometry.js", "ProviderLogo.qml", "logo-claude.svg", "logo-codex.svg", "logo-gemini.svg"):
         shutil.copy(UI_DIR / f, run / f)
     shutil.copy(UI_DIR / "configGeneral.qml", run / "ConfigGeneral.qml")
     shutil.copy(UI_DIR / "WrapCheckBox.qml", run / "WrapCheckBox.qml")

@@ -1143,6 +1143,11 @@ Item {
                                     required property int index
                                     spacing: 0
 
+                                    ProviderLogo {
+                                        implicitWidth: Kirigami.Units.iconSizes.small
+                                        provider: modelData
+                                        color: Kirigami.Theme.textColor
+                                    }
                                     QQC2.CheckBox {
                                         text: Presets.providerInfo(modelData).name
                                         checked: configRoot.cfg_hiddenProviders.split(",").indexOf(modelData) === -1
@@ -1466,6 +1471,11 @@ Item {
                                     required property int index
                                     spacing: 0
 
+                                    ProviderLogo {
+                                        implicitWidth: Kirigami.Units.iconSizes.small
+                                        provider: modelData
+                                        color: Kirigami.Theme.textColor
+                                    }
                                     QQC2.CheckBox {
                                         text: Presets.providerInfo(modelData).name
                                         checked: configRoot.cfg_popupHiddenProviders.split(",").indexOf(modelData) === -1
@@ -1567,15 +1577,13 @@ Item {
                                     font.bold: true
                                 }
 
-                                Rectangle {
+                                ProviderLogo {
                                     id: providerIndicator
-                                    implicitWidth: Math.round(Kirigami.Units.gridUnit * 0.75)
-                                    implicitHeight: Math.round(Kirigami.Units.gridUnit * 0.75)
-                                    radius: width / 2
-                                    color: configRoot.getProviderColor(providerComboBox.currentText)
+                                    implicitWidth: Kirigami.Units.iconSizes.smallMedium
+                                    implicitHeight: implicitWidth
+                                    provider: (providerComboBox.currentText || "").toLowerCase()
+                                    color: Kirigami.Theme.textColor
                                     Layout.alignment: Qt.AlignVCenter
-                                    border.width: 1
-                                    border.color: Qt.rgba(0, 0, 0, 0.15)
                                 }
 
                                 PlasmaComponents3.ComboBox {
@@ -1798,21 +1806,32 @@ Item {
 
                                 // Badge colorido do provedor
                                 Rectangle {
-                                    implicitWidth: Math.max(providerTag.implicitWidth + Kirigami.Units.smallSpacing * 2, Kirigami.Units.gridUnit * 4.5)  // largura única: o nome começa no mesmo x em toda linha
-                                    implicitHeight: providerTag.implicitHeight + Kirigami.Units.smallSpacing
+                                    implicitWidth: Math.max(tagRow.implicitWidth + Kirigami.Units.smallSpacing * 2, Kirigami.Units.gridUnit * 4.5)  // largura única: o nome começa no mesmo x em toda linha
+                                    implicitHeight: tagRow.implicitHeight + Kirigami.Units.smallSpacing
                                     radius: 4
                                     color: Qt.alpha(configRoot.getProviderColor(modelData.provider), 0.18)  // fundo suave + borda: o texto usa a cor do tema (>= 4,5:1)
                                     border.width: 1
                                     border.color: configRoot.getProviderColor(modelData.provider)
 
-                                    QQC2.Label {
-                                        textFormat: Text.PlainText
-                                        id: providerTag
+                                    Row {
+                                        id: tagRow
                                         anchors.centerIn: parent
-                                        text: (modelData.provider || "").toUpperCase()
-                                        font.bold: true
-                                        font.pointSize: Kirigami.Theme.smallFont.pointSize
-                                        color: Kirigami.Theme.textColor
+                                        spacing: Kirigami.Units.smallSpacing
+                                        ProviderLogo {
+                                            width: providerTag.implicitHeight
+                                            height: width
+                                            anchors.verticalCenter: parent.verticalCenter
+                                            provider: modelData.provider || ""
+                                            color: Kirigami.Theme.textColor
+                                        }
+                                        QQC2.Label {
+                                            textFormat: Text.PlainText
+                                            id: providerTag
+                                            text: (modelData.provider || "").toUpperCase()
+                                            font.bold: true
+                                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                                            color: Kirigami.Theme.textColor
+                                        }
                                     }
                                 }
 

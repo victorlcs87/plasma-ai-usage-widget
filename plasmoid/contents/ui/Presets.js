@@ -19,9 +19,9 @@ var accents = [
 ];
 
 var providers = [
-    { key: "claude", name: "Claude", letter: "C" },
-    { key: "codex", name: "Codex", letter: "X" },
-    { key: "gemini", name: "Gemini", letter: "G" }
+    { key: "claude", name: "Claude" },
+    { key: "codex", name: "Codex" },
+    { key: "gemini", name: "Gemini" }
 ];
 
 // Cor de destaque efetiva; highlight vem do tema (Kirigami.Theme.highlightColor)
@@ -45,7 +45,7 @@ function normalizeOrder(csv) {
 
 function providerInfo(key) {
     for (var i = 0; i < providers.length; i++) if (providers[i].key === key) return providers[i];
-    return { key: key, name: key, letter: "?" };
+    return { key: key, name: key };
 }
 
 // Nível de alerta do contrato -> cor. Sem nível/obsoleto/sem dado: neutro, nunca verde falso.
@@ -89,4 +89,4 @@ function levelTextColor(level, accent) {
 
 // Paleta fixa do Notch (sempre escuro, independente do tema): fundo, cartão, borda, texto, texto secundário
 // e botão. Texto sobre o cartão >= 4,5:1.
-var ui = { badge: "#c24d00", panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#b4bac2", chip: "#2a2e36", letter: "#c9ced6" };
+var ui = { badge: "#c24d00", panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#b4bac2", chip: "#2a2e36", logo: "#c9ced6" };

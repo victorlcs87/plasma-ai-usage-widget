@@ -158,7 +158,7 @@ function buildModel(statusData, cfg, tr, nowMs) {
         var ag = agents[key];
         var acc = activeAccount(ag);
         var m = {
-            provider: key, name: (ag && ag.name) || info.name, letter: info.letter,
+            provider: key, name: (ag && ag.name) || info.name,
             innerPct: -1, outerPct: -1, innerLevel: "", outerLevel: "", innerElapsed: -1, outerElapsed: -1,
             health: "", sessionState: "", update: updateItem(statusData, key)
         };
@@ -264,7 +264,7 @@ function popupProviders(statusData, prefs) {
         });
         var active = activeAccount(ag);
         if (active) accs = [active].concat(accs.filter(function (a) { return a !== active; }));
-        return { key: key, name: (ag && ag.name) || info.name, letter: info.letter, accounts: accs, hasActive: !!active };
+        return { key: key, name: (ag && ag.name) || info.name, accounts: accs, hasActive: !!active };
     });
 }
 

@@ -216,7 +216,7 @@ Rectangle {
                 innerLevel: cardRoot.nativeView.level
                 outerColor: Presets.levelColor(cardRoot.weeklyView.level, cardRoot.accent)
                 innerColor: Presets.levelColor(cardRoot.nativeView.level, cardRoot.accent)
-                letter: Presets.providerInfo(cardRoot.accountData?.provider).letter
+                provider: cardRoot.accountData?.provider ?? ""
                 sessionState: cardRoot.sessionState
                 active: cardRoot.animate
                 reducedMotion: cardRoot.reducedMotion
