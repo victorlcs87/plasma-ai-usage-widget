@@ -49,7 +49,7 @@ TAIL = """
     tc.wait(600)
     var w = fn.pillWindow
     console.log("RESULT " + JSON.stringify({names: Qt.application.screens.map(function (s) { return s.name }), wsn: fn.widgetScreenName,
-      idx: fn.screenIdx, available: fn.available, pillScreen: w.screen ? w.screen.name : "", visible: w.visible, x: w.x, y: w.y}))
+      idx: fn.screenIdx, available: fn.available, pillScreen: w.screen ? w.screen.name : "", visible: w.visible, x: w.x, y: w.y, lx: w.x - fn.screenInfo.virtualX, ly: w.y - fn.screenInfo.virtualY, w: w.width, h: w.height, scr: fn.scrRect}))
     Qt.quit()
   } }
 }
@@ -159,3 +159,17 @@ def test_float_screen_only_the_instance_on_that_screen_floats(kwin, tmp_path, ho
     assert r["available"] is floats and r["visible"] is floats, r  # regra mantida (ADR-0010): a de outra tela fica como pilula no painel
     if floats:
         assert r["layers"]["ai-usage-notch"] == chosen, r
+
+
+@needs_wayland
+@pytest.mark.parametrize("edge", ["top", "bottom", "left", "right"])
+@pytest.mark.parametrize("host", ["Virtual-0", "Virtual-1"])
+def test_notch_at_400_percent_stays_inside_the_real_screen(kwin, tmp_path, host, edge):
+    (tmp_path / "base").mkdir()
+    r = run_wayland(kwin, tmp_path, host, {"floatingNotch": True, "floatSize": 400, "floatEdge": edge})
+    sw, sh = r["scr"]["w"], r["scr"]["h"]
+    assert r["available"] and r["visible"] and r["layers"]["ai-usage-notch"] == host, r
+    assert r["lx"] >= 0 and r["ly"] >= 0 and r["lx"] + r["w"] <= sw and r["ly"] + r["h"] <= sh, r  # coordenadas locais a tela
+    base = run_wayland(kwin, tmp_path / "base", host, {"floatingNotch": True, "floatEdge": edge})
+    cross = "w" if edge in ("left", "right") else "h"
+    assert r[cross] > 2 * base[cross], (r, base)  # a escala 400% foi mesmo aplicada

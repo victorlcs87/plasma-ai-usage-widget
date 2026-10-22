@@ -1,5 +1,10 @@
 # Changelog
 
+## Não lançado
+
+### Melhorias
+- Notch flutuante: a escala vai de 80% a 400% (antes 160%), passo de 10%; o Notch nunca passa da tela. O tamanho das métricas do painel segue 80–160%.
+
 ## 1.1.1
 
 ### Correções

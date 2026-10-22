@@ -1212,12 +1212,12 @@ Item {
                                 QQC2.SpinBox {
                                     objectName: "floatSizeSpin"
                                     from: 80
-                                    to: 160
+                                    to: 400
                                     stepSize: 10
                                     editable: true
                                     value: Math.round(configRoot.floatNow.scale * 100)
                                     onValueModified: configRoot.cfg_floatSize = value
-                                    Accessible.name: I18n.tr("Floating Notch size in percent (80 to 160)")
+                                    Accessible.name: I18n.tr("Floating Notch size in percent (80 to 400)")
                                 }
 
                                 QQC2.Label {
