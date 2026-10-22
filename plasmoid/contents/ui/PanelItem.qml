@@ -23,7 +23,7 @@ Item {
     property bool single: false         // painel: só o Arco de Horário (anel simples da Janela Nativa)
     property bool remaining: false      // preferência usado/restante: o % e os arcos mostram o que resta
 
-    readonly property var head: PanelStyle.headline(m)
+    readonly property var head: single && m.innerPct >= 0 ? { pct: m.innerPct, level: m.innerLevel } : PanelStyle.headline(m)  // painel: % e nível do Arco de Horário
     readonly property var parts: PanelStyle.parts(panelStyle, mode)
     readonly property color levelColor: Presets.levelTextColor(head.level, accent)
     readonly property bool known: head.pct >= 0

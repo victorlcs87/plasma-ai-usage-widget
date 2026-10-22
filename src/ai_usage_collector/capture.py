@@ -176,6 +176,8 @@ def sync_gemini_from_antigravity(copy_path: Path) -> bool:
     new = parse_timestamp(live.get("expiry_date") or live.get("expiry"))
     old = parse_timestamp(mine.get("expiry_date") or mine.get("expiry")) or 0
     merged = {**mine, **live}
+    if "expiry_date" not in live:
+        merged.pop("expiry_date", None)  # o da copia e antigo e venceria `expiry` nos leitores
     if not new or new < old or merged == mine:
         return False
     save_secure_json(merged, copy_path, prefix="cred_")

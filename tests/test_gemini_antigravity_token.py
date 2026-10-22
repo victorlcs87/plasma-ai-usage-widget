@@ -233,3 +233,15 @@ def test_collect_survives_sync_oserror(home, tmp_path, capsys):
     status = _collect(home, tmp_path, sync=OSError("disco cheio"))
     assert len(status["agents"]["gemini"]["accounts"]) == 1
     assert "nao sincronizado" in capsys.readouterr().err
+
+
+def test_sync_replaces_stale_expiry_date_in_copy(home, tmp_path):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    from ai_usage_collector.discovery import discover_gemini
+    _agy_file(home / ".gemini")
+    old = {**_read_gemini_file_from(AGY_PAYLOAD), "expiry_date": 1_600_000_000_000, "expiry": "2020-01-01T00:00:00Z"}
+    copy = tmp_path / "profiles" / "gemini-x" / "oauth_creds.json"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(json.dumps(old))
+    assert sync_gemini_from_antigravity(copy)
+    assert discover_gemini(copy)["status"] == "valid"
