@@ -187,7 +187,8 @@ def test_collector_consolidates_all_three_providers_simultaneously(tmp_path):
     # Gemini window check
     ge_acc = agents["gemini"]["accounts"][0]
     assert ge_acc["native_window"]["type"] == "daily"
-    assert ge_acc["native_window"]["used_capacity"] == 1
+    assert ge_acc["native_window"]["messages_used"] == 1
+    assert ge_acc["native_window"]["usage_percentage"] is None  # sem API: sem dados, nunca 0%
 
 
 def test_orphan_listing_io_failure_does_not_break_status(tmp_path, monkeypatch):  # B3

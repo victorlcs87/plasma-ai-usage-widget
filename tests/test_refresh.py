@@ -535,3 +535,43 @@ def test_claude_validator_rejects_non_dict_window():
     assert not valid({"five_hour": None, "seven_day": "x"})
     assert not valid({"seven_day": [1]})
     assert not valid({})
+
+
+def test_gemini_expired_token_makes_no_quota_call_and_shows_no_data(env, tmp_path):
+    prof = make_profile(tmp_path, "gemini", "a")
+    creds = Path(prof["credential_path"])
+    creds.write_text(json.dumps({
+        "access_token": "tok-vencido", "refresh_token": "r",
+        "expiry_date": int((T0 - timedelta(hours=40)).timestamp() * 1000),
+    }))
+    (Path(prof["gemini_dir"]) / "history.jsonl").write_text(
+        json.dumps({"timestamp": int(T0.timestamp() * 1000) - 60000, "display": "oi"}) + "\n"
+    )
+    configure(env, tmp_path, {"gemini": [prof]})
+    http = FakeHttp(gemini=[API_OK["gemini"]])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    acc = acc_of(status, "gemini")
+    assert http.calls["gemini"] == 0
+    assert acc["no_data"] is True
+    for win in ("native_window", "weekly_window"):
+        assert acc[win]["usage_percentage"] is None
+    assert acc["native_window"]["messages_used"] == 1  # historico local segue como informacao auxiliar
+    assert "tok-vencido" not in json.dumps(status)
+
+
+def test_gemini_network_failure_keeps_last_data_stale(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[API_OK["gemini"], urllib.error.URLError("sem rede")])
+    env["run"]("--provider", "gemini", "--refresh-interval", "gemini=3600", http=http)
+
+    env["clock"]["now"] = T0 + timedelta(seconds=3600)
+    status = env["run"]("--provider", "gemini", http=http)
+
+    acc = acc_of(status, "gemini")
+    assert acc["stale"] is True
+    assert acc["fetch_error"]["kind"] == "network"
+    assert acc["fetched_at"] == T0.isoformat()
+    assert acc["native_window"]["usage_percentage"] == 42.0
+    assert "no_data" not in acc
