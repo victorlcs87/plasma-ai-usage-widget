@@ -143,6 +143,8 @@ Item {
     property string statusMessage: ""
     property string errorMessage: ""
     property var accountPendingDeletion: null
+    // Largura do texto dos diálogos: 22 gridUnits no máximo, 14 no mínimo, sem passar da janela de configuração
+    readonly property real dialogTextWidth: Math.max(Kirigami.Units.gridUnit * 14, Math.min(Kirigami.Units.gridUnit * 22, width - Kirigami.Units.gridUnit * 6))
     property var accountPendingRename: null
     property var orphanPendingDeletion: null
     readonly property var orphanProfiles: (statusData && statusData.orphan_profiles) ? statusData.orphan_profiles : []
@@ -2117,8 +2119,9 @@ Item {
         title: I18n.tr("Delete Orphan Profile")
         modal: true
         anchors.centerIn: parent
+        padding: Kirigami.Units.largeSpacing
 
-        ColumnLayout {
+        contentItem: ColumnLayout {
             spacing: Kirigami.Units.largeSpacing
 
             QQC2.Label {
@@ -2128,7 +2131,8 @@ Item {
                 textFormat: Text.PlainText
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
-                Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+                Layout.preferredWidth: configRoot.dialogTextWidth
+                Layout.maximumWidth: configRoot.dialogTextWidth
             }
 
             RowLayout {
@@ -2160,8 +2164,9 @@ Item {
         title: I18n.tr("Confirm Account Removal")
         modal: true
         anchors.centerIn: parent
+        padding: Kirigami.Units.largeSpacing
 
-        ColumnLayout {
+        contentItem: ColumnLayout {
             spacing: Kirigami.Units.largeSpacing
 
             QQC2.Label {
@@ -2178,7 +2183,8 @@ Item {
                 }
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
-                Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+                Layout.preferredWidth: configRoot.dialogTextWidth
+                Layout.maximumWidth: configRoot.dialogTextWidth
             }
 
             RowLayout {
@@ -2217,8 +2223,9 @@ Item {
         title: I18n.tr("Rename Account")
         modal: true
         anchors.centerIn: parent
+        padding: Kirigami.Units.largeSpacing
 
-        ColumnLayout {
+        contentItem: ColumnLayout {
             spacing: Kirigami.Units.largeSpacing
 
             QQC2.Label {
@@ -2235,7 +2242,8 @@ Item {
                 }
                 wrapMode: Text.WordWrap
                 Layout.fillWidth: true
-                Layout.maximumWidth: Kirigami.Units.gridUnit * 22
+                Layout.preferredWidth: configRoot.dialogTextWidth
+                Layout.maximumWidth: configRoot.dialogTextWidth
             }
 
             QQC2.TextField {
