@@ -184,6 +184,21 @@ def _load_state(path: Path, now_ts: float) -> dict[str, dict[str, Any]]:
     return state
 
 
+def _load_renewals(path: Path) -> dict[str, dict[str, Any]]:
+    """Ultima renovacao por Conta (`provedor:id`); entradas invalidas sao descartadas."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")).get("renewals")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, entry in (raw.items() if isinstance(raw, dict) else []):
+        at = _finite(entry.get("at")) if isinstance(entry, dict) else None
+        if at is not None and at >= 0:
+            err = entry.get("error")
+            out[str(key)] = {"at": at, "error": err if isinstance(err, str) else None}
+    return out
+
+
 class RefreshCycle:
     """Estado de um ciclo de coleta: memo por credencial e pausas por Conta."""
 
@@ -194,6 +209,17 @@ class RefreshCycle:
         self._memo: dict[str, tuple[dict[str, Any] | None, dict[str, Any]]] = {}
         self._pending: list[dict[str, Any]] = []
         self._account_key: str | None = None
+        self.renewals = _load_renewals(state_path)
+
+    def renewal_due(self, provider: str, account_id: str, interval: int) -> bool:
+        """True se a Conta ainda nao foi renovada neste Intervalo de Atualizacao."""
+        last = self.renewals.get(f"{provider}:{account_id}", {}).get("at")
+        now_ts = self.now.timestamp()
+        return last is None or last > now_ts or last + interval <= now_ts
+
+    def record_renewal(self, provider: str, account_id: str, error: str | None) -> None:
+        """Marca a tentativa (sucesso ou nao) e a classe do erro, nunca detalhes ou tokens."""
+        self.renewals[f"{provider}:{account_id}"] = {"at": self.now.timestamp(), "error": error}
 
     def begin_account(self, provider: str, account_id: str) -> None:
         """Associa as proximas consultas a esta Conta (chave da pausa)."""
@@ -246,13 +272,18 @@ class RefreshCycle:
         # Descarta pausas vencidas ha mais de um dia (Contas removidas deixam chaves orfas)
         cutoff = self.now.timestamp() - 86400
         creds = {k: v for k, v in self.state.items() if v["paused_until"] > cutoff}
-        save_secure_json({"version": 2, "credentials": creds}, self.state_path, prefix="refresh_")
+        renewals = {k: v for k, v in self.renewals.items() if v["at"] > cutoff}
+        save_secure_json(
+            {"version": 2, "credentials": creds, "renewals": renewals}, self.state_path, prefix="refresh_"
+        )
 
 
 def forget_account(state_path: Path, provider: str, account_id: str) -> None:
     """Remove a pausa da Conta (chamar sob status_lock)."""
     cycle_ = RefreshCycle(state_path, utcnow())
-    if cycle_.state.pop(f"{provider}:{account_id}", None) is not None:
+    key = f"{provider}:{account_id}"
+    removed = [cycle_.state.pop(key, None), cycle_.renewals.pop(key, None)]
+    if any(r is not None for r in removed):
         cycle_.save()
 
 
