@@ -156,25 +156,29 @@ def _read_gemini_file(p: Path) -> dict[str, Any] | None:
     return data
 
 
-def sync_gemini_from_antigravity(copy_path: Path) -> bool:
-    """Atualiza a copia isolada (nossa) com o token vivo da Antigravity, so lendo o arquivo dela.
-
-    So acompanha se a identidade for a mesma e o token vivo nao for mais antigo que a copia;
-    nao renova token nem grava no arquivo da Antigravity.
-    """
+def _gemini_base() -> Path:
     env_dir = os.environ.get("GEMINI_CONFIG_DIR")
-    base = Path(env_dir).expanduser().resolve() if env_dir else Path("~/.gemini").expanduser().resolve()
-    live, mine = _read_gemini_file(base / _ANTIGRAVITY_TOKEN), _read_gemini_file(copy_path)
+    return Path(env_dir).expanduser().resolve() if env_dir else Path("~/.gemini").expanduser().resolve()
+
+
+def sync_gemini_from_antigravity(copy_path: Path) -> bool:
+    """Atualiza a nossa copia isolada com o token vivo da Antigravity.
+
+    Le so o arquivo da Antigravity e grava so a nossa copia. Exige a mesma identidade e que o token
+    vivo tenha expiracao conhecida e nao mais antiga que a da copia. Nao renova token.
+    """
+    live, mine = _read_gemini_file(_gemini_base() / _ANTIGRAVITY_TOKEN), _read_gemini_file(copy_path)
     if not live or not mine or not live.get("access_token"):
         return False
     ident = creds_identity("gemini", live)
     if not ident or not ident.email or ident != creds_identity("gemini", mine):
         return False
-    new = parse_timestamp(live.get("expiry_date") or live.get("expiry")) or 0
+    new = parse_timestamp(live.get("expiry_date") or live.get("expiry"))
     old = parse_timestamp(mine.get("expiry_date") or mine.get("expiry")) or 0
-    if live == mine or new < old:
+    merged = {**mine, **live}
+    if not new or new < old or merged == mine:
         return False
-    save_secure_json(live, copy_path, prefix="cred_")
+    save_secure_json(merged, copy_path, prefix="cred_")
     return True
 
 
@@ -189,7 +193,7 @@ def get_active_gemini_credentials(override: Path | None = None) -> tuple[dict[st
         return _read_gemini_file(p), str(p)
 
     env_dir = os.environ.get("GEMINI_CONFIG_DIR")
-    base = Path(env_dir).expanduser().resolve() if env_dir else Path("~/.gemini").expanduser().resolve()
+    base = _gemini_base()
     files = [base / "oauth_creds.json", base / _ANTIGRAVITY_TOKEN]
 
     if not env_dir:  # chaveiro so no caminho padrao

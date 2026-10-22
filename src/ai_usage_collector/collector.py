@@ -182,7 +182,10 @@ def _collect(
             manual_invite_count = acc.get("manual_invite_count")
 
             if agent_id == "gemini" and source == "captured" and cred_path:
-                sync_gemini_from_antigravity(Path(cred_path))  # copia isolada acompanha o token vivo
+                try:
+                    sync_gemini_from_antigravity(Path(cred_path))  # copia isolada acompanha o token vivo
+                except Exception as e:
+                    sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
