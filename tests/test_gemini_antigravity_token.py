@@ -36,6 +36,13 @@ def home(tmp_path, monkeypatch):
     return h
 
 
+@pytest.fixture(autouse=True)
+def _no_real_keyring():
+    """Nenhum teste consulta o chaveiro real da maquina (secret-tool)."""
+    with patch("subprocess.run", side_effect=_keyring()):
+        yield
+
+
 def _agy_file(base: Path, payload=AGY_PAYLOAD) -> Path:
     f = base / "antigravity-cli" / "antigravity-oauth-token"
     f.parent.mkdir(parents=True, exist_ok=True)
