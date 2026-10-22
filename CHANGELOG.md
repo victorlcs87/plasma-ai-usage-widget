@@ -3,6 +3,10 @@
 ## Não lançado
 
 ### Melhorias
+- Painel: cada item mostra o Logo do Provedor e só o Arco de Horário (Janela Nativa), ocupando a espessura do painel; a escala só reduz. Clicar no item abre o popup com os dois arcos desse provedor no topo; o hover não destaca (ADR-0011).
+- Logos de Claude, Codex e Gemini (Simple Icons, CC0) substituem as letras de provedor.
+- Gemini: a conta capturada da Antigravity acompanha o arquivo vivo e entende `expiry` ISO.
+- Diálogo Renomear Conta e popup dimensionam pelo conteúdo, sem faixa vazia.
 - Notch flutuante: a escala vai de 80% a 400% (antes 160%), passo de 10%; o Notch nunca passa da tela. O tamanho das métricas do painel segue 80–160%.
 
 ## 1.1.1
