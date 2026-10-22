@@ -881,7 +881,7 @@ Item {
                 clip: true
                 ColumnLayout {
                     width: tabGeralScroll.availableWidth
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.largeSpacing * 2
 
                     QQC2.Label {
                         Layout.fillWidth: true
@@ -894,7 +894,7 @@ Item {
                         // Intervalo de Atualização por provedor (mínimo de 60 s); Flow: quebra de linha em largura estreita
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 textFormat: Text.PlainText
@@ -933,7 +933,7 @@ Item {
                         // Alertas: cor por ritmo de uso (padrão) ou por limiares fixos
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 textFormat: Text.PlainText
@@ -1003,7 +1003,7 @@ Item {
                         // Ocultar quando a CLI não está rodando (desligado por padrão)
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 text: I18n.tr("Hide without the CLI running:")
@@ -1096,12 +1096,12 @@ Item {
                 clip: true
                 ColumnLayout {
                     width: tabPainelScroll.availableWidth
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.largeSpacing * 2
 
                         // Notch compacto: cor de destaque, visibilidade e ordem dos provedores
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 textFormat: Text.PlainText
@@ -1188,7 +1188,7 @@ Item {
 
                             Flow {
                                 Layout.fillWidth: true
-                                spacing: Kirigami.Units.smallSpacing
+                                spacing: Kirigami.Units.largeSpacing
                                 enabled: configRoot.floatNow.enabled
 
                                 QQC2.Label {
@@ -1299,7 +1299,7 @@ Item {
                         // Estilo do painel: Pílula (padrão), Ring, Text e Bar; modo e centro do anel; tamanho e margem
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 text: I18n.tr("Panel style:")
@@ -1407,7 +1407,7 @@ Item {
                 clip: true
                 ColumnLayout {
                     width: tabPopupScroll.availableWidth
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.largeSpacing * 2
 
                         WrapCheckBox {
                             text: I18n.tr("Open the popup on mouse hover (off: click only)")
@@ -1418,7 +1418,7 @@ Item {
                         // Popup: usado/restante e contagem/data (valem no popup, na dica e no painel), opacidade, cards
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 text: I18n.tr("Popup:")
@@ -2004,7 +2004,7 @@ Item {
                 clip: true
                 ColumnLayout {
                     width: tabNotifScroll.availableWidth
-                    spacing: Kirigami.Units.smallSpacing
+                    spacing: Kirigami.Units.largeSpacing * 2
 
                     QQC2.Label {
                         Layout.fillWidth: true
@@ -2044,7 +2044,7 @@ Item {
                         // Notificações do sistema: limiares, aviso antecipado, aviso de reset e silenciar por provedor
                         Flow {
                             Layout.fillWidth: true
-                            spacing: Kirigami.Units.smallSpacing
+                            spacing: Kirigami.Units.largeSpacing
 
                             QQC2.Label {
                                 text: I18n.tr("Notify at (%):")
