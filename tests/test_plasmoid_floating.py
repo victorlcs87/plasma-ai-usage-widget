@@ -77,6 +77,19 @@ def test_config_section_is_accessible_plain_text_and_off_by_default():
     assert "property bool cfg_floatingNotch: false" in cfg
 
 
+def test_floating_size_goes_to_400_but_panel_metric_size_stays_160():
+    root = UI_DIR.parent
+    xml = (root / "config/main.xml").read_text(encoding="utf-8")
+    float_entry = xml.split('name="floatSize"')[1].split("</entry>")[0]
+    metric_entry = xml.split('name="metricSize"')[1].split("</entry>")[0]
+    assert "<min>80</min>" in float_entry and "<max>400</max>" in float_entry
+    assert "<max>160</max>" in metric_entry
+    cfg = (UI_DIR / "configGeneral.qml").read_text(encoding="utf-8")
+    spin = cfg.split('objectName: "floatSizeSpin"')[1].split("}")[0]
+    assert "from: 80" in spin and "to: 400" in spin and "stepSize: 10" in spin and "(80 to 400)" in spin
+    assert "(80 to 160)" in cfg and "80 to 160." in cfg  # o controle do painel (metricSize) nao mudou
+
+
 def test_floating_code_keeps_contract_rules():
     for name in ("FloatingNotch.qml", "FloatingPillWindow.qml", "FloatingPopupWindow.qml", "FloatingFrame.qml", "FloatingLayer.qml", "FloatingGeometry.js"):
         src = (UI_DIR / name).read_text(encoding="utf-8")
@@ -93,10 +106,12 @@ def test_config_invalid_values_fall_back_to_defaults(tmp_path):
     default = {"enabled": False, "edge": "top", "vertical": False, "scale": 1.0, "offsets": {"top": 0, "bottom": 0, "left": 0, "right": 0}, "snap": True, "screen": ""}
     bad = [{}, None, {"floatEdge": "diagonal", "floatSize": "abc", "floatOffsetTop": "x", "floatScreen": 3, "floatingNotch": "true"},
            {"floatEdge": 7, "floatSize": 9999, "floatOffsetLeft": 99999999, "floatOffsetRight": None},
-           {"floatSize": 20, "floatOffsetBottom": -30000}]
+           {"floatSize": 20, "floatOffsetBottom": -30000}, {"floatSize": 401}, {"floatSize": 410}]
     out = js(tmp_path, "[%s]" % ",".join("FG.config(%s)" % json.dumps(b) for b in bad)
              + ".concat([FG.config({floatSize: NaN, floatOffsetTop: NaN, floatOffsetLeft: Infinity})])")
     assert all(o == default for o in out)
+    top = js(tmp_path, "[FG.config({floatSize: 400}).scale, FG.config({floatSize: 80}).scale, FG.config({floatSize: 250}).scale]")
+    assert top == [4.0, 0.8, 2.5]
     ok = js(tmp_path, 'FG.config({floatingNotch: true, floatEdge: "left", floatSize: 130, floatOffsetLeft: -250, floatOffsetTop: 40, floatSnap: false, floatScreen: " DP-2 "})')
     assert ok == {"enabled": True, "edge": "left", "vertical": True, "scale": 1.3, "offsets": {"top": 40, "bottom": 0, "left": -250, "right": 0},
                   "snap": False, "screen": "DP-2"}
@@ -121,6 +136,10 @@ def test_pill_rect_per_edge_is_flush_clamped_and_inside(tmp_path):
     small = js(tmp_path, 'FG.pillRect("top", 5000, {w: 160, h: 32}, {w: 800, h: 600})')
     assert small["x"] + small["w"] == 800 and small["offset"] == 320
     # tela menor que o Notch: encosta no início, sem posição negativa
+    # 400%: o Notch maior que a tela e encolhido para caber (eixo ao longo da borda = tela; eixo transversal = tela - folga)
+    for e, size in (("top", {"w": 5000, "h": 3000}), ("left", {"w": 3000, "h": 5000})):
+        r = js(tmp_path, 'FG.pillRect("%s", 50, %s, {w: 800, h: 600})' % (e, json.dumps(size)))
+        assert 0 <= r["x"] and r["x"] + r["w"] <= 800 and 0 <= r["y"] and r["y"] + r["h"] <= 600, (e, r)
     tiny = js(tmp_path, 'FG.pillRect("top", 100, {w: 160, h: 32}, {w: 120, h: 90})')
     assert tiny["x"] == 0 and tiny["offset"] == 0
 
@@ -426,7 +445,7 @@ def test_visual_matrix_sizes_small_screens_and_far_offsets(tmp_path):
     """Tamanhos mínimo/máximo, telas pequenas e deslocamentos extremos: tudo sempre dentro da tela (PNGs em AIU_PNG_DIR)."""
     scenarios = []
     for e in EDGES:
-        scenarios += [sc(f"min_{e}", e, size=80), sc(f"max_{e}", e, size=160, off=-200), sc(f"small_{e}", e, screen=(480, 360), off=99999),
+        scenarios += [sc(f"min_{e}", e, size=80), sc(f"max_{e}", e, size=400, off=-200), sc(f"max_small_{e}", e, size=400, screen=(800, 450), off=99999), sc(f"small_{e}", e, screen=(480, 360), off=99999),
                       sc(f"closed_{e}", e, off=300, open=False)]
     out = run_floating(tmp_path, scenarios)
     for s in scenarios:

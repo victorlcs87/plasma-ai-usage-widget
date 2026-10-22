@@ -6,7 +6,7 @@
 // removido ou resolução menor nunca deixam o Notch fora da tela.
 
 var EDGES = ["top", "bottom", "left", "right"];
-var SIZE = [80, 160], OFFSET = [-20000, 20000];
+var SIZE = [80, 400], OFFSET = [-20000, 20000];
 var GAP = 4;        // folga entre o Notch e a borda
 var MARGIN = 8;     // folga mínima do popup até as bordas da tela
 var SNAP = 12;      // px: perto do centro, gruda nele
@@ -56,8 +56,10 @@ function clampOffset(edge, offset, size, scr) {
 function snapOffset(offset, snap) { return snap && Math.abs(offset) <= SNAP ? 0 : offset; }
 
 // Retângulo do Notch preso à borda; `offset` já clampado na saída
+// Em escalas grandes (até 400%) o Notch nunca passa da tela: ao longo da borda = a tela; no eixo transversal = tela - folga
 function pillRect(edge, offset, size, scr) {
-    var off = clampOffset(edge, offset, size, scr), w = size.w, h = size.h;
+    var v = vertical(edge), w = Math.min(size.w, scr.w - (v ? GAP : 0)), h = Math.min(size.h, scr.h - (v ? 0 : GAP));
+    var off = clampOffset(edge, offset, { w: w, h: h }, scr);
     var x, y;
     if (vertical(edge)) {
         y = Math.round((scr.h - h) / 2 + off);

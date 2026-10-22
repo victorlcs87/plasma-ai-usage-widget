@@ -946,8 +946,8 @@ msgid "Size (%):"
 msgstr "Tamanho (%):"
 
 #: contents/ui/configGeneral.qml:1218
-msgid "Floating Notch size in percent (80 to 160)"
-msgstr "Tamanho do Notch flutuante em porcentagem (80 a 160)"
+msgid "Floating Notch size in percent (80 to 400)"
+msgstr "Tamanho do Notch flutuante em porcentagem (80 a 400)"
 
 #: contents/ui/configGeneral.qml:1222
 msgid "Screen:"
