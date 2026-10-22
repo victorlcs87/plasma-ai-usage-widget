@@ -95,6 +95,14 @@ _Avoid_: barra, popup generico
 Indicador circular de um provedor no Notch: o anel externo representa o Medidor da Janela Semanal e o interno a Janela Nativa, ambos com a marca do tempo decorrido.
 _Avoid_: grafico de rosca, gauge
 
+**Logo do Provedor**:
+Marca em SVG monocromático do provedor (Claude, Codex, Gemini) que substitui a inicial (C, X, G) em todo lugar do painel e do popup onde hoje há só uma letra. Acompanha o tema e o nível.
+_Avoid_: ícone, inicial, letra
+
+**Arco de Horário**:
+No painel, o único arco desenhado por item: o da Janela Nativa. O arco semanal aparece só no popup, destacado para o provedor clicado.
+_Avoid_: anel interno
+
 **Janela de Destaque**:
 A janela de um provedor cujo percentual os estilos Text e Bar e os modos com % mostram no painel (e o centro do anel): a mais urgente entre as conhecidas, isto é, a de maior nível de alerta do contrato (crítico, atenção, normal) e, em empate, a de maior percentual. Sem nenhuma janela conhecida, mostra "—", nunca 0%.
 _Avoid_: pior janela, janela principal

@@ -20,9 +20,10 @@ Item {
     property color accent: Presets.defaultAccent
     property bool active: true
     property bool reducedMotion: false
+    property bool single: false         // painel: só o Arco de Horário (anel simples da Janela Nativa)
     property bool remaining: false      // preferência usado/restante: o % e os arcos mostram o que resta
 
-    readonly property var head: PanelStyle.headline(m)
+    readonly property var head: single && m.innerPct >= 0 ? { pct: m.innerPct, level: m.innerLevel } : PanelStyle.headline(m)  // painel: % e nível do Arco de Horário
     readonly property var parts: PanelStyle.parts(panelStyle, mode)
     readonly property color levelColor: Presets.levelTextColor(head.level, accent)
     readonly property bool known: head.pct >= 0
@@ -49,13 +50,13 @@ Item {
             Layout.alignment: Qt.AlignCenter
             spacing: pi.gap
 
-            // Cabeça: inicial (com o Estado da Sessão em volta) + marca de nível
+            // Cabeça: logo (com o Estado da Sessão em volta) + marca de nível
             Row {
                 visible: pi.parts.head
                 anchors.verticalCenter: parent.verticalCenter
                 Item {
                     width: pi.geo.box
-                    height: pi.geo.lh
+                    height: Math.max(pi.geo.lh, pi.geo.box)
                     SessionMark {
                         width: pi.geo.box
                         height: pi.geo.box
@@ -64,14 +65,12 @@ Item {
                         reducedMotion: pi.reducedMotion
                         shown: pi.shown
                     }
-                    Text {
-                        Accessible.ignored: true
+                    ProviderLogo {
                         anchors.centerIn: parent
-                        text: pi.m.letter
-                        color: Presets.ui.letter
-                        font.pixelSize: Math.max(7, pi.geo.fontPx - 2)
-                        font.bold: true
-                        textFormat: Text.PlainText
+                        width: Math.round(pi.geo.box * 0.85)
+                        height: width
+                        provider: pi.m.provider
+                        color: pi.levelColor
                     }
                 }
                 Text {
@@ -106,7 +105,8 @@ Item {
                     innerLevel: pi.m.innerLevel
                     outerColor: Presets.levelColor(pi.m.outerLevel, pi.accent)
                     innerColor: Presets.levelColor(pi.m.innerLevel, pi.accent)
-                    letter: pi.m.letter
+                    provider: pi.m.provider
+                    single: pi.single
                     centerMode: pi.center
                     centerPct: pi.known ? String(ViewPrefs.shownPct(pi.head.pct, pi.remaining)) : "\u2014"
                     centerDim: pi.dim

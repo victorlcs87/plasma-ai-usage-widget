@@ -39,3 +39,23 @@ def test_secondary_text_at_70_percent_is_at_least_4_5_on_theme_backgrounds(theme
     for bg in bgs:  # configGeneral.qml: Qt.alpha(textColor, 0.7); o disabledTextColor antigo (#707d8a) dava 3,69:1 no claro
         assert ratio(blend(THEMES[theme][0], bg, 0.7), bg) >= 4.5
     assert ratio("#707d8a", "#eff0f1") < 4.5
+
+
+def _ui():
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui" / "Presets.js").read_text(encoding="utf-8")
+    return dict(re.findall(r'(\w+): "(#[0-9a-f]{6})"', src[src.index("var ui = "):]))
+
+
+@pytest.mark.parametrize("fg,bg", [("logo", "panel"), ("logo", "card"), ("fg", "chip")])
+def test_provider_logo_on_notch_palette_is_at_least_3_to_1(fg, bg):
+    ui = _ui()  # logo no centro do anel (painel escuro), no cartão e no selo do popup (chip)
+    assert ratio(ui[fg], ui[bg]) >= 3
+
+
+@pytest.mark.parametrize("theme", THEMES)
+def test_provider_logo_in_config_uses_theme_text_color_at_least_3_to_1(theme):
+    text, bg = THEMES[theme]  # configGeneral.qml: ProviderLogo { color: Kirigami.Theme.textColor }
+    assert ratio(text, bg) >= 3
+    assert "Kirigami.Theme.textColor" in (__import__("pathlib").Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui" / "configGeneral.qml").read_text(encoding="utf-8")

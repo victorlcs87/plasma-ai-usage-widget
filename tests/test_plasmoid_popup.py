@@ -36,7 +36,7 @@ STUBS = {
                           " Component.onCompleted: Log.sources.push(this) }"}),
 }
 
-FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
+FILES = ("ProviderLogo.qml", "logo-claude.svg", "logo-codex.svg", "logo-gemini.svg", "FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
          "DualRing.qml", "SessionMark.qml", "Presets.js", "I18n.js", "Collector.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
@@ -61,6 +61,8 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     property var updateInfo: NotchModel.updateSummary(statusData, I18n.tr)
     property color accentColor: "#3daee9"
     property var sessionOverlay: %(overlay)s
+    property string highlightProvider: %(hl)s
+    property var compactModel: NotchModel.buildModel(statusData, {providerOrder: "claude,codex,gemini", hiddenProviders: "%(hidden)s", remaining: false}, I18n.tr, Date.now())
     property var calls: []
     function setPopupHovered(h) { calls.push("popupHover:" + h) }
     function closePopup() { calls.push("close") }
@@ -136,7 +138,7 @@ def fixture():
 
 
 def popup(tmp_path, name, data=None, drive="", cfg=None, size=(460, 560), expanded=True, idle=False, refreshing=False, error="",
-          overlay=None, reduced=False, delay=700):
+          overlay=None, reduced=False, delay=700, highlight="", hidden=""):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -151,7 +153,7 @@ def popup(tmp_path, name, data=None, drive="", cfg=None, size=(460, 560), expand
     png_dir = os.environ.get("AIU_PNG_DIR", "")
     (run / "h.qml").write_text((HARNESS % {
         "w": size[0], "h": size[1], "data": json.dumps(data if data is not None else fixture()), "expanded": str(expanded).lower(),
-        "idle": str(idle).lower(), "refreshing": str(refreshing).lower(), "error": json.dumps(error), "overlay": json.dumps(overlay or {}),
+        "idle": str(idle).lower(), "refreshing": str(refreshing).lower(), "error": json.dumps(error), "hl": json.dumps(highlight), "hidden": hidden, "overlay": json.dumps(overlay or {}),
         "pcfg": json.dumps(cfg or {}), "dur": 0 if reduced else 200, "delay": delay, "drive": drive,
         "png": f"{png_dir}/{name}.png" if png_dir else ""}).replace("BGCOLOR", os.environ.get("AIU_BG", "#303236")))
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -177,6 +179,47 @@ def test_popup_renders_provider_blocks_and_cards(tmp_path):
     assert any("Runs out in" in t for t in out["forecast"]) and any("Limits changed" in t for t in out["limit"])
     # sem dado nunca é 0%: Antiga e Gemini vazio mostram "—"
     assert out["pct"].count("—") >= 3 and "0%" not in [p for p in out["pct"]]
+
+
+def test_clicked_provider_shows_both_arcs_on_top_of_the_popup(tmp_path):
+    """Ticket 48: o provedor clicado ganha um cartão no topo com os dois arcos (Janela Nativa e semanal)."""
+    drive = """
+    var hl = vis('highlight'), ring = named('highlightRing')[0]
+    obs('count', hl.length); obs('name', txt('highlightName')); obs('native', txt('highlightNative')); obs('weekly', txt('highlightWeekly'))
+    obs('ring', ring ? [ring.innerPct, ring.outerPct, ring.provider] : null)
+    obs('y', hl.length ? hl[0].mapToItem(f, 0, 0).y : -1); obs('blockY', named('provider_claude')[0].mapToItem(f, 0, 0).y)
+    """
+    out = popup(tmp_path, "hl", drive=drive, highlight="codex", size=(460, 900))
+    assert out["count"] == 1 and out["name"] == ["Codex"]
+    assert out["native"] == ["Native window 95%"] and out["weekly"] == ["Weekly 60%"]
+    assert out["ring"] == [95, 60, "codex"]
+    assert 0 <= out["y"] < out["blockY"]  # acima de todos os blocos de provedor
+
+
+def test_highlight_follows_remaining_unknown_windows_and_absent_cases(tmp_path):
+    drive = """
+    obs('count', vis('highlight').length); obs('native', txt('highlightNative')); obs('weekly', txt('highlightWeekly'))
+    """
+    rem = popup(tmp_path / "r", "hlrem", drive=drive, highlight="codex", cfg={"usageDisplay": "remaining"}, size=(460, 900))
+    assert rem["native"] == ["Native window 5%"] and rem["weekly"] == ["Weekly 40%"]
+    # sem Conta Ativa no Sistema (Gemini): traço, nunca 0%
+    gem = popup(tmp_path / "g", "hlgem", drive=drive, highlight="gemini", size=(460, 900))
+    assert gem["native"] == ["Native window —"] and gem["weekly"] == ["Weekly —"]
+    for i, hl in enumerate(("", "zzz")):  # sem destaque (hover) ou provedor desconhecido: nenhum cartão
+        assert popup(tmp_path / f"n{i}", f"hlno{i}", drive=drive, highlight=hl, size=(460, 900))["count"] == 0
+    hidden = popup(tmp_path / "h", "hlhid", drive=drive, highlight="codex", hidden="codex", size=(460, 900))
+    assert hidden["count"] == 0  # provedor oculto no painel não tem item para clicar: nada destacado
+
+
+def test_model_refresh_keeps_scroll_while_highlight_is_shown(tmp_path):
+    drive = """
+    var fl = named('popupFlick')[0]; fl.contentY = 60; var y0 = fl.contentY
+    logic.statusData = JSON.parse(JSON.stringify(logic.statusData))  // novo status: recalcula compactModel
+    wait(50); obs('kept', [y0 > 0, fl.contentY === y0])
+    logic.highlightProvider = 'claude'; wait(50); obs('reset', fl.contentY)
+    """
+    out = popup(tmp_path, "hlscroll", drive=drive, highlight="codex", size=(460, 300))
+    assert out["kept"] == [True, True] and out["reset"] == 0
 
 
 def collector(cmds, args):
@@ -620,3 +663,19 @@ def test_compact_number_uses_the_locale_decimal_separator(tmp_path, monkeypatch)
     assert js(tmp_path, expr) == ["950", "12,4k", "410k", "1,9M", "2,5B", "1M", "1M", "1B"]
     monkeypatch.setenv("LC_ALL", "en_US.UTF-8")
     assert js(tmp_path, expr) == ["950", "12.4k", "410k", "1.9M", "2.5B", "1M", "1M", "1B"]
+
+
+def test_history_without_tokens_leaves_no_empty_chart_strip(tmp_path):
+    """Ticket 44: com Hoje 0 • Semana 0 • Mês 0 o gráfico seria só uma faixa vazia sob o resumo; com dados continua lá."""
+    drive = """
+    var h = named('historySummary').filter(function (k) { return k.visible })[0].parent.parent
+    obs('chart', vis('historyChart').length); obs('h', h.height); obs('txt', txt('historySummary'))
+    """
+    full = popup(tmp_path / "a", "hist_full", drive=drive, size=(460, 1400))
+    data = fixture()
+    data["agents"]["claude"]["accounts"][0]["token_history"] = {
+        "today": 0, "week": 0, "month": 0, "estimated": False, "daily_30d": [{"date": f"2026-10-{d:02d}", "tokens": 0} for d in range(1, 31)],
+        "weekly_3m": [], "monthly_12m": []}
+    zero = popup(tmp_path / "b", "hist_zero", data=data, drive=drive, size=(460, 1400))
+    assert full["chart"] == 1 and zero["chart"] == 0 and "Today 0 • Week 0 • Month 0" in zero["txt"][0]
+    assert full["h"] - zero["h"] >= 30  # a faixa de ~2 gridUnits sumiu e o resumo/30d continuam

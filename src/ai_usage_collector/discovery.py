@@ -302,7 +302,7 @@ def discover_gemini(credential_path: str | Path | None = None) -> dict[str, Any]
         refresh_token = file_data.get("refresh_token")
         id_token = file_data.get("id_token")
         email = extract_jwt_identity(id_token) if id_token else None
-        expiry_date = file_data.get("expiry_date")
+        expiry_date = file_data.get("expiry_date") or file_data.get("expiry")
 
         is_expired = False
         if expiry_date:

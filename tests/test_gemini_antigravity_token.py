@@ -19,7 +19,7 @@ AGY_PAYLOAD = {
         "access_token": "ya29.agy_access",
         "token_type": "Bearer",
         "refresh_token": "1//agy_refresh",
-        "expiry": "2030-01-01T00:00:00Z",
+        "expiry": "2099-01-01T00:00:00Z",
         "expires_in": 3599,
     },
     "auth_method": "oauth",
@@ -34,6 +34,13 @@ def home(tmp_path, monkeypatch):
     h = tmp_path / "_home"  # HOME ja isolado pelo conftest
     (h / ".gemini" / "antigravity-cli").mkdir(parents=True)
     return h
+
+
+@pytest.fixture(autouse=True)
+def _no_real_keyring():
+    """Nenhum teste consulta o chaveiro real da maquina (secret-tool)."""
+    with patch("subprocess.run", side_effect=_keyring()):
+        yield
 
 
 def _agy_file(base: Path, payload=AGY_PAYLOAD) -> Path:
@@ -124,3 +131,117 @@ def test_no_source_still_reports_missing(home, tmp_path, capsys):
                      "--cache-path", str(tmp_path / "s.json")])
     assert code == 1
     assert "antigravity-oauth-token" in capsys.readouterr().err
+
+
+# --- ticket 43: a conta capturada acompanha o arquivo vivo da Antigravity ---
+
+def _captured(tmp_path, payload=AGY_PAYLOAD):
+    """Copia isolada como a captura a grava: plana, com `expiry` ISO."""
+    p = tmp_path / "profiles" / "gemini-x" / "oauth_creds.json"
+    p.parent.mkdir(parents=True)
+    p.write_text(json.dumps(_read_gemini_file_from(payload)))
+    return p
+
+
+def _read_gemini_file_from(payload):
+    return {**{k: v for k, v in payload.items() if k != "token"}, **payload["token"]}
+
+
+def test_expiry_iso_is_understood(tmp_path):
+    from ai_usage_collector.discovery import discover_gemini
+    past = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "expiry": "2020-01-01T00:00:00Z", "refresh_token": ""}}
+    p = _captured(tmp_path, past)
+    assert discover_gemini(p)["status"] != "valid"
+    ok = _captured(tmp_path / "b")
+    assert discover_gemini(ok)["status"] == "valid"
+
+
+def test_sync_pulls_fresh_token_without_touching_live(home, tmp_path):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    stale = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "access_token": "ya29.old", "expiry": "2020-01-01T00:00:00Z"}}
+    copy = _captured(tmp_path, stale)
+    live = _agy_file(home / ".gemini")  # token novo, expiry futuro
+    before = (live.read_bytes(), live.stat().st_mtime_ns)
+    assert sync_gemini_from_antigravity(copy) is True
+    assert json.loads(copy.read_text())["access_token"] == "ya29.agy_access"
+    assert stat.S_IMODE(copy.stat().st_mode) == 0o600
+    assert (live.read_bytes(), live.stat().st_mtime_ns) == before
+
+
+def test_sync_ignores_other_identity_and_older_live(home, tmp_path):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    copy = _captured(tmp_path)
+    original = copy.read_text()
+    other = {**AGY_PAYLOAD, "id_token": make_jwt({"email": "outra@example.com", "sub": "9"})}
+    _agy_file(home / ".gemini", other)
+    assert sync_gemini_from_antigravity(copy) is False
+    older = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "expiry": "2025-01-01T00:00:00Z"}}
+    _agy_file(home / ".gemini", older)
+    assert sync_gemini_from_antigravity(copy) is False
+    assert copy.read_text() == original
+
+
+@pytest.mark.parametrize("live", [None, "{not json", "[1, 2]"])
+def test_sync_leaves_copy_intact_on_bad_live(home, tmp_path, live):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    copy = _captured(tmp_path)
+    original = copy.read_text()
+    if live is not None:
+        f = _agy_file(home / ".gemini")
+        f.write_text(live)
+    assert sync_gemini_from_antigravity(copy) is False
+    assert copy.read_text() == original
+
+
+def test_expiry_with_zone_and_nanoseconds(tmp_path):
+    from ai_usage_collector.discovery import discover_gemini
+    ns = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "expiry": "2026-10-21T14:17:03.756448137-03:00", "refresh_token": ""}}
+    assert discover_gemini(_captured(tmp_path, ns))["status"] != "valid"  # passado
+    far = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "expiry": "2099-10-21T14:17:03.756448137-03:00"}}
+    assert discover_gemini(_captured(tmp_path / "b", far))["status"] == "valid"
+
+
+def _collect(home, tmp_path, sync=None):
+    """Coleta completa com a conta capturada de copia vencida e arquivo vivo com expiry futuro."""
+    from ai_usage_collector.collector import collect_and_save
+    from ai_usage_collector.config import save_config
+    stale = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "access_token": "ya29.old", "expiry": "2020-01-01T00:00:00Z", "refresh_token": ""}}
+    copy = _captured(tmp_path, stale)
+    _agy_file(home / ".gemini")
+    cfg = tmp_path / "config.json"
+    save_config({"agents": {"gemini": {"accounts": [
+        {"id": "g1", "label": "G", "source": "captured", "credential_path": str(copy), "gemini_dir": str(copy.parent)}
+    ]}}}, cfg)
+    patches = [patch("subprocess.run", side_effect=_keyring()),
+               patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=None)]
+    if sync:
+        patches.append(patch("ai_usage_collector.collector.sync_gemini_from_antigravity", side_effect=sync))
+    for p in patches:
+        p.start()
+    try:
+        return collect_and_save(config_path=cfg, cache_path=tmp_path / "status.json")
+    finally:
+        patch.stopall()
+
+
+def test_collect_marks_captured_account_valid(home, tmp_path):
+    acc = _collect(home, tmp_path)["agents"]["gemini"]["accounts"][0]
+    assert acc["health"]["status"] == "valid"
+
+
+def test_collect_survives_sync_oserror(home, tmp_path, capsys):
+    status = _collect(home, tmp_path, sync=OSError("disco cheio"))
+    assert len(status["agents"]["gemini"]["accounts"]) == 1
+    assert "nao sincronizado" in capsys.readouterr().err
+
+
+def test_sync_replaces_stale_expiry_date_in_copy(home, tmp_path):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    from ai_usage_collector.discovery import discover_gemini
+    _agy_file(home / ".gemini")
+    old = {**_read_gemini_file_from(AGY_PAYLOAD), "expiry_date": 1_600_000_000_000, "expiry": "2020-01-01T00:00:00Z"}
+    copy = tmp_path / "profiles" / "gemini-x" / "oauth_creds.json"
+    copy.parent.mkdir(parents=True)
+    copy.write_text(json.dumps(old))
+    assert sync_gemini_from_antigravity(copy)
+    assert discover_gemini(copy)["status"] == "valid"

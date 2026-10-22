@@ -111,7 +111,7 @@ def test_styles_keep_contract_level_color_and_non_color_cues():
     for src in (item, bars, compact, (UI_DIR / "PanelStyle.js").read_text(encoding="utf-8")):
         assert "< 70" not in src and "<= 90" not in src and "usage_percentage" not in src  # nunca limiares fixos
     assert "levelColor" in item and "setLineDash" in bars and "elapsed" in bars.lower()
-    assert item.count("Accessible.ignored: true") == 3 and "Loader {" in item  # leitor de tela sem duplicar; só um gráfico
+    assert item.count("Accessible.ignored: true") == 2 and "ProviderLogo {" in item and "Accessible.ignored: true" in (UI_DIR / "ProviderLogo.qml").read_text(encoding="utf-8") and "Loader {" in item  # leitor de tela sem duplicar; só um gráfico
     assert "PanelStyle.barWidth" in bars and "barsWidth" in item  # largura da barra em um lugar só
     assert "setLineDash" in ring and "SessionMark" in ring and "SessionMark" in item
     assert "reducedMotion" in item and "Kirigami.Units.longDuration === 0" in compact
@@ -303,7 +303,7 @@ def test_badges_keep_dark_backdrop_on_a_light_theme_and_meet_contrast(tmp_path, 
     for n in "ab":
         (tmp_path / n).mkdir()
     for n, bg in (("a", "#f5f5f5"), ("b", "#1b1e20")):  # janela clara e escura
-        out = render(tmp_path / n, "", THREE, vertical=vertical, invites=3, updates=UPDATES, bg=bg, extra_cfg=OVERLAY, size=(40, 420) if vertical else None,
+        out = render(tmp_path / n, "", THREE, vertical=vertical, invites=3, updates=UPDATES, bg=bg, extra_cfg=OVERLAY, size=(40, 520) if vertical else (520, 40),
                      panel={"panelStyle": style, "panelMode": "ringpct"})
         assert len(out["badges"]) == 4
         for b in out["badges"]:
@@ -375,3 +375,42 @@ def test_pill_at_110px_drops_percent_and_badges_before_shrinking(tmp_path):
     (tmp_path / "b").mkdir()
     big = render(tmp_path / "b", "", THREE, invites=3, updates=UPDATES, panel={"panelStyle": "pill", "panelMode": "ringpct"}, size=(600, 40), extra_cfg=OVERLAY)
     assert not big["eff"].get("lean") and len(big["badges"]) == 4  # com espaço, tudo como antes
+
+
+# ---- ticket 47: painel só com o Arco de Horário ----
+
+@needs_qml
+def test_panel_ring_fills_thickness_scale_only_shrinks_and_options_have_effect(tmp_path):
+    """O anel ocupa a espessura do painel (menos a margem); escala > 100% não passa disso, < 100% reduz; margem muda o anel."""
+    one = agents(("claude", acc("claude", 40, 30)))
+
+    def unit(n, **panel):
+        (tmp_path / n).mkdir()
+        return render(tmp_path / n, "", one, panel=panel, size=(300, 60))["geo"]["unit"]
+
+    full = unit("a")
+    assert full == 60 - 2 * 4  # espessura 60 menos a margem automática (smallSpacing 4 do stub)
+    assert unit("b", metricSize=160) == full  # escala nunca aumenta além da espessura
+    assert unit("c", metricSize=80) < full  # escala reduz
+    assert unit("d", panelMargin=12) == 60 - 2 * 12  # margem tem efeito visível
+
+
+@needs_qml
+@pytest.mark.parametrize("style", STYLES)
+def test_panel_fill_only_applies_to_ring_styles_and_vertical_uses_width(tmp_path, style):
+    one = agents(("claude", acc("claude", 40, 30)))
+    (tmp_path / "h").mkdir()
+    (tmp_path / "v").mkdir()
+    h = render(tmp_path / "h", "", one, panel={"panelStyle": style, "panelMode": "ringpct"}, size=(400, 60))["geo"]["unit"]
+    v = render(tmp_path / "v", "", one, vertical=True, panel={"panelStyle": style, "panelMode": "ringpct"}, size=(60, 400))["geo"]["unit"]
+    if style in ("pill", "ring"):
+        assert h > 22 and h <= 60 and v <= 60  # anel cresce com a espessura, nunca passa dela
+    else:
+        assert h <= 22  # Bar/Text mantêm o tamanho de antes
+
+
+def test_panel_draws_single_ring_and_floating_keeps_dual():
+    item = (UI_DIR / "PanelItem.qml").read_text(encoding="utf-8")
+    compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
+    assert "single: pi.single" in item and "single: compactRoot.panelRing" in compact
+    assert "panelRing: !hosted" in compact  # flutuante (hospedado) mantém o Anel Duplo

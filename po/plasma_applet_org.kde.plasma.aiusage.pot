@@ -23,7 +23,7 @@ msgstr ""
 msgid "Active on the system"
 msgstr ""
 
-#: contents/ui/AccountCard.qml:122 contents/ui/main.qml:237
+#: contents/ui/AccountCard.qml:122 contents/ui/main.qml:242
 msgid "Exit code %1"
 msgstr ""
 
@@ -83,15 +83,15 @@ msgstr ""
 msgid "The provider answered without the expected usage data."
 msgstr ""
 
-#: contents/ui/AccountCard.qml:170 contents/ui/configGeneral.qml:1848
+#: contents/ui/AccountCard.qml:170 contents/ui/configGeneral.qml:1869
 msgid "Valid"
 msgstr ""
 
-#: contents/ui/AccountCard.qml:171 contents/ui/configGeneral.qml:1849
+#: contents/ui/AccountCard.qml:171 contents/ui/configGeneral.qml:1870
 msgid "Expired"
 msgstr ""
 
-#: contents/ui/AccountCard.qml:172 contents/ui/configGeneral.qml:1850
+#: contents/ui/AccountCard.qml:172 contents/ui/configGeneral.qml:1871
 msgid "Not set up"
 msgstr ""
 
@@ -177,135 +177,143 @@ msgstr ""
 msgid "Copy invite link to the clipboard"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:108
+#: contents/ui/CompactRepresentation.qml:123
 msgid "AI monitor hidden: no CLI running. Activate to open"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:109
+#: contents/ui/CompactRepresentation.qml:124
 msgid "AI monitor: floating Notch active. Activate to open"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:203 contents/ui/NotchModel.js:233
+#: contents/ui/CompactRepresentation.qml:220 contents/ui/NotchModel.js:233
 msgid "Session expired"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:204 contents/ui/NotchModel.js:234
+#: contents/ui/CompactRepresentation.qml:221 contents/ui/NotchModel.js:234
 msgid "Account not set up"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:204 contents/ui/NotchModel.js:235
+#: contents/ui/CompactRepresentation.qml:221 contents/ui/NotchModel.js:235
 msgid "Account error"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:218 contents/ui/CompactRepresentation.qml:221
+#: contents/ui/CompactRepresentation.qml:235 contents/ui/CompactRepresentation.qml:238
 msgid "New CLI version available"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:235
+#: contents/ui/CompactRepresentation.qml:252
 msgid "New widget version available"
 msgstr ""
 
-#: contents/ui/CompactRepresentation.qml:257 contents/ui/main.qml:150
+#: contents/ui/CompactRepresentation.qml:274 contents/ui/main.qml:153
 msgid "%1 invite available"
 msgid_plural "%1 invites available"
 msgstr[0] ""
 msgstr[1] ""
 
-#: contents/ui/FloatingFrame.qml:20 contents/ui/FullRepresentation.qml:87 contents/ui/FullRepresentation.qml:157 contents/ui/main.qml:28
+#: contents/ui/FloatingFrame.qml:20 contents/ui/FullRepresentation.qml:96 contents/ui/FullRepresentation.qml:166 contents/ui/main.qml:28
 msgid "AI Usage Monitor"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:95
+#: contents/ui/FullRepresentation.qml:104
 msgid "%1 account"
 msgid_plural "%1 accounts"
 msgstr[0] ""
 msgstr[1] ""
 
-#: contents/ui/FullRepresentation.qml:169 contents/ui/FullRepresentation.qml:186
+#: contents/ui/FullRepresentation.qml:178 contents/ui/FullRepresentation.qml:195
 msgid "Updating metrics..."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:170
+#: contents/ui/FullRepresentation.qml:179
 msgid "Recently updated"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:182 contents/ui/FullRepresentation.qml:186
+#: contents/ui/FullRepresentation.qml:191 contents/ui/FullRepresentation.qml:195
 msgid "Update now"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:207
+#: contents/ui/FullRepresentation.qml:216
 msgid "Settings"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:210
+#: contents/ui/FullRepresentation.qml:219
 msgid "Manage accounts and settings"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:228
+#: contents/ui/FullRepresentation.qml:237
 msgid "Used"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:228
+#: contents/ui/FullRepresentation.qml:237
 msgid "Show how much of the quota has been used"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:229
+#: contents/ui/FullRepresentation.qml:238
 msgid "Remaining"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:229
+#: contents/ui/FullRepresentation.qml:238
 msgid "Show how much of the quota is left"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:230
+#: contents/ui/FullRepresentation.qml:239
 msgid "Countdown"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:230
+#: contents/ui/FullRepresentation.qml:239
 msgid "Show the time until release"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:231
+#: contents/ui/FullRepresentation.qml:240
 msgid "Date"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:231
+#: contents/ui/FullRepresentation.qml:240
 msgid "Show the release date and time"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:281
+#: contents/ui/FullRepresentation.qml:290
 msgid "View release"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:282
+#: contents/ui/FullRepresentation.qml:291
 msgid "View release: %1"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:283
+#: contents/ui/FullRepresentation.qml:292
 msgid "Open the release page in the browser"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:347 contents/ui/NotchModel.js:100 contents/ui/TokenHistory.qml:77
+#: contents/ui/FullRepresentation.qml:398 contents/ui/NotchModel.js:238
+msgid "Native window"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:407 contents/ui/NotchModel.js:239
+msgid "Weekly"
+msgstr ""
+
+#: contents/ui/FullRepresentation.qml:430 contents/ui/NotchModel.js:100 contents/ui/TokenHistory.qml:77
 msgid "%1, %2"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:378
+#: contents/ui/FullRepresentation.qml:459
 msgid "no accounts"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:380 contents/ui/NotchModel.js:167
+#: contents/ui/FullRepresentation.qml:461 contents/ui/NotchModel.js:167
 msgid "no account active on the system"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:427
+#: contents/ui/FullRepresentation.qml:508
 msgid "No provider visible in the popup. Choose providers in Settings."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:428
+#: contents/ui/FullRepresentation.qml:509
 msgid "No accounts found"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:429 contents/ui/configGeneral.qml:1925
+#: contents/ui/FullRepresentation.qml:510 contents/ui/configGeneral.qml:1946
 msgid "Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json"
 msgstr ""
 
@@ -413,14 +421,6 @@ msgstr ""
 msgid "%1: no account active on the system"
 msgstr ""
 
-#: contents/ui/NotchModel.js:238
-msgid "Native window"
-msgstr ""
-
-#: contents/ui/NotchModel.js:239
-msgid "Weekly"
-msgstr ""
-
 #: contents/ui/NotchModel.js:272
 msgid "Weekly Window (7 days)"
 msgstr ""
@@ -465,7 +465,7 @@ msgstr ""
 msgid "Runs out %1"
 msgstr ""
 
-#: contents/ui/NotchModel.js:306 contents/ui/TokenHistory.qml:93
+#: contents/ui/NotchModel.js:306 contents/ui/TokenHistory.qml:95
 msgid "No data"
 msgstr ""
 
@@ -537,15 +537,15 @@ msgstr ""
 msgid "12m"
 msgstr ""
 
-#: contents/ui/TokenHistory.qml:92
+#: contents/ui/TokenHistory.qml:94
 msgid "Token history, %1"
 msgstr ""
 
-#: contents/ui/TokenHistory.qml:93
+#: contents/ui/TokenHistory.qml:95
 msgid "Highest value: %1"
 msgstr ""
 
-#: contents/ui/TokenHistory.qml:123
+#: contents/ui/TokenHistory.qml:125
 msgid "%1: %2 tokens"
 msgstr ""
 
@@ -601,822 +601,822 @@ msgstr ""
 msgid "used"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:226
+#: contents/ui/configGeneral.qml:228
 msgid "Please fill in the account nickname/name."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:230
+#: contents/ui/configGeneral.qml:232
 msgid "Please enter the credentials path or directory."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:323
+#: contents/ui/configGeneral.qml:325
 msgid "Error reading status data: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:355 contents/ui/configGeneral.qml:384 contents/ui/configGeneral.qml:430 contents/ui/configGeneral.qml:458 contents/ui/configGeneral.qml:481 contents/ui/configGeneral.qml:510 contents/ui/configGeneral.qml:544 contents/ui/configGeneral.qml:569 contents/ui/configGeneral.qml:605 contents/ui/configGeneral.qml:641
+#: contents/ui/configGeneral.qml:357 contents/ui/configGeneral.qml:386 contents/ui/configGeneral.qml:432 contents/ui/configGeneral.qml:460 contents/ui/configGeneral.qml:483 contents/ui/configGeneral.qml:512 contents/ui/configGeneral.qml:546 contents/ui/configGeneral.qml:571 contents/ui/configGeneral.qml:607 contents/ui/configGeneral.qml:643
 msgid "Unknown error"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:477
+#: contents/ui/configGeneral.qml:479
 msgid "Account removed successfully!"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:481
+#: contents/ui/configGeneral.qml:483
 msgid "Failed to remove account: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:530
+#: contents/ui/configGeneral.qml:532
 msgid "Account renamed successfully!"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:544
+#: contents/ui/configGeneral.qml:546
 msgid "Failed to rename account: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:564
+#: contents/ui/configGeneral.qml:566
 msgid "Account added successfully!"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:569
+#: contents/ui/configGeneral.qml:571
 msgid "Failed to add account: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:590
+#: contents/ui/configGeneral.qml:592
 msgid "Active session captured successfully!"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:605
+#: contents/ui/configGeneral.qml:607
 msgid "Failed to capture current login: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:626
+#: contents/ui/configGeneral.qml:628
 msgid "Interactive login completed successfully!"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:641
+#: contents/ui/configGeneral.qml:643
 msgid "Interactive login failed: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:686
+#: contents/ui/configGeneral.qml:688
 msgid "The account name cannot be empty."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:722
+#: contents/ui/configGeneral.qml:724
 msgid "Configuration"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:728
+#: contents/ui/configGeneral.qml:730
 msgid "Reload"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:731
+#: contents/ui/configGeneral.qml:733
 msgid "Refresh account list"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:797
+#: contents/ui/configGeneral.qml:799
 msgid "Show previous tabs"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:809
+#: contents/ui/configGeneral.qml:811
 msgid "Settings sections"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:814 contents/ui/configGeneral.qml:817
+#: contents/ui/configGeneral.qml:816 contents/ui/configGeneral.qml:819
 msgid "General"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:818
+#: contents/ui/configGeneral.qml:820
 msgid "General settings: refresh, alerts, hiding without a CLI and version checks"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:821 contents/ui/configGeneral.qml:824
+#: contents/ui/configGeneral.qml:823 contents/ui/configGeneral.qml:826
 msgid "Panel"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:825
+#: contents/ui/configGeneral.qml:827
 msgid "Appearance of the compact Notch in the panel"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:828 contents/ui/configGeneral.qml:831
+#: contents/ui/configGeneral.qml:830 contents/ui/configGeneral.qml:833
 msgid "Popup"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:832
+#: contents/ui/configGeneral.qml:834
 msgid "Popup: opening, display, opacity and providers"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:835 contents/ui/configGeneral.qml:838
+#: contents/ui/configGeneral.qml:837 contents/ui/configGeneral.qml:840
 msgid "Accounts"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:839
+#: contents/ui/configGeneral.qml:841
 msgid "Registered accounts, creation, capture and orphan profiles"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:842 contents/ui/configGeneral.qml:845
+#: contents/ui/configGeneral.qml:844 contents/ui/configGeneral.qml:847
 msgid "Notifications"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:846
+#: contents/ui/configGeneral.qml:848
 msgid "Session state, notifications and sounds"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:856
+#: contents/ui/configGeneral.qml:858
 msgid "Show next tabs"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:889 contents/ui/configGeneral.qml:1993
+#: contents/ui/configGeneral.qml:891 contents/ui/configGeneral.qml:2014
 msgid "Alerts, hiding and notifications are applied right away by the collector with their own Apply button; every other option is saved when you press OK."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:899
+#: contents/ui/configGeneral.qml:901
 msgid "Refresh every (s):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:924
+#: contents/ui/configGeneral.qml:926
 msgid "%1 refresh interval in seconds (minimum 60)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:938
+#: contents/ui/configGeneral.qml:940
 msgid "Alert by:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:946
+#: contents/ui/configGeneral.qml:948
 msgid "Usage pace"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:947
+#: contents/ui/configGeneral.qml:949
 msgid "Fixed threshold"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:951
+#: contents/ui/configGeneral.qml:953
 msgid "Alert mode"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:956
+#: contents/ui/configGeneral.qml:958
 msgid "Warning (%):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:967
+#: contents/ui/configGeneral.qml:969
 msgid "Warning threshold in percent"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:972
+#: contents/ui/configGeneral.qml:974
 msgid "Critical (%):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:983
+#: contents/ui/configGeneral.qml:985
 msgid "Critical threshold in percent"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:987
+#: contents/ui/configGeneral.qml:989
 msgid "Apply alerts"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:997 contents/ui/configGeneral.qml:1038 contents/ui/configGeneral.qml:2106
+#: contents/ui/configGeneral.qml:999 contents/ui/configGeneral.qml:1040 contents/ui/configGeneral.qml:2127
 msgid "Not applied yet"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1007
+#: contents/ui/configGeneral.qml:1009
 msgid "Hide without the CLI running:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1015
+#: contents/ui/configGeneral.qml:1017
 msgid "Never"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1016
+#: contents/ui/configGeneral.qml:1018
 msgid "Only the stopped provider"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1017
+#: contents/ui/configGeneral.qml:1019
 msgid "The whole widget"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1021
+#: contents/ui/configGeneral.qml:1023
 msgid "Hide when the CLI process is not running"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1022
+#: contents/ui/configGeneral.qml:1024
 msgid "The whole widget reappears when you open the popup or the settings; a thin sliver with the right-click menu remains in the panel"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1028
+#: contents/ui/configGeneral.qml:1030
 msgid "Apply hiding"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1046
+#: contents/ui/configGeneral.qml:1048
 msgid "To find the hidden widget again: point at the thin sliver in the panel (it reopens the monitor and right-click leads to Configure), use the panel edit mode, or open the hidden items in the system tray. The widget never disappears while the popup or this window is open."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1053
+#: contents/ui/configGeneral.qml:1055
 msgid "Check for new versions once a day"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1057
+#: contents/ui/configGeneral.qml:1059
 msgid "Queries the widget's GitHub Releases and the npm registry for Claude Code, Codex and Gemini CLI; nothing is downloaded or installed"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1069
+#: contents/ui/configGeneral.qml:1071
 msgid "Collector path:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1076
+#: contents/ui/configGeneral.qml:1078
 msgid "Empty = ai-usage-collector from the PATH"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1078
+#: contents/ui/configGeneral.qml:1080
 msgid "Path to the ai-usage-collector executable"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1079
+#: contents/ui/configGeneral.qml:1081
 msgid "Only used when the collector is not on the PATH, in ~/.local/bin or in pipx; accepts ~/"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1106
+#: contents/ui/configGeneral.qml:1108
 msgid "Accent color:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1114
+#: contents/ui/configGeneral.qml:1116
 msgid "Plasma highlight"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1115
+#: contents/ui/configGeneral.qml:1117
 msgid "Pink"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1116
+#: contents/ui/configGeneral.qml:1118
 msgid "Red"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1117
+#: contents/ui/configGeneral.qml:1119
 msgid "Orange"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1118
+#: contents/ui/configGeneral.qml:1120
 msgid "Yellow"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1119
+#: contents/ui/configGeneral.qml:1121
 msgid "Green"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1120
+#: contents/ui/configGeneral.qml:1122
 msgid "Teal"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1121
+#: contents/ui/configGeneral.qml:1123
 msgid "Blue"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1122
+#: contents/ui/configGeneral.qml:1124
 msgid "Indigo"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1123
+#: contents/ui/configGeneral.qml:1125
 msgid "Purple"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1124
+#: contents/ui/configGeneral.qml:1126
 msgid "White"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1125
+#: contents/ui/configGeneral.qml:1127
 msgid "Off"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1129
+#: contents/ui/configGeneral.qml:1131
 msgid "Notch accent color"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1134
+#: contents/ui/configGeneral.qml:1136
 msgid "Providers in the panel:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1153
+#: contents/ui/configGeneral.qml:1160
 msgid "Move %1 earlier"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1159
+#: contents/ui/configGeneral.qml:1166
 msgid "Move %1 later"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1173
+#: contents/ui/configGeneral.qml:1180
 msgid "Floating Notch (own window on a screen edge)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1176
+#: contents/ui/configGeneral.qml:1183
 msgid "Show the Notch as a floating window pinned to a screen edge"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1177
+#: contents/ui/configGeneral.qml:1184
 msgid "Off by default. When on, the widget in the panel becomes a small marker (right-click it to configure) and the Notch lives in its own window"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1178
+#: contents/ui/configGeneral.qml:1185
 msgid "Wayland (KDE Plasma): uses the layer-shell protocol, so panels appearing or disappearing never move it. X11: a plain always-on-top window without reserved area. If the layer-shell QML module is missing the option has no effect and the Notch stays in the panel; other compositors without layer-shell may show a regular window."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1188
+#: contents/ui/configGeneral.qml:1195
 msgid "Edge:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1196
+#: contents/ui/configGeneral.qml:1203
 msgid "Top"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1197
+#: contents/ui/configGeneral.qml:1204
 msgid "Bottom"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1198
+#: contents/ui/configGeneral.qml:1205
 msgid "Left"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1199
+#: contents/ui/configGeneral.qml:1206
 msgid "Right"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1203
+#: contents/ui/configGeneral.qml:1210
 msgid "Screen edge of the floating Notch"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1207 contents/ui/configGeneral.qml:1352
+#: contents/ui/configGeneral.qml:1214 contents/ui/configGeneral.qml:1359
 msgid "Size (%):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1218
-msgid "Floating Notch size in percent (80 to 160)"
-msgstr ""
-
-#: contents/ui/configGeneral.qml:1222
-msgid "Screen:"
+#: contents/ui/configGeneral.qml:1225
+msgid "Floating Notch size in percent (80 to 400)"
 msgstr ""
 
 #: contents/ui/configGeneral.qml:1229
-msgid "Screen of the widget"
-msgstr ""
-
-#: contents/ui/configGeneral.qml:1232
-msgid "Screen of the floating Notch"
+msgid "Screen:"
 msgstr ""
 
 #: contents/ui/configGeneral.qml:1236
+msgid "Screen of the widget"
+msgstr ""
+
+#: contents/ui/configGeneral.qml:1239
+msgid "Screen of the floating Notch"
+msgstr ""
+
+#: contents/ui/configGeneral.qml:1243
 msgid "Position (px from the center):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1250
+#: contents/ui/configGeneral.qml:1257
 msgid "Floating Notch position along the edge, in pixels from the center (remembered for each edge)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1254
+#: contents/ui/configGeneral.qml:1261
 msgid "Center"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1257
+#: contents/ui/configGeneral.qml:1264
 msgid "Center the floating Notch on this edge"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1262
+#: contents/ui/configGeneral.qml:1269
 msgid "Snap to the center when dragging"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1265
+#: contents/ui/configGeneral.qml:1272
 msgid "Snap the floating Notch to the center of the edge when dragging"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1274
+#: contents/ui/configGeneral.qml:1281
 msgid "Drag the floating Notch along the edge (or use the arrow keys; Home centers it); the position is remembered for each edge."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1281
+#: contents/ui/configGeneral.qml:1288
 msgid "Only for a widget in a panel. With a specific screen, only the widget in a panel of that screen floats; two widgets on the same screen overlap, so enable it in one."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1288
+#: contents/ui/configGeneral.qml:1295
 msgid "Right-click the floating Notch for Configure."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1298
+#: contents/ui/configGeneral.qml:1305
 msgid "Panel style:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1305
+#: contents/ui/configGeneral.qml:1312
 msgid "Pill"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1306
+#: contents/ui/configGeneral.qml:1313
 msgid "Ring"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1307
+#: contents/ui/configGeneral.qml:1314
 msgid "Text (% and dot)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1308
+#: contents/ui/configGeneral.qml:1315
 msgid "Bar (bars)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1312
+#: contents/ui/configGeneral.qml:1319
 msgid "Panel style"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1313
+#: contents/ui/configGeneral.qml:1320
 msgid "Pill: dark capsule with rings. Ring: loose rings. Text: percentage and level dot. Bar: vertical bars with a time marker"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1317
+#: contents/ui/configGeneral.qml:1324
 msgid "Show:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1324
+#: contents/ui/configGeneral.qml:1331
 msgid "Chart only"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1325
+#: contents/ui/configGeneral.qml:1332
 msgid "Chart and %"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1326
+#: contents/ui/configGeneral.qml:1333
 msgid "% only"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1330
+#: contents/ui/configGeneral.qml:1337
 msgid "Panel display mode"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1334
+#: contents/ui/configGeneral.qml:1341
 msgid "Ring center:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1341
+#: contents/ui/configGeneral.qml:1348
 msgid "Logo"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1342
+#: contents/ui/configGeneral.qml:1349
 msgid "%"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1343
+#: contents/ui/configGeneral.qml:1350
 msgid "Logo and %"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1347
+#: contents/ui/configGeneral.qml:1354
 msgid "Ring center"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1348
+#: contents/ui/configGeneral.qml:1355
 msgid "With % in the center the ring grows to 28 px; in thin panels it goes back to the logo"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1362
+#: contents/ui/configGeneral.qml:1369
 msgid "Metrics size in percent (80 to 160)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1363
+#: contents/ui/configGeneral.qml:1370
 msgid "80 to 160. The panel limits the size to its thickness, without clipping"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1368
+#: contents/ui/configGeneral.qml:1375
 msgid "Automatic margin"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1371
+#: contents/ui/configGeneral.qml:1378
 msgid "Automatic inner margin of the panel"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1380
+#: contents/ui/configGeneral.qml:1387
 msgid "Inner margin of the panel in pixels (0 to 16)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1387
+#: contents/ui/configGeneral.qml:1394
 msgid "Bar in a vertical panel needs about 40 px of width: narrower than that, the panel uses Text or Pill instead of clipping. In the Text style, \"Chart only\" counts as \"Chart and %\". With % in the center, the ring grows to 28 px (in thin panels it goes back to the logo)."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1406
+#: contents/ui/configGeneral.qml:1413
 msgid "Open the popup on mouse hover (off: click only)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1417
+#: contents/ui/configGeneral.qml:1424
 msgid "Popup:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1424
+#: contents/ui/configGeneral.qml:1431
 msgid "Show used"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1425
+#: contents/ui/configGeneral.qml:1432
 msgid "Show remaining"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1429
+#: contents/ui/configGeneral.qml:1436
 msgid "Displayed values: used or remaining"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1430
+#: contents/ui/configGeneral.qml:1437
 msgid "Applies to the popup, the tooltip and the panel; notifications do not change"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1436
+#: contents/ui/configGeneral.qml:1443
 msgid "Release as countdown"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1437
+#: contents/ui/configGeneral.qml:1444
 msgid "Release as date and time"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1441
+#: contents/ui/configGeneral.qml:1448
 msgid "Release shown as a countdown or as date and time"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1444
+#: contents/ui/configGeneral.qml:1451
 msgid "Background opacity (%):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1454
+#: contents/ui/configGeneral.qml:1461
 msgid "Popup background opacity in percent (80 to 100)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1457
+#: contents/ui/configGeneral.qml:1464
 msgid "Providers in the popup:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1476
+#: contents/ui/configGeneral.qml:1488
 msgid "Move %1 earlier in the popup"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1482
+#: contents/ui/configGeneral.qml:1494
 msgid "Move %1 later in the popup"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1500
+#: contents/ui/configGeneral.qml:1512
 msgid "View the registered Claude, Codex and Gemini accounts and manage their lifecycle directly."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1526 contents/ui/configGeneral.qml:1534
+#: contents/ui/configGeneral.qml:1538 contents/ui/configGeneral.qml:1546
 msgid "Add New Account"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1535 contents/ui/configGeneral.qml:1536
+#: contents/ui/configGeneral.qml:1547 contents/ui/configGeneral.qml:1548
 msgid "Collapse"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1535 contents/ui/configGeneral.qml:1536
+#: contents/ui/configGeneral.qml:1547 contents/ui/configGeneral.qml:1548
 msgid "Expand"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1563 contents/ui/configGeneral.qml:1582
+#: contents/ui/configGeneral.qml:1575 contents/ui/configGeneral.qml:1592
 msgid "Provider:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1596 contents/ui/configGeneral.qml:1604
+#: contents/ui/configGeneral.qml:1606 contents/ui/configGeneral.qml:1614
 msgid "Nickname:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1605
+#: contents/ui/configGeneral.qml:1615
 msgid "E.g. Claude Work, Codex Personal (optional)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1618
+#: contents/ui/configGeneral.qml:1628
 msgid "Capture Current CLI Login"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1622
+#: contents/ui/configGeneral.qml:1632
 msgid "Detects and imports the session currently active on the system for %1 without typing any paths"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1631
+#: contents/ui/configGeneral.qml:1641
 msgid "Log In in the Terminal..."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1634
+#: contents/ui/configGeneral.qml:1644
 msgid "Opens an isolated terminal to authenticate a new %1 account without overwriting the main login"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1664
+#: contents/ui/configGeneral.qml:1674
 msgid "Advanced Options (Manual Setup)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1672
+#: contents/ui/configGeneral.qml:1682
 msgid "Hide"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1672
+#: contents/ui/configGeneral.qml:1682
 msgid "Set Up Manually"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1694 contents/ui/configGeneral.qml:1702
+#: contents/ui/configGeneral.qml:1704 contents/ui/configGeneral.qml:1712
 msgid "Path:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1703
+#: contents/ui/configGeneral.qml:1713
 msgid "E.g. %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1709
+#: contents/ui/configGeneral.qml:1719
 msgid "Use Default Path"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1712
+#: contents/ui/configGeneral.qml:1722
 msgid "Fill in with the default directory '%1'"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1727 contents/ui/configGeneral.qml:1734
+#: contents/ui/configGeneral.qml:1737 contents/ui/configGeneral.qml:1744
 msgid "Invite Link:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1735
+#: contents/ui/configGeneral.qml:1745
 msgid "https://... (optional)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1752
+#: contents/ui/configGeneral.qml:1762
 msgid "Clear"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1762
+#: contents/ui/configGeneral.qml:1772
 msgid "Save Manually"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1765
+#: contents/ui/configGeneral.qml:1775
 msgid "Save the account using the custom path entered manually"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1865
+#: contents/ui/configGeneral.qml:1886
 msgid "ID: %1"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1879
+#: contents/ui/configGeneral.qml:1900
 msgid "Automatic detection"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1879
+#: contents/ui/configGeneral.qml:1900
 msgid "Manual setup"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1890
+#: contents/ui/configGeneral.qml:1911
 msgid "Rename account"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1894
+#: contents/ui/configGeneral.qml:1915
 msgid "Rename account '%1'"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1905
+#: contents/ui/configGeneral.qml:1926
 msgid "Remove account"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1909
+#: contents/ui/configGeneral.qml:1930
 msgid "Remove account '%1'"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1924
+#: contents/ui/configGeneral.qml:1945
 msgid "No registered accounts"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1939
+#: contents/ui/configGeneral.qml:1960
 msgid "Orphan Profiles"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1957
+#: contents/ui/configGeneral.qml:1978
 msgid "Re-import"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:1963
+#: contents/ui/configGeneral.qml:1984
 msgid "Delete"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2002
+#: contents/ui/configGeneral.qml:2023
 msgid "Show the session state (Claude and Codex)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2005 contents/ui/configGeneral.qml:2006
+#: contents/ui/configGeneral.qml:2026 contents/ui/configGeneral.qml:2027
 msgid "Claude: ai-usage-collector --install-hooks (isolated profile: run it with each profile's CLAUDE_CONFIG_DIR). Codex: busy comes from the session logs without installing anything; ai-usage-collector --install-hooks codex (optional) ends the busy state at the end of each turn and is what enables the sound/Notch on Codex (without it Codex only shows the state). If the state does not update, reinstall the package: pip install -e ."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2010
+#: contents/ui/configGeneral.qml:2031
 msgid "Open the Notch for 5 s when the session finishes or asks for something"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2016
+#: contents/ui/configGeneral.qml:2037
 msgid "Play a sound at those moments"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2029
+#: contents/ui/configGeneral.qml:2050
 msgid "Notify at (%):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2039
+#: contents/ui/configGeneral.qml:2060
 msgid "Notify when this usage percentage is reached"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2043
+#: contents/ui/configGeneral.qml:2064
 msgid "and at (%):"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2053
+#: contents/ui/configGeneral.qml:2074
 msgid "Notify urgently when this usage percentage is reached"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2057
+#: contents/ui/configGeneral.qml:2078
 msgid "Warn before running out"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2060
+#: contents/ui/configGeneral.qml:2081
 msgid "Native window: exhaustion forecast in 30 min; weekly: in 24 h (once per window)"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2066
+#: contents/ui/configGeneral.qml:2087
 msgid "Notify when the limit is released"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2069
+#: contents/ui/configGeneral.qml:2090
 msgid "Only for limits that already triggered a warning"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2075
+#: contents/ui/configGeneral.qml:2096
 msgid "Mute:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2091
+#: contents/ui/configGeneral.qml:2112
 msgid "Mute %1 notifications"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2096
+#: contents/ui/configGeneral.qml:2117
 msgid "Apply notifications"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2117
+#: contents/ui/configGeneral.qml:2138
 msgid "Delete Orphan Profile"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2126
+#: contents/ui/configGeneral.qml:2148
 msgid "Permanently delete the profile '%1' from disk? Its credentials will be erased."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2139 contents/ui/configGeneral.qml:2195 contents/ui/configGeneral.qml:2265
+#: contents/ui/configGeneral.qml:2162 contents/ui/configGeneral.qml:2220 contents/ui/configGeneral.qml:2292
 msgid "Cancel"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2144
+#: contents/ui/configGeneral.qml:2167
 msgid "Delete Profile"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2160
+#: contents/ui/configGeneral.qml:2183
 msgid "Confirm Account Removal"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2172
+#: contents/ui/configGeneral.qml:2196
 msgid "Do you really want to remove the account '%1' (ID: %2) from the provider %3?\n\nThis removes the account from the configuration file and updates the widget immediately."
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2201
+#: contents/ui/configGeneral.qml:2226
 msgid "Remove Account"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2217
+#: contents/ui/configGeneral.qml:2242
 msgid "Rename Account"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2229
+#: contents/ui/configGeneral.qml:2255
 msgid "Enter the new name for the account '%1' (ID: %2) of the provider %3:"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2244 contents/ui/configGeneral.qml:2245
+#: contents/ui/configGeneral.qml:2271 contents/ui/configGeneral.qml:2272
 msgid "New account name"
 msgstr ""
 
-#: contents/ui/configGeneral.qml:2271
+#: contents/ui/configGeneral.qml:2298
 msgid "Save"
 msgstr ""
 
-#: contents/ui/main.qml:119
+#: contents/ui/main.qml:122
 msgid "Updated at %1"
 msgstr ""
 
-#: contents/ui/main.qml:143
+#: contents/ui/main.qml:146
 msgid "No provider visible in the panel."
 msgstr ""
 
-#: contents/ui/main.qml:146
+#: contents/ui/main.qml:149
 msgid "No data collected yet."
 msgstr ""
 
-#: contents/ui/main.qml:153
+#: contents/ui/main.qml:156
 msgid "Session state unavailable: reinstall the collector package (pip install -e .)"
 msgstr ""
 
-#: contents/ui/main.qml:238
+#: contents/ui/main.qml:243
 msgid "Error running the collector: %1"
 msgstr ""
 
-#: contents/ui/main.qml:261
+#: contents/ui/main.qml:266
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr ""
 
-#: contents/ui/main.qml:374
+#: contents/ui/main.qml:379
 msgid "Error reading status JSON: %1"
 msgstr ""
 
-#: contents/ui/main.qml:378
+#: contents/ui/main.qml:383
 msgid "Status cache not found. Run the collector."
 msgstr ""

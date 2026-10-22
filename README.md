@@ -27,6 +27,10 @@ A classe é o pior nível de alerta entre as Contas Ativas no Sistema (contas in
 
 Notas: `text` pode mostrar o % de uma janela com leitura local enquanto a classe fica `unknown` (leitura local não recebe nível); `percentage` considera só janelas com nível. Percentuais fora de 0..100 são limitados e NaN/Infinity são ignorados. A saída é JSON ASCII (acentos escapados como `\uXXXX`, válido para o Waybar), o tooltip mostra no máximo 20 linhas, e `--waybar` ignora as demais opções (só `--cache-path` vale).
 
+## Painel e popup
+
+No painel cada item mostra o logo do provedor e o arco da Janela Nativa. Clique no item para abrir o popup com os dois arcos (nativa e semanal) daquele provedor no topo; passar o mouse abre o popup sem destacar ninguém.
+
 ## Onde o widget procura o coletor
 
 O plasmoide chama `ai-usage-collector` pelo shell, nesta ordem: o `PATH`, `~/.local/bin/ai-usage-collector`, o venv do

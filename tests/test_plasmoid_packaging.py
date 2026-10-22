@@ -28,6 +28,24 @@ INSTALL_SCRIPT = REPO_ROOT / "scripts" / "install-plasmoid.sh"
 PACKAGE_SCRIPT = REPO_ROOT / "scripts" / "package-release.sh"
 RELEASE_WORKFLOW = REPO_ROOT / ".github" / "workflows" / "release.yml"
 
+LOGO_PROVIDERS = ("claude", "codex", "gemini")
+
+
+def test_provider_logos_are_clean_single_path_svgs_with_registered_source():
+    """Um SVG por provedor de Presets.js: um só path, sem script/imagem/estilo; fonte e licença registradas."""
+    presets = (UI_DIR / "Presets.js").read_text(encoding="utf-8")
+    assert re.findall(r'key: "(\w+)", name:', presets) == list(LOGO_PROVIDERS)
+    for p in LOGO_PROVIDERS:
+        svg = (UI_DIR / f"logo-{p}.svg").read_text(encoding="utf-8")
+        assert svg.count("<path") == 1 and svg.count("<") == 3  # <svg>, <path/>, </svg>
+        assert not re.search(r"<script|<image|<style|href|onload|<foreignObject", svg, re.I)
+    notes = (UI_DIR / "LOGOS.md").read_text(encoding="utf-8")
+    assert "CC0" in notes and "simple-icons" in notes and "marcas registradas" in notes.lower()
+    logo = (UI_DIR / "ProviderLogo.qml").read_text(encoding="utf-8")
+    assert "Accessible.ignored: true" in logo and '"?"' in logo
+    for p in LOGO_PROVIDERS:
+        assert f'provider === "{p}"' in logo
+
 
 def test_plasmoid_directory_structure():
     """Verify that all required files and directories for the Plasmoid exist."""
@@ -122,6 +140,7 @@ def test_qml_components_syntax_validity():
         "PanelItem.qml",
         "LevelBars.qml",
         "SessionMark.qml",
+        "ProviderLogo.qml",
         "FullRepresentation.qml",
         "configGeneral.qml",
     ]
@@ -428,6 +447,9 @@ def test_plasmoid_package_archive_contents(tmp_path):
             "contents/ui/FullRepresentation.qml",
             "contents/ui/AccountCard.qml",
             "contents/ui/configGeneral.qml",
+            "contents/ui/ProviderLogo.qml",
+            "contents/ui/LOGOS.md",
+            *(f"contents/ui/logo-{p}.svg" for p in LOGO_PROVIDERS),
             "contents/config/main.xml",
             "contents/config/config.qml",
         ]

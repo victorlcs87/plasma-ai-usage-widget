@@ -114,7 +114,7 @@
       <label>Floating Notch size in percent</label>
       <default>100</default>
       <min>80</min>
-      <max>160</max>
+      <max>400</max>
     </entry>
     <entry name="floatSnap" type="Bool">
       <label>Snap the floating Notch to the center of the edge when dragging</label>
