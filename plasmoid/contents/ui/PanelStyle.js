@@ -104,7 +104,7 @@ function layout(o, cross) {
     var ip = o.style === "ring" ? 2 : 0;  // estilo Ring: cada item tem fundo escuro próprio
     var avail = Math.max(0, cross - 2 * o.pad - 2 * ip);
     // fill (painel): o anel ocupa a espessura disponível; a escala só reduz (nunca passa de 100% dela)
-    var fl = floorUnit(o), want = o.fill ? Math.max(Math.round(avail * Math.min(1, o.scale)), fl) : Math.max(Math.round(o.base * o.scale), needsPct(o) ? fl : 0);
+    var fl = floorUnit(o), want = o.fill && ringStyle(o.style) ?Math.max(Math.round(avail * Math.min(1, o.scale)), fl) : Math.max(Math.round(o.base * o.scale), needsPct(o) ? fl : 0);
     var unit = Math.min(want, Math.max(fl, avail));
     for (var f = Math.max(8, Math.round(unit * 0.5)); ; f--) {
         var s = size(o, unit, f, ip);

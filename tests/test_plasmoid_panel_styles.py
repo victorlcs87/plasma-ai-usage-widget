@@ -395,6 +395,20 @@ def test_panel_ring_fills_thickness_scale_only_shrinks_and_options_have_effect(t
     assert unit("d", panelMargin=12) == 60 - 2 * 12  # margem tem efeito visível
 
 
+@needs_qml
+@pytest.mark.parametrize("style", STYLES)
+def test_panel_fill_only_applies_to_ring_styles_and_vertical_uses_width(tmp_path, style):
+    one = agents(("claude", acc("claude", 40, 30)))
+    (tmp_path / "h").mkdir()
+    (tmp_path / "v").mkdir()
+    h = render(tmp_path / "h", "", one, panel={"panelStyle": style, "panelMode": "ringpct"}, size=(400, 60))["geo"]["unit"]
+    v = render(tmp_path / "v", "", one, vertical=True, panel={"panelStyle": style, "panelMode": "ringpct"}, size=(60, 400))["geo"]["unit"]
+    if style in ("pill", "ring"):
+        assert h > 22 and h <= 60 and v <= 60  # anel cresce com a espessura, nunca passa dela
+    else:
+        assert h <= 22  # Bar/Text mantêm o tamanho de antes
+
+
 def test_panel_draws_single_ring_and_floating_keeps_dual():
     item = (UI_DIR / "PanelItem.qml").read_text(encoding="utf-8")
     compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
