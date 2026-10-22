@@ -237,3 +237,28 @@ def test_tabs_scroll_with_visible_arrows_in_a_narrow_window(tmp_path, monkeypatc
     (tmp_path / "w").mkdir()
     wide = config(tmp_path / "w", drive=drive, size=(900, 640))
     assert wide["arrows"] == [False, False]  # cabendo, sem setas
+
+
+@needs_qml
+@pytest.mark.parametrize("width", [360, 560, 900])
+def test_dialog_footers_stay_inside_the_frame_at_any_window_width(tmp_path, monkeypatch, width):
+    """Ticket 44: Renomear Conta (e os irmãos Remover/Perfil Órfão) dimensionam pelo conteúdo: botões dentro da moldura e da janela."""
+    monkeypatch.setenv("QT_QUICK_CONTROLS_STYLE", "org.kde.desktop")  # o estilo Basic mascarava o defeito
+    png_dir = os.environ.get("AIU_PNG_DIR", "")
+    opens = {"Rename Account": "cfg.requestRenameAccount(cfg.statusData.agents.claude.accounts[1])",
+             "Confirm Account Removal": "cfg.requestDeleteAccount(cfg.statusData.agents.claude.accounts[1])",
+             "Delete Orphan Profile": "cfg.orphanPendingDeletion = cfg.statusData.orphan_profiles[0]; dlg.open()"}
+    for i, (title, op) in enumerate(opens.items()):
+        drive = f"""
+        var dlg = cfg.data.filter(function (k) {{ return k.title === {json.dumps(title)} }})[0]
+        {op}; tc.wait(400)
+        var bs = all(dlg.contentItem).filter(function (k) {{ return k.hint !== undefined || (k.icon !== undefined && k.clicked !== undefined) }})
+        var r = bs.map(function (b) {{ var p = b.mapToItem(null, 0, 0); return [p.x, p.y, p.x + b.width, p.y + b.height] }})
+        obs('d', [dlg.x, dlg.y, dlg.x + dlg.width, dlg.y + dlg.height, dlg.opened]); obs('b', r)
+        """
+        (tmp_path / str(i)).mkdir()
+        out = config(tmp_path / str(i), drive=drive, size=(width, 640), pngs=[f"{png_dir}/dialog_{i}_{width}.png"] if png_dir else None)
+        x0, y0, x1, y1, opened = out["d"]
+        assert opened and len(out["b"]) == 2 and x0 >= 0 and x1 <= width, (title, out)
+        for bx0, by0, bx1, by1 in out["b"]:
+            assert x0 <= bx0 and bx1 <= x1 and y0 <= by0 and by1 <= y1, (title, width, out)  # rodapé dentro da moldura

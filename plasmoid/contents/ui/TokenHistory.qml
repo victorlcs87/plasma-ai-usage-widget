@@ -86,7 +86,9 @@ ColumnLayout {
 
     Item {
         id: chart
-        visible: !root.summaryOnly
+        objectName: "historyChart"
+        // Sem nenhum token no período o gráfico seria só uma faixa vazia: o resumo (0 • 0 • 0) já diz tudo
+        visible: !root.summaryOnly && root.maxTokens > 0
         // Resumo para tecnologias assistivas: as barras são só visuais
         Accessible.role: Accessible.Chart
         Accessible.name: I18n.tr("Token history, %1", root.periodNames[root.period])

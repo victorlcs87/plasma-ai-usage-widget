@@ -620,3 +620,19 @@ def test_compact_number_uses_the_locale_decimal_separator(tmp_path, monkeypatch)
     assert js(tmp_path, expr) == ["950", "12,4k", "410k", "1,9M", "2,5B", "1M", "1M", "1B"]
     monkeypatch.setenv("LC_ALL", "en_US.UTF-8")
     assert js(tmp_path, expr) == ["950", "12.4k", "410k", "1.9M", "2.5B", "1M", "1M", "1B"]
+
+
+def test_history_without_tokens_leaves_no_empty_chart_strip(tmp_path):
+    """Ticket 44: com Hoje 0 • Semana 0 • Mês 0 o gráfico seria só uma faixa vazia sob o resumo; com dados continua lá."""
+    drive = """
+    var h = named('historySummary').filter(function (k) { return k.visible })[0].parent.parent
+    obs('chart', vis('historyChart').length); obs('h', h.height); obs('txt', txt('historySummary'))
+    """
+    full = popup(tmp_path / "a", "hist_full", drive=drive, size=(460, 1400))
+    data = fixture()
+    data["agents"]["claude"]["accounts"][0]["token_history"] = {
+        "today": 0, "week": 0, "month": 0, "estimated": False, "daily_30d": [{"date": f"2026-10-{d:02d}", "tokens": 0} for d in range(1, 31)],
+        "weekly_3m": [], "monthly_12m": []}
+    zero = popup(tmp_path / "b", "hist_zero", data=data, drive=drive, size=(460, 1400))
+    assert full["chart"] == 1 and zero["chart"] == 0 and "Today 0 • Week 0 • Month 0" in zero["txt"][0]
+    assert full["h"] - zero["h"] >= 30  # a faixa de ~2 gridUnits sumiu e o resumo/30d continuam
