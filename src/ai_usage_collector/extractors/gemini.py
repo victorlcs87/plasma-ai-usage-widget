@@ -562,12 +562,14 @@ def extract_gemini_status(
     in_daily_ts = [t for t in all_timestamps if start_daily_sec <= t <= now_sec]
     used_daily = len(in_daily_ts)
 
-    available_capacity = max(0, total_capacity - used_daily)
-    usage_percentage = (
-        min(100.0, round((used_daily / total_capacity) * 100.0, 1))
-        if total_capacity > 0
-        else 0.0
-    )
+    # A contagem local de mensagens nunca vira porcentagem de cota (regra "sem dados, nunca 0%"):
+    # so a API oficial preenche percentual/capacidade; sem ela as janelas saem sem dado (None).
+    available_capacity: int | None = None
+    usage_percentage: float | None = None
+    used_capacity: int | None = None
+    weekly_usage_percentage: float | None = None
+    weekly_available_capacity: int | None = None
+    weekly_used_capacity: int | None = None
 
     if in_daily_ts:
         oldest_daily_sec = min(in_daily_ts)
@@ -691,7 +693,7 @@ def extract_gemini_status(
             rem_5h = float(bucket_5h["remainingFraction"])
             usage_percentage = round((1.0 - rem_5h) * 100.0, 1)
             available_capacity = max(0, round(total_capacity * rem_5h))
-            used_daily = total_capacity - available_capacity
+            used_capacity = total_capacity - available_capacity
             native_window_seconds = gemini_bucket_seconds(bucket_5h, GEMINI_5H_SECONDS)
             if gemini_bucket_seconds(bucket_5h, 0):
                 native_api_fields.append("duration")
@@ -726,10 +728,6 @@ def extract_gemini_status(
             elif weekly_window_seconds != GEMINI_7D_SECONDS:
                 weekly_seconds_remaining = None
                 cycle_reset_time = None
-        else:
-            weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
-            weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
-            weekly_used_capacity = used_7d
     else:
         # Fallback local calculation
         # Only mark session_expired if access_token is expired AND no refresh token AND no keyring token
@@ -751,17 +749,13 @@ def extract_gemini_status(
                 "metadata": metadata,
             }
 
-        weekly_usage_percentage = min(100.0, round((used_7d / weekly_total_capacity) * 100.0, 1)) if weekly_total_capacity > 0 else 0.0
-        weekly_available_capacity = max(0, weekly_total_capacity - used_7d)
-        weekly_used_capacity = used_7d
-
     native_window = {
         "type": window_type_from_seconds(native_window_seconds),
         "source": native_source,
         "api_fields": native_api_fields,
         "window_seconds": native_window_seconds,
         "total_capacity": total_capacity,
-        "used_capacity": used_daily,
+        "used_capacity": used_capacity,
         "available_capacity": available_capacity,
         "usage_percentage": usage_percentage,
         "release_time": release_time,

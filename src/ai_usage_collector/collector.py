@@ -246,6 +246,11 @@ def _collect(
                 acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
                 identity_key=identity.key if identity else None,
             )
+            if (
+                agent_id == "gemini" and "no_data" not in acc_status
+                and all(acc_status[w].get("usage_percentage") is None for w in ("native_window", "weekly_window"))
+            ):  # token ausente/vencido ou API muda: sem dados, nunca 0% (leitura local e so auxiliar)
+                acc_status["no_data"] = True
             account_statuses.append(acc_status)
 
         status_payload["agents"][agent_id]["accounts"] = account_statuses
