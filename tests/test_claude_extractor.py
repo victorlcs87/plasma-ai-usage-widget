@@ -515,6 +515,89 @@ def test_fetch_claude_usage_api_timeout():
         assert data is None
 
 
+# --- Ticket 58: array `limits` (formato novo) ---------------------------------
+
+def _claude_account(tmp_path):
+    claude_dir = tmp_path / ".claude"
+    claude_dir.mkdir()
+    (claude_dir / ".credentials.json").write_text(json.dumps({"claudeAiOauth": {"accessToken": "sk-ant-live"}}))
+    return {"id": "c", "provider": "claude", "claude_dir": str(claude_dir)}
+
+
+def _windows(account, api):
+    now = datetime(2026, 10, 22, 15, 0, 0, tzinfo=timezone.utc)
+    with patch("ai_usage_collector.extractors.claude.fetch_claude_usage_api", return_value=api):
+        res = extract_claude_status(account, now=now)
+    return res["native_window"], res["weekly_window"]
+
+
+def test_claude_real_response_old_and_new_formats_give_same_windows(tmp_path):
+    # fixture = resposta real de 22/10/2026 sem dados pessoais; traz os dois formatos
+    real = json.loads((Path(__file__).parent / "fixtures" / "claude_usage_real.json").read_text())
+    old = {k: real[k] for k in ("five_hour", "seven_day")}
+    new_only = {"five_hour": None, "seven_day": None, "limits": real["limits"]}
+    account = _claude_account(tmp_path)
+
+    nw_old, ww_old = _windows(account, old)
+    nw_new, ww_new = _windows(account, new_only)
+
+    assert (nw_new, ww_new) == (nw_old, ww_old)
+    assert nw_new["usage_percentage"] == 41.0 and nw_new["source"] == "api"
+    assert ww_new["usage_percentage"] == 58.0 and ww_new["source"] == "api"
+    assert nw_new["release_time"] == "2026-10-23T04:00:00.252503+00:00"
+    assert ww_new["cycle_reset_time"] == "2026-10-25T03:00:00.252519+00:00"
+
+
+def test_claude_limits_without_flat_keys_and_scoped_entries(tmp_path):
+    """Chaves planas ausentes; weekly_scoped e kinds desconhecidos nao viram janela."""
+    api = {"limits": [
+        {"kind": "weekly_scoped", "percent": 99, "resets_at": "2026-10-25T03:00:00+00:00", "scope": "opus"},
+        {"kind": "weekly_all", "percent": 10, "resets_at": "2026-10-25T03:00:00+00:00"},
+        {"kind": "mystery", "percent": 77},
+    ]}
+    nw, ww = _windows(_claude_account(tmp_path), api)
+    assert ww["usage_percentage"] == 10.0 and ww["source"] == "api"
+    assert nw["source"] == "local"  # sem entrada session: nao inventa 5h da API
+
+
+def test_claude_limits_null_fields_never_invent_zero(tmp_path):
+    api = {"five_hour": None, "seven_day": None, "limits": [
+        {"kind": "session", "percent": None, "resets_at": None},
+        {"kind": "weekly_all", "percent": None, "resets_at": "lixo"},
+        "nao-e-dict",
+    ]}
+    nw, ww = _windows(_claude_account(tmp_path), api)
+    assert nw["release_time"] is None and ww["cycle_reset_time"] is None
+    assert nw["api_fields"] == [] and ww["api_fields"] == []
+
+
+def test_claude_flat_keys_win_and_limits_fill_null_ones(tmp_path):
+    api = {
+        "five_hour": {"utilization": 20.0, "resets_at": "2026-10-22T18:00:00Z"},
+        "seven_day": None,
+        "limits": [{"kind": "session", "percent": 90, "resets_at": "2026-10-22T19:00:00Z"},
+                   {"kind": "weekly_all", "percent": 30, "resets_at": "2026-10-25T03:00:00Z"}],
+    }
+    nw, ww = _windows(_claude_account(tmp_path), api)
+    assert nw["usage_percentage"] == 20.0
+    assert ww["usage_percentage"] == 30.0
+
+
+def test_fetch_claude_usage_api_validates_limits_format():
+    def fetch(payload):
+        resp = MagicMock()
+        resp.status = 200
+        resp.__enter__.return_value = resp
+        resp.read.return_value = json.dumps(payload).encode()
+        with patch("urllib.request.OpenerDirector.open", return_value=resp):
+            return fetch_claude_usage_api("test-token")
+
+    assert fetch({"limits": [{"kind": "session", "percent": 5}]}) is not None
+    assert fetch({"five_hour": None, "seven_day": None, "limits": []}) is not None
+    assert fetch({"limits": "x"}) is None
+    assert fetch({"limits": [1]}) is None
+
+
 def test_extract_claude_status_with_official_api(tmp_path):
     claude_dir = tmp_path / ".claude"
     claude_dir.mkdir()
