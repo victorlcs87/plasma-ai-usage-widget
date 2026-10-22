@@ -46,8 +46,9 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
     property bool expanded: false
     property bool idleHidden: false
     property var calls: []
+    property var clicked: []
     function setPillHovered(h) { calls.push("hover:" + h) }
-    function pillClicked() { calls.push("click") }
+    function pillClicked(p) { calls.push("click"); clicked.push(p === undefined ? "" : p) }
     function closePopup() { calls.push("close") }
   }
   CompactRepresentation { id: c; plasmoidItem: logic; anchors.fill: parent }
@@ -87,7 +88,7 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
     c.grabToImage(function (r) {
       if ("%(png)s") r.saveToFile("%(png)s");
       var items = walk(c, []);
-      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo, calls: logic.calls, expanded: logic.expanded,
+      console.log("RESULT " + JSON.stringify({model: logic.compactModel, health: logic.worstHealthStatus, update: logic.updateInfo, calls: logic.calls, clicked: logic.clicked, expanded: logic.expanded,
         panel: c.panel, eff: c.eff, style: c.style, geo: c.geo, items: items, badges: badges(c, []), grid: grid(c), size: [c.width, c.height],
         min: [c.Layout.minimumWidth, c.Layout.minimumHeight], pref: [c.Layout.preferredWidth, c.Layout.preferredHeight]}));
       Qt.quit() }) } }
@@ -123,9 +124,9 @@ def render(tmp_path, name, agents, vertical=False, invites=0, hidden="", drive="
     return json.loads(line.split("RESULT ", 1)[1])
 
 
-def acct(active, weekly=None, health="valid"):
+def acct(active, weekly=None, health="valid", provider="claude"):
     return build_agent_account_status(
-        provider="claude", account_id="a", label="A", source="auto", health={"status": health}, is_active=active,
+        provider=provider, account_id="a", label="A", source="auto", health={"status": health}, is_active=active,
         native_window={"usage_percentage": 40.0, "release_time": "2099-01-01T00:00:00+00:00", "window_seconds": 18000},
         weekly_window=weekly,
     )
@@ -194,6 +195,21 @@ def test_pill_forwards_mouse_and_escape_to_popup_logic(tmp_path):
     """
     agents = {"claude": {"name": "Claude", "accounts": [acct(True)]}}
     assert render(tmp_path, "h1", agents, drive=drive)["calls"] == ["hover:true", "click", "close"]
+
+
+def test_click_reports_the_provider_under_the_mouse(tmp_path):
+    """Ticket 48: o clique diz qual item foi clicado (para o popup destacar); fora de qualquer item, nenhum."""
+    drive = """
+    var its = walk(c, []);
+    var mid = function (k) { return [k.x + k.w / 2, k.y + k.h / 2] };
+    var a = mid(its[0]), b = mid(its[1]);
+    tc.mouseClick(c, a[0], a[1]); tc.mouseClick(c, b[0], b[1]); tc.mouseClick(c, c.width - 2, c.height / 2);
+    """
+    ag = {k: {"name": k.title(), "accounts": [acct(True, provider=k)]} for k in ("claude", "codex")}
+    out = render(tmp_path, "click", ag, drive=drive, size=(600, 40))
+    assert out["clicked"] == ["claude", "codex", ""]
+    vert = render(tmp_path / "v", "clickv", ag, vertical=True, drive=drive.replace("c.width - 2, c.height / 2", "c.width / 2, c.height - 2"), size=(40, 300))
+    assert vert["clicked"] == ["claude", "codex", ""]
 
 
 def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):

@@ -61,6 +61,8 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     property var updateInfo: NotchModel.updateSummary(statusData, I18n.tr)
     property color accentColor: "#3daee9"
     property var sessionOverlay: %(overlay)s
+    property string highlightProvider: %(hl)s
+    property var compactModel: NotchModel.buildModel(statusData, {providerOrder: "claude,codex,gemini", hiddenProviders: "%(hidden)s", remaining: false}, I18n.tr, Date.now())
     property var calls: []
     function setPopupHovered(h) { calls.push("popupHover:" + h) }
     function closePopup() { calls.push("close") }
@@ -136,7 +138,7 @@ def fixture():
 
 
 def popup(tmp_path, name, data=None, drive="", cfg=None, size=(460, 560), expanded=True, idle=False, refreshing=False, error="",
-          overlay=None, reduced=False, delay=700):
+          overlay=None, reduced=False, delay=700, highlight="", hidden=""):
     imp = tmp_path / "imp"
     for rel, (qmldir, files) in STUBS.items():
         d = imp / rel
@@ -151,7 +153,7 @@ def popup(tmp_path, name, data=None, drive="", cfg=None, size=(460, 560), expand
     png_dir = os.environ.get("AIU_PNG_DIR", "")
     (run / "h.qml").write_text((HARNESS % {
         "w": size[0], "h": size[1], "data": json.dumps(data if data is not None else fixture()), "expanded": str(expanded).lower(),
-        "idle": str(idle).lower(), "refreshing": str(refreshing).lower(), "error": json.dumps(error), "overlay": json.dumps(overlay or {}),
+        "idle": str(idle).lower(), "refreshing": str(refreshing).lower(), "error": json.dumps(error), "hl": json.dumps(highlight), "hidden": hidden, "overlay": json.dumps(overlay or {}),
         "pcfg": json.dumps(cfg or {}), "dur": 0 if reduced else 200, "delay": delay, "drive": drive,
         "png": f"{png_dir}/{name}.png" if png_dir else ""}).replace("BGCOLOR", os.environ.get("AIU_BG", "#303236")))
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -177,6 +179,36 @@ def test_popup_renders_provider_blocks_and_cards(tmp_path):
     assert any("Runs out in" in t for t in out["forecast"]) and any("Limits changed" in t for t in out["limit"])
     # sem dado nunca é 0%: Antiga e Gemini vazio mostram "—"
     assert out["pct"].count("—") >= 3 and "0%" not in [p for p in out["pct"]]
+
+
+def test_clicked_provider_shows_both_arcs_on_top_of_the_popup(tmp_path):
+    """Ticket 48: o provedor clicado ganha um cartão no topo com os dois arcos (Janela Nativa e semanal)."""
+    drive = """
+    var hl = vis('highlight'), ring = named('highlightRing')[0]
+    obs('count', hl.length); obs('name', txt('highlightName')); obs('native', txt('highlightNative')); obs('weekly', txt('highlightWeekly'))
+    obs('ring', ring ? [ring.innerPct, ring.outerPct, ring.provider] : null)
+    obs('y', hl.length ? hl[0].mapToItem(f, 0, 0).y : -1); obs('blockY', named('provider_claude')[0].mapToItem(f, 0, 0).y)
+    """
+    out = popup(tmp_path, "hl", drive=drive, highlight="codex", size=(460, 900))
+    assert out["count"] == 1 and out["name"] == ["Codex"]
+    assert out["native"] == ["Native window 95%"] and out["weekly"] == ["Weekly 60%"]
+    assert out["ring"] == [95, 60, "codex"]
+    assert 0 <= out["y"] < out["blockY"]  # acima de todos os blocos de provedor
+
+
+def test_highlight_follows_remaining_unknown_windows_and_absent_cases(tmp_path):
+    drive = """
+    obs('count', vis('highlight').length); obs('native', txt('highlightNative')); obs('weekly', txt('highlightWeekly'))
+    """
+    rem = popup(tmp_path / "r", "hlrem", drive=drive, highlight="codex", cfg={"usageDisplay": "remaining"}, size=(460, 900))
+    assert rem["native"] == ["Native window 5%"] and rem["weekly"] == ["Weekly 40%"]
+    # sem Conta Ativa no Sistema (Gemini): traço, nunca 0%
+    gem = popup(tmp_path / "g", "hlgem", drive=drive, highlight="gemini", size=(460, 900))
+    assert gem["native"] == ["Native window —"] and gem["weekly"] == ["Weekly —"]
+    for i, hl in enumerate(("", "zzz")):  # sem destaque (hover) ou provedor desconhecido: nenhum cartão
+        assert popup(tmp_path / f"n{i}", f"hlno{i}", drive=drive, highlight=hl, size=(460, 900))["count"] == 0
+    hidden = popup(tmp_path / "h", "hlhid", drive=drive, highlight="codex", hidden="codex", size=(460, 900))
+    assert hidden["count"] == 0  # provedor oculto no painel não tem item para clicar: nada destacado
 
 
 def collector(cmds, args):

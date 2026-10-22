@@ -78,6 +78,13 @@ STEPS = [
     (0, "Plasmoid.configuration = {providerOrder: 'claude,codex,gemini', hiddenProviders: '', accentPreset: 'plasma', hoverOpen: false}; m.setPillHovered(true)"),
     (450, "obs('clickOnlyHover', m.expanded); m.pillClicked(); obs('clickOnlyOpen', m.expanded); m.setPillHovered(false)"),
     (500, "obs('clickOnlyStays', m.expanded); m.pillClicked(); obs('clickOnlyClosed', m.expanded)"),
+    # ticket 48: o clique num item destaca o provedor; o hover nunca destaca
+    (0, "Plasmoid.configuration = {providerOrder: 'claude,codex,gemini', hiddenProviders: '', accentPreset: 'plasma', hoverOpen: true}; m.setPillHovered(true)"),
+    (400, "obs('hoverHl', [m.expanded, m.highlightProvider]); m.pillClicked('codex'); obs('clickHl', m.highlightProvider); m.setPillHovered(false)"),
+    (500, "obs('clickHlStays', [m.expanded, m.pinned, m.highlightProvider]); m.pillClicked('claude'); obs('unpinKeeps', m.highlightProvider); m.closePopup(); obs('closedHl', m.highlightProvider)"),
+    (0, "m.pillClicked('gemini'); obs('openByClick', [m.expanded, m.highlightProvider]); m.closePopup(); m.pillClicked(); obs('noProvider', [m.expanded, m.highlightProvider]); m.closePopup()"),
+    (0, "Plasmoid.configuration = {providerOrder: 'claude,codex,gemini', hiddenProviders: '', accentPreset: 'plasma', hoverOpen: false}; m.pillClicked('codex'); obs('clickOnlyHl', [m.expanded, m.highlightProvider]); m.pillClicked('codex'); obs('clickOnlyCloseHl', [m.expanded, m.highlightProvider])"),
+    (0, "m.pillClicked('claude'); m.expanded = false; obs('externalCloseHl', m.highlightProvider)"),
 ]
 
 HARNESS = """
@@ -174,3 +181,21 @@ def test_tooltip_lists_all_limits_with_countdown(out):
     assert "Weekly: 70% — releases in 3d 5h\n  limits changed\nGemini" in tip
     assert "Gemini\n  Native window: —\n  Weekly: —\n  stale data" in tip
     assert "0%" not in tip.replace("10%", "").replace("70%", "").replace("40%", "")
+
+
+def test_click_highlights_the_provider_but_hover_never_does(out):
+    assert out["hoverHl"] == [True, ""]                  # aberto por hover: ninguém destacado
+    assert out["clickHl"] == "codex"                     # clique no item: destaca (popup já aberto por hover)
+    assert out["clickHlStays"] == [True, True, "codex"]
+    assert out["unpinKeeps"] == "codex"                  # soltar o fixado não troca o destaque
+    assert out["closedHl"] == ""                         # fechar apaga: nunca persiste
+    assert out["openByClick"] == [True, "gemini"]
+    assert out["noProvider"] == [True, ""]               # clique sem item (teclado/fatia): abre sem destacar
+    assert out["clickOnlyHl"] == [True, "codex"] and out["clickOnlyCloseHl"] == [False, ""]
+    assert out["externalCloseHl"] == ""
+
+
+def test_highlight_is_not_persisted_in_config():
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    assert "highlightProvider" in main and "Plasmoid.configuration.highlightProvider" not in main
+    assert "highlightProvider" not in (UI_DIR.parent / "config" / "main.xml").read_text(encoding="utf-8")

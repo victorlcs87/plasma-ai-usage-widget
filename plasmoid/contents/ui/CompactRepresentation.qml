@@ -87,6 +87,19 @@ Item {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.expanded = !compactRoot.plasmoidItem.expanded;
     }
 
+    // Provedor do item sob o ponto (x, y) do MouseArea; a folga cobre a margem e o vão entre itens. "" = nenhum.
+    function providerAt(x, y) {
+        var best = "", bestD = pad + gap + 1;
+        for (var i = 0; i < itemsRepeater.count; i++) {
+            var it = itemsRepeater.itemAt(i);
+            if (!it) continue;
+            var p = mouseArea.mapToItem(it, x, y);
+            var d = Math.max(0, -p.x, p.x - it.width, -p.y, p.y - it.height);
+            if (d < bestD) { bestD = d; best = rings[i].provider; }
+        }
+        return best;
+    }
+
     function closePopup() {
         if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.closePopup();
     }
@@ -137,6 +150,7 @@ Item {
             columnSpacing: compactRoot.gap
 
             Repeater {
+                id: itemsRepeater
                 model: compactRoot.rings
                 delegate: PanelItem {
                     required property var modelData
@@ -307,6 +321,6 @@ Item {
         onContainsMouseChanged: if (compactRoot.plasmoidItem) compactRoot.plasmoidItem.setPillHovered(containsMouse)
         // Na janela flutuante o clique dá o foco à pílula: setas e Home funcionam sem Tab
         onPressed: if (compactRoot.hosted) compactRoot.forceActiveFocus()
-        onClicked: compactRoot.plasmoidItem ? compactRoot.plasmoidItem.pillClicked() : compactRoot.toggle()
+        onClicked: (mouse) => compactRoot.plasmoidItem ? compactRoot.plasmoidItem.pillClicked(compactRoot.providerAt(mouse.x, mouse.y)) : compactRoot.toggle()
     }
 }

@@ -52,6 +52,9 @@ PlasmoidItem {
     property double now: Date.now()
     // Só fecha por hover o popup que o hover abriu (ou que foi solto); atalho/ação externa nunca
     property bool openedByHover: false
+    // Provedor destacado no topo do popup (ticket 48): só o clique num item o define; hover nunca. Vive só em
+    // memória (não vai para a configuração) e é apagado ao fechar o popup.
+    property string highlightProvider: ""
     // Com o mouse na pílula o press tira o foco do popup: não pode fechá-lo antes do clique fixar
     hideOnWindowDeactivate: !pinned && !pillHovered
 
@@ -177,8 +180,10 @@ PlasmoidItem {
     }
 
     // Clique: fecha/abre como antes; com hover ligado, clicar no popup aberto por hover o fixa, e de novo o solta
-    function pillClicked() {
+    // `provider`: item clicado no painel ("" = clique sem item, ex.: teclado). Fechar ou soltar não troca o destaque.
+    function pillClicked(provider) {
         hoverOpenTimer.stop();
+        if (!(open && (!hoverOpen || pinned))) highlightProvider = provider || "";
         if (!hoverOpen) { setOpen(!open); return; }
         if (!open) { pinned = true; setOpen(true); }
         else {
@@ -490,6 +495,7 @@ PlasmoidItem {
     onOpenChanged: {
         if (!root.open) root.autoOpened = false;
         if (!root.open) {
+            root.highlightProvider = "";
             root.pinned = false;
             root.openedByHover = false;
             root.popupHovered = false;

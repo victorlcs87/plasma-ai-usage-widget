@@ -785,7 +785,7 @@ def test_hover_open_option_and_wiring():
     main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
     assert "toolTipTextFormat: Text.PlainText" in main and "hideOnWindowDeactivate: !pinned" in main
     compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
-    assert "setPillHovered(containsMouse)" in compact and "pillClicked()" in compact
+    assert "setPillHovered(containsMouse)" in compact and "pillClicked(compactRoot.providerAt(mouse.x, mouse.y))" in compact
     assert "Keys.onEscapePressed" in compact
     full = (UI_DIR / "FullRepresentation.qml").read_text(encoding="utf-8")
     assert "HoverHandler" in full and "setPopupHovered(hovered)" in full

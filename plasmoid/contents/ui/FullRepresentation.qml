@@ -27,6 +27,13 @@ Item {
     readonly property bool reducedMotion: Kirigami.Units.longDuration === 0  // animações desligadas no Plasma
     readonly property color accent: plasmoidItem ? plasmoidItem.accentColor : Kirigami.Theme.highlightColor
     readonly property var providers: NotchModel.popupProviders(plasmoidItem ? plasmoidItem.statusData : null, prefs)
+    // Provedor clicado no painel (ticket 48): entrada de compactModel (Conta Ativa no Sistema) ou null (hover, sem item, oculto)
+    readonly property var highlight: {
+        var hp = plasmoidItem ? plasmoidItem.highlightProvider : "";
+        var cm = plasmoidItem && plasmoidItem.compactModel ? plasmoidItem.compactModel : [];
+        return hp ? (cm.filter(function (m) { return m.provider === hp; })[0] || null) : null;
+    }
+    onHighlightChanged: flick.contentY = 0  // o destaque fica no topo da lista: mostra-o ao abrir
     readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
     readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
     readonly property bool spinning: refreshing && isOpen && !reducedMotion  // ícone girando: nunca com o widget oculto
@@ -329,6 +336,80 @@ Item {
                 id: list
                 width: flick.width - Kirigami.Units.gridUnit  // reserva fixa para a barra de rolagem (não muda a largura ao aparecer)
                 spacing: Kirigami.Units.smallSpacing * 1.5
+
+                // Provedor clicado no painel: os dois arcos (Janela Nativa e semanal) no topo
+                Rectangle {
+                    objectName: "highlight"
+                    visible: fullRoot.highlight !== null
+                    Layout.fillWidth: true
+                    implicitHeight: hlRow.implicitHeight + Kirigami.Units.smallSpacing * 3
+                    radius: 8
+                    color: Presets.ui.card
+                    border.width: 1
+                    border.color: fullRoot.accent
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: fullRoot.highlight ? fullRoot.highlight.name : ""
+                    Accessible.description: fullRoot.highlight ? fullRoot.highlight.description : ""
+
+                    RowLayout {
+                        id: hlRow
+                        anchors.fill: parent
+                        anchors.margins: Kirigami.Units.smallSpacing * 1.5
+                        spacing: Kirigami.Units.smallSpacing * 2
+
+                        DualRing {
+                            objectName: "highlightRing"
+                            Layout.preferredWidth: Kirigami.Units.gridUnit * 4
+                            Layout.preferredHeight: Kirigami.Units.gridUnit * 4
+                            Accessible.ignored: true
+                            outerPct: fullRoot.highlight ? ViewPrefs.shownPct(fullRoot.highlight.outerPct, fullRoot.prefs.remaining) : -1
+                            innerPct: fullRoot.highlight ? ViewPrefs.shownPct(fullRoot.highlight.innerPct, fullRoot.prefs.remaining) : -1
+                            outerElapsed: fullRoot.highlight ? fullRoot.highlight.outerElapsed : -1
+                            innerElapsed: fullRoot.highlight ? fullRoot.highlight.innerElapsed : -1
+                            outerLevel: fullRoot.highlight ? fullRoot.highlight.outerLevel : ""
+                            innerLevel: fullRoot.highlight ? fullRoot.highlight.innerLevel : ""
+                            outerColor: Presets.levelColor(outerLevel, fullRoot.accent)
+                            innerColor: Presets.levelColor(innerLevel, fullRoot.accent)
+                            provider: fullRoot.highlight ? fullRoot.highlight.provider : ""
+                            active: fullRoot.isOpen
+                            reducedMotion: fullRoot.reducedMotion
+                        }
+
+                        ColumnLayout {
+                            Layout.fillWidth: true
+                            spacing: 0
+
+                            QQC2.Label {
+                                objectName: "highlightName"
+                                Accessible.ignored: true
+                                Layout.fillWidth: true
+                                text: fullRoot.highlight ? fullRoot.highlight.name : ""
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                font.bold: true
+                                color: Presets.ui.fg
+                            }
+                            QQC2.Label {
+                                objectName: "highlightNative"
+                                Accessible.ignored: true
+                                Layout.fillWidth: true
+                                text: fullRoot.highlight ? I18n.tr("Native window") + " " + ViewPrefs.pctText(fullRoot.highlight.innerPct, fullRoot.prefs.remaining) : ""
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: Presets.ui.fg
+                            }
+                            QQC2.Label {
+                                objectName: "highlightWeekly"
+                                Accessible.ignored: true
+                                Layout.fillWidth: true
+                                text: fullRoot.highlight ? I18n.tr("Weekly") + " " + ViewPrefs.pctText(fullRoot.highlight.outerPct, fullRoot.prefs.remaining) : ""
+                                textFormat: Text.PlainText
+                                elide: Text.ElideRight
+                                color: Presets.ui.fg
+                            }
+                        }
+                    }
+                }
 
                 Repeater {
                     model: fullRoot.providers
