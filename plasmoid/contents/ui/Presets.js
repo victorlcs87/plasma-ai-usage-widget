@@ -89,4 +89,10 @@ function levelTextColor(level, accent) {
 
 // Paleta fixa do Notch (sempre escuro, independente do tema): fundo, cartão, borda, texto, texto secundário
 // e botão. Texto sobre o cartão >= 4,5:1.
+// Cor da marca de cada provedor (Logo do Provedor): clara o bastante sobre superfícies escuras (>= 4,3:1) e
+// uma variante mais escura para fundo claro (>= 4:1). Provedor desconhecido: `fallback`.
+var brand = { claude: "#d97757", codex: "#10a37f", gemini: "#4285f4" };
+var brandOnLight = { claude: "#b9532f", codex: "#0b8566", gemini: "#2f6fe0" };
+function brandColor(provider, fallback, onLight) { return (onLight ? brandOnLight : brand)[provider] || fallback; }
+
 var ui = { badge: "#c24d00", panel: "#15171b", card: "#1d2026", edge: "#2f333b", fg: "#e6e8eb", muted: "#b4bac2", chip: "#2a2e36", logo: "#c9ced6" };

@@ -297,23 +297,23 @@ msgstr "Semanal"
 msgid "%1, %2"
 msgstr "%1, %2"
 
-#: contents/ui/FullRepresentation.qml:459
+#: contents/ui/FullRepresentation.qml:458
 msgid "no accounts"
 msgstr "sem contas"
 
-#: contents/ui/FullRepresentation.qml:461 contents/ui/NotchModel.js:167
+#: contents/ui/FullRepresentation.qml:460 contents/ui/NotchModel.js:167
 msgid "no account active on the system"
 msgstr "sem conta ativa no sistema"
 
-#: contents/ui/FullRepresentation.qml:508
+#: contents/ui/FullRepresentation.qml:507
 msgid "No provider visible in the popup. Choose providers in Settings."
 msgstr "Nenhum provedor visível no popup. Escolha os provedores em Configurações."
 
-#: contents/ui/FullRepresentation.qml:509
+#: contents/ui/FullRepresentation.qml:508
 msgid "No accounts found"
 msgstr "Nenhuma conta encontrada"
 
-#: contents/ui/FullRepresentation.qml:510 contents/ui/configGeneral.qml:1946
+#: contents/ui/FullRepresentation.qml:509 contents/ui/configGeneral.qml:1946
 msgid "Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json"
 msgstr "Execute 'ai-usage-collector --refresh' para detectar credenciais locais ou cadastre contas em ~/.config/plasma-ai-usage/config.json"
 

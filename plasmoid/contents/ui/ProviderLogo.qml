@@ -1,13 +1,15 @@
 import QtQuick
+import "Presets.js" as Presets
 
-// Logo do Provedor: silhueta SVG (logo-<provedor>.svg, ver LOGOS.md) pintada com `color` (tema/nível).
+// Logo do Provedor: silhueta SVG (logo-<provedor>.svg, ver LOGOS.md) pintada com a cor da marca (`color`).
 // Canvas (não MultiEffect/shader): funciona em qualquer renderizador, inclusive o software do harness.
 // Decorativo: o nome acessível do provedor vem de quem usa. Provedor desconhecido mostra "?".
 Item {
     id: logo
 
     property string provider: ""
-    property color color: "#c9ced6"
+    property bool onLight: false  // fundo claro (tema claro da configuração): variante escura da cor da marca
+    property color color: Presets.brandColor(provider, "#c9ced6", onLight)
     readonly property bool known: provider === "claude" || provider === "codex" || provider === "gemini"
     readonly property url file: known ? Qt.resolvedUrl("logo-" + provider + ".svg") : ""
 

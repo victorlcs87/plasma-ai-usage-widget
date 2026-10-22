@@ -112,8 +112,7 @@ Item {
             visible: ring.showLogo
             anchors.horizontalCenter: parent.horizontalCenter
             provider: ring.provider
-            color: Presets.ui.logo
-            width: Math.max(8, Math.round(ring.width * (ring.showPct ? 0.2 : 0.36)))
+            width: Math.max(8, Math.round(ring.width * (ring.showPct ? 0.2 : ring.single ? 0.56 : 0.42)))
             height: width
         }
         Text {

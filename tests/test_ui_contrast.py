@@ -48,14 +48,24 @@ def _ui():
     return dict(re.findall(r'(\w+): "(#[0-9a-f]{6})"', src[src.index("var ui = "):]))
 
 
-@pytest.mark.parametrize("fg,bg", [("logo", "panel"), ("logo", "card"), ("fg", "chip")])
-def test_provider_logo_on_notch_palette_is_at_least_3_to_1(fg, bg):
-    ui = _ui()  # logo no centro do anel (painel escuro), no cartão e no selo do popup (chip)
-    assert ratio(ui[fg], ui[bg]) >= 3
+def _brand():
+    import re
+    from pathlib import Path
+    src = (Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui" / "Presets.js").read_text(encoding="utf-8")
+    grab = lambda name: dict(re.findall(r'(\w+): "(#[0-9a-f]{6})"', re.search(r"var %s = \{(.*?)\}" % name, src).group(1)))
+    return grab("brand"), grab("brandOnLight")
+
+
+@pytest.mark.parametrize("bg", ["panel", "card", "chip"])
+def test_provider_logo_brand_color_on_notch_palette_is_at_least_3_to_1(bg):
+    brand, _ = _brand()  # logo no centro do anel (painel escuro), no cartão e no selo do popup (chip)
+    assert set(brand) == {"claude", "codex", "gemini"}
+    assert all(ratio(c, _ui()[bg]) >= 3 for c in brand.values())
 
 
 @pytest.mark.parametrize("theme", THEMES)
-def test_provider_logo_in_config_uses_theme_text_color_at_least_3_to_1(theme):
-    text, bg = THEMES[theme]  # configGeneral.qml: ProviderLogo { color: Kirigami.Theme.textColor }
-    assert ratio(text, bg) >= 3
-    assert "Kirigami.Theme.textColor" in (__import__("pathlib").Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui" / "configGeneral.qml").read_text(encoding="utf-8")
+def test_provider_logo_brand_color_in_config_is_at_least_3_to_1(theme):
+    brand, on_light = _brand()  # configGeneral.qml: ProviderLogo { onLight: fundo do tema claro }
+    colors = (on_light if theme == "BreezeLight" else brand).values()
+    assert all(ratio(c, THEMES[theme][1]) >= 3 for c in colors)
+    assert "onLight: Kirigami.Theme.backgroundColor.hslLightness > 0.5" in (__import__("pathlib").Path(__file__).resolve().parent.parent / "plasmoid" / "contents" / "ui" / "configGeneral.qml").read_text(encoding="utf-8")

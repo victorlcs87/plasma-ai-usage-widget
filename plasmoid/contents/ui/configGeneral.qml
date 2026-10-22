@@ -1146,7 +1146,7 @@ Item {
                                     ProviderLogo {
                                         implicitWidth: Kirigami.Units.iconSizes.small
                                         provider: modelData
-                                        color: Kirigami.Theme.textColor
+                                        onLight: Kirigami.Theme.backgroundColor.hslLightness > 0.5
                                     }
                                     QQC2.CheckBox {
                                         text: Presets.providerInfo(modelData).name
@@ -1474,7 +1474,7 @@ Item {
                                     ProviderLogo {
                                         implicitWidth: Kirigami.Units.iconSizes.small
                                         provider: modelData
-                                        color: Kirigami.Theme.textColor
+                                        onLight: Kirigami.Theme.backgroundColor.hslLightness > 0.5
                                     }
                                     QQC2.CheckBox {
                                         text: Presets.providerInfo(modelData).name
@@ -1582,7 +1582,7 @@ Item {
                                     implicitWidth: Kirigami.Units.iconSizes.smallMedium
                                     implicitHeight: implicitWidth
                                     provider: (providerComboBox.currentText || "").toLowerCase()
-                                    color: Kirigami.Theme.textColor
+                                    onLight: Kirigami.Theme.backgroundColor.hslLightness > 0.5
                                     Layout.alignment: Qt.AlignVCenter
                                 }
 
@@ -1822,7 +1822,7 @@ Item {
                                             height: width
                                             anchors.verticalCenter: parent.verticalCenter
                                             provider: modelData.provider || ""
-                                            color: Kirigami.Theme.textColor
+                                            onLight: Kirigami.Theme.backgroundColor.hslLightness > 0.5
                                         }
                                         QQC2.Label {
                                             textFormat: Text.PlainText

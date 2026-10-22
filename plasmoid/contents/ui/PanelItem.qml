@@ -70,7 +70,6 @@ Item {
                         width: Math.round(pi.geo.box * 0.85)
                         height: width
                         provider: pi.m.provider
-                        color: pi.levelColor
                     }
                 }
                 Text {

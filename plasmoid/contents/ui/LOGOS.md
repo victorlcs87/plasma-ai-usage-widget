@@ -1,7 +1,7 @@
 # Logos dos provedores
 
 Silhuetas monocromáticas de um só path, usadas só para identificar o provedor na interface
-(componente `ProviderLogo.qml`). Coloridas em tempo de execução pelo tema e pelo nível.
+(componente `ProviderLogo.qml`). Pintadas em tempo de execução com a cor da marca (`Presets.brand`; variante escura `brandOnLight` sobre fundo claro).
 
 | Arquivo | Provedor | Ícone de origem |
 |---|---|---|

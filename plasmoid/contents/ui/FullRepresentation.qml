@@ -440,7 +440,6 @@ Item {
                                     width: Math.round(parent.width * 0.65)
                                     height: width
                                     provider: block.modelData.key
-                                    color: Presets.ui.fg
                                 }
                             }
                             QQC2.Label {

@@ -297,23 +297,23 @@ msgstr ""
 msgid "%1, %2"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:459
+#: contents/ui/FullRepresentation.qml:458
 msgid "no accounts"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:461 contents/ui/NotchModel.js:167
+#: contents/ui/FullRepresentation.qml:460 contents/ui/NotchModel.js:167
 msgid "no account active on the system"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:508
+#: contents/ui/FullRepresentation.qml:507
 msgid "No provider visible in the popup. Choose providers in Settings."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:509
+#: contents/ui/FullRepresentation.qml:508
 msgid "No accounts found"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:510 contents/ui/configGeneral.qml:1946
+#: contents/ui/FullRepresentation.qml:509 contents/ui/configGeneral.qml:1946
 msgid "Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json"
 msgstr ""
 
