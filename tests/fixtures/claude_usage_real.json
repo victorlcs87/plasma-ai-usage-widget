@@ -1,0 +1,35 @@
+{
+  "five_hour": {
+    "utilization": 41.0,
+    "resets_at": "2026-10-23T04:00:00.252503+00:00"
+  },
+  "seven_day": {
+    "utilization": 58.0,
+    "resets_at": "2026-10-25T03:00:00.252519+00:00"
+  },
+  "seven_day_opus": null,
+  "seven_day_sonnet": null,
+  "extra_usage": {
+    "is_enabled": false
+  },
+  "limits": [
+    {
+      "kind": "session",
+      "group": "session",
+      "percent": 41,
+      "severity": "normal",
+      "resets_at": "2026-10-23T04:00:00.252503+00:00",
+      "scope": null,
+      "is_active": false
+    },
+    {
+      "kind": "weekly_all",
+      "group": "weekly",
+      "percent": 58,
+      "severity": "normal",
+      "resets_at": "2026-10-25T03:00:00.252519+00:00",
+      "scope": null,
+      "is_active": true
+    }
+  ]
+}

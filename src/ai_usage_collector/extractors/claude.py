@@ -358,6 +358,46 @@ def resolve_tier_capacity(account: dict[str, Any], health: dict[str, Any]) -> in
     return DEFAULT_FALLBACK_CAPACITY
 
 
+_LIMIT_KINDS = {"session": "five_hour", "weekly_all": "seven_day"}
+
+
+def usage_windows(api_data: dict[str, Any] | None) -> tuple[dict[str, Any], dict[str, Any]]:
+    """(five_hour, seven_day) da API de uso, nos dois formatos: chaves planas ou array `limits`.
+
+    A chave plana vence; a nula/ausente e completada pela entrada `limits` (kind session/weekly_all).
+    Dado ausente ou invalido resulta em {} (nunca em 0%). A API nao informa a duracao da janela.
+    """
+    api_data = api_data or {}
+    out = {}
+    for kind, key in _LIMIT_KINDS.items():
+        flat = api_data.get(key)
+        if isinstance(flat, dict) and flat:
+            out[key] = flat
+            continue
+        out[key] = {}
+        for entry in api_data.get("limits") or []:
+            if not isinstance(entry, dict) or entry.get("kind") != kind:
+                continue
+            pct = entry.get("percent")
+            info = {}
+            if isinstance(pct, (int, float)) and not isinstance(pct, bool):
+                info["utilization"] = pct
+            if parse_timestamp(entry.get("resets_at")) is not None:
+                info["resets_at"] = entry["resets_at"]
+            out[key] = info
+            break
+    return out["five_hour"], out["seven_day"]
+
+
+def _valid_usage(d: dict[str, Any]) -> bool:
+    flat = ("five_hour", "seven_day")
+    limits = d.get("limits")
+    limits_ok = isinstance(limits, list) and all(isinstance(e, dict) for e in limits)
+    # valor nulo = conta ociosa (resposta valida); valor de outro tipo = resposta invalida
+    flat_ok = all(d.get(k) is None or isinstance(d[k], dict) for k in flat if k in d)
+    return flat_ok and (any(k in d for k in flat) or limits_ok) and ("limits" not in d or limits_ok)
+
+
 def fetch_claude_usage_api(
     access_token: str,
     timeout: float = 3.0,
@@ -381,9 +421,7 @@ def fetch_claude_usage_api(
     )
     return refresh.fetch_json(
         "claude", access_token, req, timeout, opener=refresh.NO_REDIRECT_OPENER,
-        # valor nulo = conta ociosa (resposta valida); valor de outro tipo = resposta invalida
-        valid=lambda d: ("five_hour" in d or "seven_day" in d)
-        and all(d.get(k) is None or isinstance(d[k], dict) for k in ("five_hour", "seven_day") if k in d),
+        valid=_valid_usage,
     )
 
 
@@ -526,9 +564,8 @@ def extract_claude_status(
     elif access_token and health.get("status") in ("valid", "session_expired"):
         api_data = fetch_claude_usage_api(access_token)
 
-    if api_data and (isinstance(api_data.get("five_hour"), dict) or isinstance(api_data.get("seven_day"), dict)):
-        five_hour_info = api_data.get("five_hour") or {}
-        seven_day_info = api_data.get("seven_day") or {}
+    five_hour_info, seven_day_info = usage_windows(api_data)
+    if five_hour_info or seven_day_info:
         # five_hour nulo pode ser so ociosidade: a janela de 5h nunca vira "api_missing" (nem removida/nova);
         # a semanal sumir com a de 5h presente nao e explicavel por ociosidade.
         if five_hour_info:
@@ -612,8 +649,7 @@ def extract_claude_status(
 
     # Breakdown since the last weekly reset (API reset - 7d, else rolling 7d)
     since_sec = now_sec - CLAUDE_7D_SECONDS
-    seven_day_api = (api_data or {}).get("seven_day")
-    api_reset = parse_timestamp((seven_day_api if isinstance(seven_day_api, dict) else {}).get("resets_at"))
+    api_reset = parse_timestamp(usage_windows(api_data)[1].get("resets_at"))
     if api_reset is not None:
         since_sec = min(now_sec, api_reset - CLAUDE_7D_SECONDS)
     by_model, by_project = scan_project_token_breakdown(projects_dir, since_sec)
