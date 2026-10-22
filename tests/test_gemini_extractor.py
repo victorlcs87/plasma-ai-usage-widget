@@ -721,6 +721,7 @@ def test_collector_gemini_status_json_reflects_ok_with_expired_file_but_active_k
     with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value="ya29.keyring_token"), \
          patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_raw", return_value=fake_keyring_raw), \
          patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=fake_api_response), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_model_quota_api", return_value=None), \
          patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value={
              "access_token": "ya29.keyring_token",
              "refresh_token": "1//refresh_val",
@@ -909,3 +910,110 @@ def test_gemini_api_sem_bucket_semanal_nao_inventa_percentual_semanal(tmp_path):
         res = extract_gemini_status(account, now=now)
     assert res["native_window"]["usage_percentage"] == 17.0
     assert res["weekly_window"]["usage_percentage"] is None
+
+
+# --- Ticket 60: consumo combinado de grupos (resumo) e modelos (cota por modelo) ---
+
+FIXTURES = Path(__file__).parent / "fixtures"
+_NOW_REAL = datetime(2026, 10, 22, 23, 50, 0, tzinfo=timezone.utc)  # logo apos a captura das fixtures
+
+
+def _real(name):
+    return json.loads((FIXTURES / name).read_text())
+
+
+def _status_combined(account, summary, models, now=_NOW_REAL):
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=summary), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_model_quota_api", return_value=models):
+        return extract_gemini_status(account, now=now)
+
+
+def test_combined_real_fixtures_highlight_reflects_gemini_models(tmp_path):
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
+    nw, ww = res["native_window"], res["weekly_window"]
+    # Grupo Claude/GPT 100% restante (0% usado); modelos Gemini com 0.7764416 restante
+    assert nw["usage_percentage"] == 22.4
+    assert nw["release_time"] == "2026-10-23T02:32:02+00:00"
+    assert nw["source"] == "api" and nw["api_fields"] == ["release"]  # duracao do modelo nao vem da API
+    assert nw["window_seconds"] == 18000
+    assert ww["usage_percentage"] == 0.0 and ww["source"] == "api"
+    assert res["health"]["status"] == "valid"
+
+
+def test_combined_details_list_remaining_and_release_per_model(tmp_path):
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
+    models = {m["model"]: m for m in res["usage_details"]["quota_by_model"]}
+    assert models["gemini-2.5-pro"] == {
+        "model": "gemini-2.5-pro", "window": None, "usage_percentage": 22.4,
+        "reset_time": "2026-10-23T02:32:02+00:00"}
+    assert models["claude-sonnet-4-6"]["usage_percentage"] == 0.0
+    assert models["tab_flash_lite_preview"]["reset_time"] is None  # sem liberacao: nao inventa
+
+
+def test_combined_83_percent_remaining_shows_17_used(tmp_path):
+    models = {"buckets": [
+        {"modelId": "gemini-2.5-pro", "remainingFraction": 0.83, "resetTime": "2026-10-23T02:32:02Z"},
+        {"modelId": "gemini-2.5-flash", "remainingFraction": 0.9, "resetTime": "2026-10-23T02:32:02Z"},
+    ]}
+    res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), models)
+    assert res["native_window"]["usage_percentage"] == 17.0
+    assert res["native_window"]["available_capacity"] == 83
+
+
+def test_combined_summary_more_urgent_than_models_keeps_summary(tmp_path):
+    summary = {"groups": [{"displayName": "Claude and GPT models", "buckets": [
+        {"bucketId": "3p-5h", "window": "5h", "remainingFraction": 0.1, "resetTime": "2026-10-23T04:48:52Z"},
+        {"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.5, "resetTime": "2026-10-29T23:48:52Z"}]}]}
+    res = _status_combined(_gemini_account(tmp_path), summary, _real("gemini_quota_by_model_real.json"))
+    assert res["native_window"]["usage_percentage"] == 90.0
+    assert res["native_window"]["release_time"] == "2026-10-23T04:48:52+00:00"
+    assert res["weekly_window"]["usage_percentage"] == 50.0
+
+
+def test_combined_models_only_when_summary_fails(tmp_path):
+    res = _status_combined(_gemini_account(tmp_path), None, _real("gemini_quota_by_model_real.json"))
+    assert res["native_window"]["usage_percentage"] == 22.4
+    assert res["native_window"]["api_fields"] == ["release"]  # duracao nao veio da API
+    # Semanal sem resumo: sem dado, nunca 0%
+    assert res["weekly_window"]["usage_percentage"] is None
+    assert res["usage_details"]["quota_by_model"]
+
+
+def test_combined_summary_only_when_models_fail(tmp_path):
+    res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), None)
+    assert res["native_window"]["usage_percentage"] == 0.0
+    assert res["weekly_window"]["usage_percentage"] == 0.0
+    assert "usage_details" not in res
+
+
+def test_combined_both_fail_is_no_data_not_zero(tmp_path):
+    res = _status_combined(_gemini_account(tmp_path), None, None)
+    assert res["native_window"]["usage_percentage"] is None
+    assert res["weekly_window"]["usage_percentage"] is None
+    assert "usage_details" not in res
+
+
+def test_combined_model_without_reset_never_becomes_window(tmp_path):
+    models = {"buckets": [{"modelId": "gemini-x", "remainingFraction": 0.1}]}
+    res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), models)
+    assert res["native_window"]["usage_percentage"] == 0.0
+    assert res["usage_details"]["quota_by_model"][0]["usage_percentage"] == 90.0
+
+
+def test_fetch_gemini_model_quota_api_calls_retrieve_user_quota():
+    from ai_usage_collector.extractors.gemini import fetch_gemini_model_quota_api
+
+    body = json.dumps(_real("gemini_quota_by_model_real.json")).encode()
+    resp = MagicMock(status=200)
+    resp.__enter__.return_value = resp
+    resp.read.return_value = body
+    with patch("urllib.request.urlopen", return_value=resp) as mock_urlopen:
+        assert fetch_gemini_model_quota_api("tok")["buckets"]
+    req = mock_urlopen.call_args[0][0]
+    assert req.full_url.endswith("/v1internal:retrieveUserQuota")
+    assert req.data == b"{}" and req.get_header("Authorization") == "Bearer tok"

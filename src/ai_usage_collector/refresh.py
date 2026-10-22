@@ -242,9 +242,10 @@ class RefreshCycle:
         if entry.get("paused_until", 0) > now_ts:
             data, outcome = None, {"kind": "rate_limited", "retry_at": entry["paused_until"]}
         else:
-            if credential not in self._memo:
-                self._memo[credential] = self._request(request, timeout, valid, int(entry.get("failures") or 0), opener)
-            data, outcome = self._memo[credential]
+            memo_key = f"{credential}|{request.full_url}"  # um provedor pode ter mais de um endpoint
+            if memo_key not in self._memo:
+                self._memo[memo_key] = self._request(request, timeout, valid, int(entry.get("failures") or 0), opener)
+            data, outcome = self._memo[memo_key]
             if outcome["kind"] == "rate_limited":
                 self.state[pause_key] = {"paused_until": outcome["retry_at"], "failures": outcome["failures"]}
             elif outcome["kind"] == "ok":
@@ -266,7 +267,12 @@ class RefreshCycle:
     def take_outcome(self) -> dict[str, Any] | None:
         """Resultado mais grave das consultas feitas desde a chamada anterior (None se nenhuma)."""
         pending, self._pending = self._pending, []
-        return max(pending, key=lambda o: _SEVERITY[o["kind"]]) if pending else None
+        worst = max(pending, key=lambda o: _SEVERITY[o["kind"]], default=None)
+        # Com varios endpoints, falha de rede/resposta invalida num deles nao descarta o que o outro trouxe
+        # (429 e auth continuam valendo: a Conta pausa / pede login)
+        if worst and _SEVERITY[worst["kind"]] == _SEVERITY["network"]:
+            return next((o for o in pending if o["kind"] == "ok"), worst)
+        return worst
 
     def save(self) -> None:
         # Descarta pausas vencidas ha mais de um dia (Contas removidas deixam chaves orfas)
