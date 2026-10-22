@@ -124,3 +124,51 @@ def test_no_source_still_reports_missing(home, tmp_path, capsys):
                      "--cache-path", str(tmp_path / "s.json")])
     assert code == 1
     assert "antigravity-oauth-token" in capsys.readouterr().err
+
+
+# --- ticket 43: a conta capturada acompanha o arquivo vivo da Antigravity ---
+
+def _captured(tmp_path, payload=AGY_PAYLOAD):
+    """Copia isolada como a captura a grava: plana, com `expiry` ISO."""
+    p = tmp_path / "profiles" / "gemini-x" / "oauth_creds.json"
+    p.parent.mkdir(parents=True)
+    p.write_text(json.dumps(_read_gemini_file_from(payload)))
+    return p
+
+
+def _read_gemini_file_from(payload):
+    return {**{k: v for k, v in payload.items() if k != "token"}, **payload["token"]}
+
+
+def test_expiry_iso_is_understood(tmp_path):
+    from ai_usage_collector.discovery import discover_gemini
+    past = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "expiry": "2020-01-01T00:00:00Z", "refresh_token": ""}}
+    p = _captured(tmp_path, past)
+    assert discover_gemini(p)["status"] != "valid"
+    ok = _captured(tmp_path / "b")
+    assert discover_gemini(ok)["status"] == "valid"
+
+
+def test_sync_pulls_fresh_token_without_touching_live(home, tmp_path):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    stale = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "access_token": "ya29.old", "expiry": "2020-01-01T00:00:00Z"}}
+    copy = _captured(tmp_path, stale)
+    live = _agy_file(home / ".gemini")  # token novo, expiry futuro
+    before = (live.read_bytes(), live.stat().st_mtime_ns)
+    assert sync_gemini_from_antigravity(copy) is True
+    assert json.loads(copy.read_text())["access_token"] == "ya29.agy_access"
+    assert stat.S_IMODE(copy.stat().st_mode) == 0o600
+    assert (live.read_bytes(), live.stat().st_mtime_ns) == before
+
+
+def test_sync_ignores_other_identity_and_older_live(home, tmp_path):
+    from ai_usage_collector.capture import sync_gemini_from_antigravity
+    copy = _captured(tmp_path)
+    original = copy.read_text()
+    other = {**AGY_PAYLOAD, "id_token": make_jwt({"email": "outra@example.com", "sub": "9"})}
+    _agy_file(home / ".gemini", other)
+    assert sync_gemini_from_antigravity(copy) is False
+    older = {**AGY_PAYLOAD, "token": {**AGY_PAYLOAD["token"], "expiry": "2025-01-01T00:00:00Z"}}
+    _agy_file(home / ".gemini", older)
+    assert sync_gemini_from_antigravity(copy) is False
+    assert copy.read_text() == original
