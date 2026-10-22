@@ -29,12 +29,12 @@ Item {
     readonly property var providers: NotchModel.popupProviders(plasmoidItem ? plasmoidItem.statusData : null, prefs)
     // Provedor clicado no painel (ticket 48): entrada de compactModel (Conta Ativa no Sistema) ou null (hover, sem item, oculto)
     readonly property var highlight: {
-        var hp = plasmoidItem ? plasmoidItem.highlightProvider : "";
+        var hp = plasmoidItem ? (plasmoidItem.highlightProvider || "") : "";
         var cm = plasmoidItem && plasmoidItem.compactModel ? plasmoidItem.compactModel : [];
         return hp ? (cm.filter(function (m) { return m.provider === hp; })[0] || null) : null;
     }
     // O destaque fica no topo da lista: ao trocar de provedor mostra-o (não ao recalcular o modelo, que preserva a rolagem)
-    readonly property string highlightKey: plasmoidItem ? plasmoidItem.highlightProvider : ""
+    readonly property string highlightKey: plasmoidItem ? (plasmoidItem.highlightProvider || "") : ""
     onHighlightKeyChanged: flick.contentY = 0
     readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
     readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
