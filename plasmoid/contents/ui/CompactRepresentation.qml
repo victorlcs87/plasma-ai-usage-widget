@@ -38,6 +38,8 @@ Item {
     readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
     readonly property bool cliUpdate: rings.some(function (r) { return !!r.update; })
 
+    // No painel (não hospedado): anel simples (Arco de Horário) que ocupa a espessura; o Notch flutuante mantém o Anel Duplo
+    readonly property bool panelRing: !hosted
     readonly property int ringBase: Kirigami.Units.iconSizes.smallMedium
     readonly property int ringMin: Math.round(Kirigami.Units.gridUnit * 1.1)
     // Margem: automática (smallSpacing, como antes) até o usuário escolher um valor
@@ -46,7 +48,7 @@ Item {
     // Com tamanho < 100%, o piso do anel acompanha o tamanho escolhido
     readonly property int minUnit: Math.min(ringMin, Math.round(ringBase * panel.scale))
     readonly property var reqOpts: ({ style: panel.style, mode: panel.mode, center: panel.center, vertical: vertical, pad: pad, gap: gap,
-                                      base: ringBase, scale: panel.scale, minUnit: minUnit })
+                                      base: ringBase, scale: panel.scale, minUnit: minUnit, fill: panelRing })
     // Estilo e centro em uso: se a espessura do painel não comporta o pedido, degrada (Bar -> Text -> Pílula;
     // centro com % -> logo) em vez de cortar
     // effC (só pela espessura) dá o mínimo e o preferido que o painel recebe; eff também degrada pelo comprimento
@@ -57,7 +59,7 @@ Item {
                                                     function (oo) { return compactRoot.runLength(PanelStyle.layout(oo, vertical ? compactRoot.width : compactRoot.height), oo.style, oo.lean); })
     readonly property string style: eff.style
     function optsFor(e) { return { style: e.style, mode: e.mode || panel.mode, lean: e.lean === true, center: e.center, vertical: vertical, pad: pad, gap: gap,
-                                   base: ringBase, scale: panel.scale, minUnit: minUnit }; }
+                                   base: ringBase, scale: panel.scale, minUnit: minUnit, fill: panelRing }; }
     readonly property var geoOpts: optsFor(eff)
     readonly property var geoOptsC: optsFor(effC)
     // Espessura mínima e preferida do painel (a preferida nunca fica abaixo da mínima)
@@ -146,6 +148,7 @@ Item {
                     center: compactRoot.eff.center
                     remaining: compactRoot.remaining
                     vertical: compactRoot.vertical
+                    single: compactRoot.panelRing
                     geo: compactRoot.geo
                     gap: compactRoot.gap
                     accent: compactRoot.accent

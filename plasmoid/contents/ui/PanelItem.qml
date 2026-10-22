@@ -20,6 +20,7 @@ Item {
     property color accent: Presets.defaultAccent
     property bool active: true
     property bool reducedMotion: false
+    property bool single: false         // painel: só o Arco de Horário (anel simples da Janela Nativa)
     property bool remaining: false      // preferência usado/restante: o % e os arcos mostram o que resta
 
     readonly property var head: PanelStyle.headline(m)
@@ -105,6 +106,7 @@ Item {
                     outerColor: Presets.levelColor(pi.m.outerLevel, pi.accent)
                     innerColor: Presets.levelColor(pi.m.innerLevel, pi.accent)
                     provider: pi.m.provider
+                    single: pi.single
                     centerMode: pi.center
                     centerPct: pi.known ? String(ViewPrefs.shownPct(pi.head.pct, pi.remaining)) : "\u2014"
                     centerDim: pi.dim

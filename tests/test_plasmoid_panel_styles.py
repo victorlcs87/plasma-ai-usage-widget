@@ -303,7 +303,7 @@ def test_badges_keep_dark_backdrop_on_a_light_theme_and_meet_contrast(tmp_path, 
     for n in "ab":
         (tmp_path / n).mkdir()
     for n, bg in (("a", "#f5f5f5"), ("b", "#1b1e20")):  # janela clara e escura
-        out = render(tmp_path / n, "", THREE, vertical=vertical, invites=3, updates=UPDATES, bg=bg, extra_cfg=OVERLAY, size=(40, 420) if vertical else None,
+        out = render(tmp_path / n, "", THREE, vertical=vertical, invites=3, updates=UPDATES, bg=bg, extra_cfg=OVERLAY, size=(40, 520) if vertical else (520, 40),
                      panel={"panelStyle": style, "panelMode": "ringpct"})
         assert len(out["badges"]) == 4
         for b in out["badges"]:
@@ -375,3 +375,28 @@ def test_pill_at_110px_drops_percent_and_badges_before_shrinking(tmp_path):
     (tmp_path / "b").mkdir()
     big = render(tmp_path / "b", "", THREE, invites=3, updates=UPDATES, panel={"panelStyle": "pill", "panelMode": "ringpct"}, size=(600, 40), extra_cfg=OVERLAY)
     assert not big["eff"].get("lean") and len(big["badges"]) == 4  # com espaço, tudo como antes
+
+
+# ---- ticket 47: painel só com o Arco de Horário ----
+
+@needs_qml
+def test_panel_ring_fills_thickness_scale_only_shrinks_and_options_have_effect(tmp_path):
+    """O anel ocupa a espessura do painel (menos a margem); escala > 100% não passa disso, < 100% reduz; margem muda o anel."""
+    one = agents(("claude", acc("claude", 40, 30)))
+
+    def unit(n, **panel):
+        (tmp_path / n).mkdir()
+        return render(tmp_path / n, "", one, panel=panel, size=(300, 60))["geo"]["unit"]
+
+    full = unit("a")
+    assert full == 60 - 2 * 4  # espessura 60 menos a margem automática (smallSpacing 4 do stub)
+    assert unit("b", metricSize=160) == full  # escala nunca aumenta além da espessura
+    assert unit("c", metricSize=80) < full  # escala reduz
+    assert unit("d", panelMargin=12) == 60 - 2 * 12  # margem tem efeito visível
+
+
+def test_panel_draws_single_ring_and_floating_keeps_dual():
+    item = (UI_DIR / "PanelItem.qml").read_text(encoding="utf-8")
+    compact = (UI_DIR / "CompactRepresentation.qml").read_text(encoding="utf-8")
+    assert "single: pi.single" in item and "single: compactRoot.panelRing" in compact
+    assert "panelRing: !hosted" in compact  # flutuante (hospedado) mantém o Anel Duplo

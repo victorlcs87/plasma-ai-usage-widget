@@ -16,6 +16,8 @@ Item {
     property string outerLevel: ""
     property string innerLevel: ""
     property string provider: ""
+    // Anel simples (painel): só o Arco de Horário (Janela Nativa), no raio externo e mais grosso
+    property bool single: false
     // Estado da Sessão: "busy" = arco girando, "waiting" = anel âmbar pulsando. reducedMotion = formas
     // estáticas (arco parado, anel fixo), sem nenhuma animação.
     property string sessionState: ""
@@ -35,6 +37,7 @@ Item {
     onInnerColorChanged: canvas.requestPaint()
     onWidthChanged: canvas.requestPaint()
     onHeightChanged: canvas.requestPaint()
+    onSingleChanged: canvas.requestPaint()
     onOuterLevelChanged: canvas.requestPaint()
     onInnerLevelChanged: canvas.requestPaint()
 
@@ -82,9 +85,13 @@ Item {
             var ctx = getContext("2d");
             ctx.reset();
             var s = Math.min(width, height);
-            var lw = Math.max(1.75, s * 0.085);
+            var lw = Math.max(1.75, s * (ring.single ? 0.12 : 0.085));
             var cx = width / 2, cy = height / 2;
             var rOuter = s / 2 - lw / 2 - 1;
+            if (ring.single) {
+                arc(ctx, cx, cy, rOuter, lw, ring.innerPct, ring.innerElapsed, ring.innerColor, ring.innerLevel);
+                return;
+            }
             var rInner = rOuter - lw - Math.max(1.25, s * 0.045);
             arc(ctx, cx, cy, rOuter, lw, ring.outerPct, ring.outerElapsed, ring.outerColor, ring.outerLevel);
             arc(ctx, cx, cy, rInner, lw, ring.innerPct, ring.innerElapsed, ring.innerColor, ring.innerLevel);
