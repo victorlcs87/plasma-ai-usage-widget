@@ -3,6 +3,7 @@
 import json
 import stat
 import subprocess
+from pathlib import Path
 from datetime import timedelta
 
 import pytest
@@ -131,7 +132,115 @@ def test_nonzero_exit_is_failed_and_no_secret_leaks(env, tmp_path, fake_claude):
     assert stat.S_IMODE(state_file.stat().st_mode) == 0o600
 
 
-def test_codex_and_gemini_are_not_renewed_yet(env, tmp_path, fake_claude):
-    configure(env, tmp_path, {"codex": [make_profile(tmp_path, "codex", "c")], "gemini": [make_profile(tmp_path, "gemini", "g")]})
-    env["run"](http=FakeHttp(codex=[API_OK["codex"]], gemini=[API_OK["gemini"]], claude=[API_OK["claude"]]))
+FAKE_CODEX = """#!/bin/sh
+echo "$CODEX_HOME|$*" >> "{log}"
+while read line; do
+  case "$line" in
+    *account/read*) [ -n "{write}" ] && echo "$line" > "$CODEX_HOME/renovado"; {reply};;
+  esac
+done
+"""
+OK_REPLY = """echo '{"id":2,"result":{"requiresOpenaiAuth":true}}'"""
+
+
+@pytest.fixture
+def fake_codex(tmp_path, monkeypatch):
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir(exist_ok=True)
+    log = tmp_path / "codex_calls.log"
+
+    def install(reply=OK_REPLY, write=True):
+        exe = bin_dir / "codex"
+        exe.write_text(FAKE_CODEX.format(log=log, reply=reply, write="1" if write else ""))
+        exe.chmod(0o755)
+
+    install()
+    monkeypatch.setattr(renew, "RENEWERS", REAL_RENEWERS)
+    monkeypatch.setenv("PATH", f"{bin_dir}:/usr/bin:/bin")
+    calls = lambda: log.read_text().splitlines() if log.exists() else []  # noqa: E731
+    return type("F", (), {"install": staticmethod(install), "calls": staticmethod(calls)})
+
+
+def test_codex_inactive_profile_is_renewed_via_app_server_once_per_interval(env, tmp_path, fake_codex):
+    prof = make_profile(tmp_path, "codex", "c")
+    configure(env, tmp_path, {"codex": [prof]})
+    http = FakeHttp(codex=[API_OK["codex"]])
+
+    env["run"]("--provider", "codex", http=http)
+    env["clock"]["now"] = T0 + timedelta(minutes=30)
+    env["run"](http=http)
+
+    assert fake_codex.calls() == [f"{prof['codex_dir']}|app-server --listen stdio://"]
+    assert "refreshToken" in (Path(prof["codex_dir"]) / "renovado").read_text()
+
+
+def test_codex_active_account_is_never_renewed(env, tmp_path, fake_codex):
+    active = make_profile(tmp_path, "codex", "ativa")
+    sys_dir = tmp_path / "_sys_codex"
+    sys_dir.mkdir()
+    (sys_dir / "auth.json").write_text(open(active["credential_path"]).read())
+    configure(env, tmp_path, {"codex": [active]})
+
+    env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+
+    assert fake_codex.calls() == []
+
+
+def test_codex_rpc_error_is_failed_and_cycle_continues(env, tmp_path, fake_codex):
+    prof = make_profile(tmp_path, "codex", "c", token="SEGREDO-123")
+    configure(env, tmp_path, {"codex": [prof]})
+    fake_codex.install(reply="""echo '{"id":2,"error":{"message":"SEGREDO-123"}}'""", write=False)
+
+    status = env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+
+    state_file = env["cache"].parent / "refresh_state.json"
+    assert json.loads(state_file.read_text())["renewals"]["codex:c"]["error"] == "failed"
+    assert "SEGREDO-123" not in state_file.read_text() + env["cache"].read_text()
+    assert len(status["agents"]["codex"]["accounts"]) == 1
+
+
+def test_codex_missing_cli_is_classified(env, tmp_path, monkeypatch):
+    monkeypatch.setattr(renew, "RENEWERS", REAL_RENEWERS)
+    monkeypatch.setenv("PATH", str(tmp_path))  # /usr/bin tem o codex real
+    configure(env, tmp_path, {"codex": [make_profile(tmp_path, "codex", "c")]})
+    env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+    state = json.loads((env["cache"].parent / "refresh_state.json").read_text())
+    assert state["renewals"]["codex:c"]["error"] == "cli_missing"
+
+
+def test_codex_replies_arriving_together_with_noise_are_not_a_timeout(env, tmp_path, fake_codex, monkeypatch):
+    monkeypatch.setattr(renew, "TIMEOUT_SECONDS", 3)
+    configure(env, tmp_path, {"codex": [make_profile(tmp_path, "codex", "c")]})
+    fake_codex.install(reply="""printf 'lixo\\n{"id":1,"result":{}}\\n{"id":2,"result":{}}\\n'""")
+
+    env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+
+    state = json.loads((env["cache"].parent / "refresh_state.json").read_text())
+    assert state["renewals"]["codex:c"]["error"] is None
+
+
+def test_codex_exit_before_reply_is_failed(env, tmp_path, fake_codex):
+    configure(env, tmp_path, {"codex": [make_profile(tmp_path, "codex", "c")]})
+    fake_codex.install(reply="exit 0", write=False)
+
+    env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+
+    state = json.loads((env["cache"].parent / "refresh_state.json").read_text())
+    assert state["renewals"]["codex:c"]["error"] == "failed"
+
+
+def test_codex_hang_times_out(env, tmp_path, fake_codex, monkeypatch):
+    monkeypatch.setattr(renew, "TIMEOUT_SECONDS", 1)
+    configure(env, tmp_path, {"codex": [make_profile(tmp_path, "codex", "c")]})
+    fake_codex.install(reply="true", write=False)  # nunca responde
+
+    env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+
+    state = json.loads((env["cache"].parent / "refresh_state.json").read_text())
+    assert state["renewals"]["codex:c"]["error"] == "timeout"
+
+
+def test_gemini_is_not_renewed_yet(env, tmp_path, fake_claude):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "g")]})
+    env["run"](http=FakeHttp(gemini=[API_OK["gemini"]]))
     assert fake_claude.calls() == []
