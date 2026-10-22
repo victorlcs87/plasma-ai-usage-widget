@@ -52,3 +52,9 @@ def notified(monkeypatch):
     rec.real = notifications.dbus_notify
     monkeypatch.setattr(notifications, "dbus_notify", rec)
     return rec
+
+
+@pytest.fixture(autouse=True)
+def _block_real_cli_renewal(monkeypatch):
+    """Nunca executa o `claude` real na renovacao de Contas inativas; test_renew.py instala um falso no PATH."""
+    monkeypatch.setattr("ai_usage_collector.renew.RENEWERS", {})

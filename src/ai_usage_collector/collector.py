@@ -9,7 +9,7 @@ from typing import Any
 
 from datetime import datetime, timezone
 
-from ai_usage_collector import refresh, updates
+from ai_usage_collector import refresh, renew, updates
 from ai_usage_collector.orphans import list_orphans
 from ai_usage_collector.capture import (
     find_matching_account,
@@ -187,6 +187,8 @@ def _collect(
                 except Exception as e:
                     sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
+            if not is_active:  # nunca a Conta Ativa no Sistema: quem a renova e a propria CLI
+                renew.renew_inactive(cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config))
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None
