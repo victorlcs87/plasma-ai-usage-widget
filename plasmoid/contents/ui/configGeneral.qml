@@ -25,9 +25,9 @@ Item {
     readonly property color secondaryText: Qt.alpha(Kirigami.Theme.textColor, 0.7)
 
     // Intervalo de Atualização por provedor (KConfigXT, main.xml)
-    property int cfg_refreshIntervalClaude: 300
-    property int cfg_refreshIntervalCodex: 300
-    property int cfg_refreshIntervalGemini: 300
+    property int cfg_refreshIntervalClaude: 3600
+    property int cfg_refreshIntervalCodex: 3600
+    property int cfg_refreshIntervalGemini: 3600
     property string cfg_collectorPath: ""
 
     // Notch compacto (KConfigXT): ordem, provedores ocultos e cor de destaque
@@ -891,7 +891,7 @@ Item {
                         text: I18n.tr("Alerts, hiding and notifications are applied right away by the collector with their own Apply button; every other option is saved when you press OK.")
                     }
 
-                        // Intervalo de Atualização por provedor (mínimo de 60 s); Flow: quebra de linha em largura estreita
+                        // Intervalo de Atualização por provedor (mínimo de 1 h); Flow: quebra de linha em largura estreita
                         Flow {
                             Layout.fillWidth: true
                             spacing: Kirigami.Units.largeSpacing
@@ -917,13 +917,13 @@ Item {
                                     }
 
                                     QQC2.SpinBox {
-                                        from: 60
+                                        from: 3600
                                         to: 86400
-                                        stepSize: 60
+                                        stepSize: 3600
                                         editable: true
                                         value: configRoot[modelData.key]
                                         onValueModified: configRoot[modelData.key] = value
-                                        QQC2.ToolTip.text: I18n.tr("%1 refresh interval in seconds (minimum 60)", modelData.name)
+                                        QQC2.ToolTip.text: I18n.tr("%1 refresh interval in seconds (minimum 3600)", modelData.name)
                                         QQC2.ToolTip.visible: hovered
                                     }
                                 }

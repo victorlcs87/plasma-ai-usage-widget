@@ -734,7 +734,7 @@ msgid "Refresh every (s):"
 msgstr ""
 
 #: contents/ui/configGeneral.qml:926
-msgid "%1 refresh interval in seconds (minimum 60)"
+msgid "%1 refresh interval in seconds (minimum 3600)"
 msgstr ""
 
 #: contents/ui/configGeneral.qml:940

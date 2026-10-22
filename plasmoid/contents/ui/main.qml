@@ -274,7 +274,7 @@ PlasmoidItem {
 
     function providerInterval(provider) {
         var key = "refreshInterval" + provider.charAt(0).toUpperCase() + provider.slice(1);
-        return Math.max(60, Plasmoid.configuration[key] || 300);
+        return Math.max(3600, Plasmoid.configuration[key] || 3600);
     }
 
     function runCollectorRefresh(dueProviders) {

@@ -152,14 +152,14 @@ def test_pause_is_respected_until_retry_after_even_on_refresh_now(env, tmp_path)
 def test_429_serves_last_valid_result_marked_stale(env, tmp_path):
     configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
     http = FakeHttp(claude=[API_OK["claude"], http_error(429, "30")])
-    first = env["run"]("--provider", "claude", "--refresh-interval", "claude=300", http=http)
+    first = env["run"]("--provider", "claude", "--refresh-interval", "claude=3600", http=http)
     acc = acc_of(first, "claude")
     assert acc["stale"] is False
     assert acc["fetched_at"] == T0.isoformat()
-    assert acc["next_check_at"] == (T0 + timedelta(seconds=300)).isoformat()
+    assert acc["next_check_at"] == (T0 + timedelta(seconds=3600)).isoformat()
     assert first["agents"]["claude"]["fetched_at"] == T0.isoformat()
 
-    env["clock"]["now"] = T0 + timedelta(seconds=300)
+    env["clock"]["now"] = T0 + timedelta(seconds=3600)
     second = env["run"]("--provider", "claude", http=http)
     acc = acc_of(second, "claude")
     assert acc["stale"] is True
@@ -241,8 +241,8 @@ def test_plasmoid_config_has_per_provider_interval_with_minimum():
     entries = {e.attrib["name"]: e for e in ET.parse(root / "config" / "main.xml").getroot().iter() if e.tag.endswith("entry")}
     for name in ("Claude", "Codex", "Gemini"):
         entry = entries[f"refreshInterval{name}"]
-        assert entry.find("{*}default").text == "300"
-        assert entry.find("{*}min").text == "60"
+        assert entry.find("{*}default").text == "3600"
+        assert entry.find("{*}min").text == "3600"
     main_qml = (root / "ui" / "main.qml").read_text(encoding="utf-8")
     assert "--refresh-interval" in main_qml and "--provider" in main_qml
     # Revisao: remocao enfileirada durante execucao e watchdog de 120 s para isRefreshing preso

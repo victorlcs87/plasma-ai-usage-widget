@@ -29,9 +29,9 @@ from typing import Any, Callable, Iterator, Sequence
 from ai_usage_collector.config import SUPPORTED_PROVIDERS, ensure_secure_dir, save_secure_json
 
 STATE_FILENAME = "refresh_state.json"
-MIN_INTERVAL_SECONDS = 60
+MIN_INTERVAL_SECONDS = 3600
 MAX_INTERVAL_SECONDS = 86400
-DEFAULT_INTERVAL_SECONDS = 300
+DEFAULT_INTERVAL_SECONDS = 3600
 BACKOFF_BASE_SECONDS = 60
 BACKOFF_MAX_SECONDS = 3600
 MAX_PAUSE_SECONDS = 86400

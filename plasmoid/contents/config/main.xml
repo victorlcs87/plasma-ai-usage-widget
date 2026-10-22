@@ -11,18 +11,18 @@
     </entry>
     <entry name="refreshIntervalClaude" type="Int">
       <label>Claude refresh interval in seconds</label>
-      <default>300</default>
-      <min>60</min>
+      <default>3600</default>
+      <min>3600</min>
     </entry>
     <entry name="refreshIntervalCodex" type="Int">
       <label>Codex refresh interval in seconds</label>
-      <default>300</default>
-      <min>60</min>
+      <default>3600</default>
+      <min>3600</min>
     </entry>
     <entry name="refreshIntervalGemini" type="Int">
       <label>Gemini refresh interval in seconds</label>
-      <default>300</default>
-      <min>60</min>
+      <default>3600</default>
+      <min>3600</min>
     </entry>
     <entry name="collectorPath" type="String">
       <label>Path to the ai-usage-collector executable (last resort)</label>
