@@ -106,3 +106,13 @@ _Avoid_: anel interno
 **Janela de Destaque**:
 A janela de um provedor cujo percentual os estilos Text e Bar e os modos com % mostram no painel (e o centro do anel): a mais urgente entre as conhecidas, isto é, a de maior nível de alerta do contrato (crítico, atenção, normal) e, em empate, a de maior percentual. Sem nenhuma janela conhecida, mostra "—", nunca 0%.
 _Avoid_: pior janela, janela principal
+
+### Distribuicao
+
+**Coletor**:
+Programa Python (`ai-usage-collector`) que consulta os provedores e grava o `status.json`. O Plasmoid nao busca dados sozinho: sem o Coletor ele nao mostra nada.
+_Avoid_: backend, daemon, servico
+
+**Instalador do Coletor**:
+Acao do Plasmoid, sempre com confirmacao explicita do usuario, que baixa do PyPI a versao exata do Coletor igual a do Plasmoid e a instala no venv proprio do widget (`~/.local/share/plasma-ai-usage/venv`, com symlink em `~/.local/bin`), sem `sudo` e sem tocar no Python do sistema. Tambem atualiza um Coletor de versao menor que a do Plasmoid; nunca faz downgrade.
+_Avoid_: auto-instalacao, setup silencioso, atualizacao automatica
