@@ -12,7 +12,7 @@
         "Description[pt_BR]": "Monitor de cotas de uso e convites de teste gratuito para agentes de IA (Claude, Codex e Gemini)",
         "Icon": "view-split-left-right",
         "Id": "org.kde.plasma.aiusage",
-        "License": "MIT",
+        "License": "GPL-3.0-or-later",
         "Name": "AI Usage Monitor",
         "Name[pt_BR]": "Monitor de Uso de IA",
         "Version": "1.1.1",

@@ -98,3 +98,7 @@ fixture (`tools/smoke_status.py`), roda o `plasmoidviewer` sob `xvfb-run` em pt_
 pílula (`xdotool`) e salva PNGs (`import`). Sai com código != 0 se o log tiver erro de QML do plasmoide (recursive
 rearrange, TypeError, ReferenceError, Unable to assign, is not defined, Binding loop). Não usa a sessão nem dados reais.
 Requer `plasmoidviewer` (plasma-sdk), `xvfb-run`, `xdotool` e ImageMagick; `tests/test_plasmoidviewer_smoke.py` o roda se existirem.
+
+## Licença e marcas
+
+GPL-3.0-or-later (ver `LICENSE`). Claude e Anthropic são marcas da Anthropic PBC; OpenAI e Codex, da OpenAI, Inc.; Gemini e Google, da Google LLC. Este projeto é independente e não tem afiliação nem endosso dessas empresas; os logos só identificam o provedor.
