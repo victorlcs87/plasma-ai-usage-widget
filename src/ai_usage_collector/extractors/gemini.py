@@ -605,7 +605,7 @@ def extract_gemini_status(
             if isinstance(cdata, dict):
                 file_refresh_token = cdata.get("refresh_token")
                 raw_token = cdata.get("access_token")
-                exp = cdata.get("expiry_date")
+                exp = cdata.get("expiry_date") or cdata.get("expiry")
                 if exp:
                     exp_sec = parse_timestamp(exp)
                     if exp_sec is not None and exp_sec < now_sec:
