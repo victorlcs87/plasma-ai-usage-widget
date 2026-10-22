@@ -57,10 +57,19 @@ class FakeHttp:
     def __init__(self, **responses):
         self.responses = responses
         self.calls = {p: 0 for p in PROVIDER_URLS}
+        self.urls: list[str] = []
 
     def __call__(self, req, timeout=None):
         prov = next(p for p, host in PROVIDER_URLS.items() if host in req.full_url)
+        self.urls.append(req.full_url)
         queue = self.responses[prov]
+        if prov == "gemini" and req.full_url.endswith(":retrieveUserQuota") and "gemini_models" in self.responses:
+            queue = self.responses["gemini_models"]  # fila propria do endpoint de cota por modelo
+            resp = queue[min(sum(u.endswith(":retrieveUserQuota") for u in self.urls) - 1, len(queue) - 1)]
+            self.calls[prov] += 1
+            if isinstance(resp, Exception):
+                raise resp
+            return FakeResp(resp)
         resp = queue[min(self.calls[prov], len(queue) - 1)]
         self.calls[prov] += 1
         if isinstance(resp, Exception):
@@ -575,3 +584,56 @@ def test_gemini_network_failure_keeps_last_data_stale(env, tmp_path):
     assert acc["fetched_at"] == T0.isoformat()
     assert acc["native_window"]["usage_percentage"] == 42.0
     assert "no_data" not in acc
+
+
+GEMINI_SUMMARY = {"groups": [{"displayName": "Claude and GPT models", "buckets": [
+    {"bucketId": "3p-5h", "window": "5h", "remainingFraction": 1, "resetTime": "2026-10-20T20:00:00Z"}]}]}
+GEMINI_MODELS = {"buckets": [
+    {"modelId": "gemini-2.5-pro", "remainingFraction": 0.83, "resetTime": "2026-10-20T18:00:00Z"}]}
+
+
+def test_gemini_one_call_per_endpoint_per_query_and_models_reach_highlight(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[GEMINI_MODELS])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    assert sorted(u.rsplit(":", 1)[1] for u in http.urls) == ["retrieveUserQuota", "retrieveUserQuotaSummary"]
+    acc = acc_of(status, "gemini")
+    assert acc["native_window"]["usage_percentage"] == 17.0
+    assert acc["stale"] is False
+
+
+def test_gemini_429_on_first_endpoint_pauses_account_and_skips_second_call(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[http_error(429, "226")], gemini_models=[GEMINI_MODELS])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    assert http.calls["gemini"] == 1
+    acc = acc_of(status, "gemini")
+    assert acc["fetch_error"]["kind"] == "rate_limited" and acc["no_data"] is True
+
+
+def test_gemini_429_on_second_endpoint_pauses_account(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[http_error(429, "226")])
+
+    status = env["run"]("--provider", "gemini", http=http)
+    acc = acc_of(status, "gemini")
+    assert acc["fetch_error"]["kind"] == "rate_limited"
+
+    env["clock"]["now"] = T0 + timedelta(seconds=60)
+    env["run"]("--provider", "gemini", http=http)
+    assert http.calls["gemini"] == 2  # pausada: nenhuma chamada nova
+
+
+def test_gemini_one_endpoint_failing_keeps_the_other_fresh(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[urllib.error.URLError("sem rede")])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    acc = acc_of(status, "gemini")
+    assert acc["stale"] is False and "fetch_error" not in acc
+    assert acc["native_window"]["usage_percentage"] == 0.0

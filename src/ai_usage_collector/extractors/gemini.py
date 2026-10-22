@@ -342,16 +342,9 @@ def sync_gemini_keyring_to_file(keyring_data: dict[str, Any], cred_file: Path) -
         return False
 
 
-def fetch_gemini_quota_api(
-    token: str,
-    timeout: float = 3.0,
-) -> dict[str, Any] | None:
-    """Fetch official quota summary from Google Cloud Code internal API."""
-    if not token:
-        return None
-    url = "https://cloudcode-pa.googleapis.com/v1internal:retrieveUserQuotaSummary"
+def _post_quota(token: str, method: str, timeout: float, valid) -> dict[str, Any] | None:
     req = urllib.request.Request(
-        url,
+        f"https://cloudcode-pa.googleapis.com/v1internal:{method}",
         data=b"{}",
         headers={
             "Authorization": f"Bearer {token}",
@@ -360,8 +353,29 @@ def fetch_gemini_quota_api(
         },
         method="POST",
     )
-    return refresh.fetch_json(
-        "gemini", token, req, timeout, valid=lambda d: any(parse_gemini_quota_buckets(d))
+    return refresh.fetch_json("gemini", token, req, timeout, valid=valid)
+
+
+def fetch_gemini_quota_api(
+    token: str,
+    timeout: float = 3.0,
+) -> dict[str, Any] | None:
+    """Fetch official quota summary (groups with 5h/weekly buckets) from Google Cloud Code internal API."""
+    if not token:
+        return None
+    return _post_quota(token, "retrieveUserQuotaSummary", timeout, lambda d: any(parse_gemini_quota_buckets(d)))
+
+
+def fetch_gemini_model_quota_api(
+    token: str,
+    timeout: float = 3.0,
+) -> dict[str, Any] | None:
+    """Fetch per-model quota (one bucket per model) from Google Cloud Code internal API."""
+    if not token:
+        return None
+    return _post_quota(
+        token, "retrieveUserQuota", timeout,
+        lambda d: any(m["usage_percentage"] is not None for m in parse_gemini_model_quotas(d)),
     )
 
 
@@ -397,15 +411,14 @@ def parse_gemini_quota_buckets(
             group_buckets = group.get("buckets")
             if not isinstance(group_buckets, list):
                 continue
-            is_gemini_group = "gemini" in str(group.get("displayName", "")).lower()
             for b in group_buckets:
                 if not isinstance(b, dict):
                     continue
                 bid = str(b.get("bucketId") or b.get("name") or b.get("id") or "").lower()
                 win = str(b.get("window") or "").lower()
-                if bid == "gemini-5h" or (not bucket_5h and win == "5h" and is_gemini_group):
+                if bid == "gemini-5h" or (not bucket_5h and win == "5h"):
                     bucket_5h = b
-                elif bid == "gemini-weekly" or (not bucket_weekly and win in ("weekly", "7d") and is_gemini_group):
+                elif bid == "gemini-weekly" or (not bucket_weekly and win in ("weekly", "7d")):
                     bucket_weekly = b
 
     # 3. Lists in known wrapper keys
@@ -429,11 +442,10 @@ def parse_gemini_quota_buckets(
 
 
 def parse_gemini_model_quotas(data: Any) -> list[dict[str, Any]]:
-    """Per-model quota entries from the quota summary, one per (model, window).
+    """Per-model quota entries (retrieveUserQuota), one per (model, window).
 
-    ASSUMPTION: the real per-model payload is undocumented. Buckets carrying a model name under
-    "modelId"/"model"/"modelName"/"displayName" are taken as per-model, with the same shape as the
-    aggregate buckets (bucketId/window, remainingFraction, resetTime). Adjust if a real sample differs.
+    Real payload: {"buckets": [{"modelId", "remainingFraction", "resetTime"?, ...}]}, one bucket per
+    model. Groups of the quota summary are not models: they feed the 5h/weekly windows instead.
     usage_percentage is None when remainingFraction is missing, non-finite or outside [0, 1]:
     never a fake 0%.
     """
@@ -443,9 +455,6 @@ def parse_gemini_model_quotas(data: Any) -> list[dict[str, Any]]:
     for key in ("buckets", "quotas", "userQuotas", "quotaSummaries"):
         if isinstance(data.get(key), list):
             buckets += data[key]
-    for group in data.get("groups") if isinstance(data.get("groups"), list) else []:
-        if isinstance(group, dict) and isinstance(group.get("buckets"), list):
-            buckets += group["buckets"]
     out: list[dict[str, Any]] = []
     seen: set[tuple[str, str | None]] = set()
     for b in buckets:
@@ -651,11 +660,12 @@ def extract_gemini_status(
     weekly_api_fields: list[str] = []
 
     # Attempt primary official API usage route
-    api_data = None
-    if token:
-        api_data = fetch_gemini_quota_api(token)
+    # Dois endpoints, uma chamada cada, pelo mesmo tratamento classificado (refresh.fetch_json):
+    # resumo (grupos 5h/semanal) e cota por modelo. Se um falhar, vale o outro; se ambos, sem dados.
+    api_data = fetch_gemini_quota_api(token) if token else None
+    models_data = fetch_gemini_model_quota_api(token) if token else None
 
-    if api_data:
+    if api_data or models_data:
         # Official API responded with success! Mark valid and update message
         health["status"] = "valid"
         health["message"] = "Credencial Gemini ativa detectada via API oficial"
@@ -679,8 +689,17 @@ def extract_gemini_status(
 
         health["metadata"] = metadata
 
-        bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data)
-        model_quotas = parse_gemini_model_quotas(api_data)
+        bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data or {})
+        model_quotas = parse_gemini_model_quotas(api_data) + parse_gemini_model_quotas(models_data)
+        # Janela de Destaque: a mais urgente entre as conhecidas. A cota por modelo so entra na janela
+        # nativa quando for mais usada que o bucket 5h do resumo (senao o 100% livre do grupo
+        # Claude/GPT esconderia os modelos Gemini). Sem liberacao conhecida nao ha janela.
+        # ponytail: urgencia = maior uso; o nivel de alerta (ritmo) e calculado depois, so por janela
+        urgent_model = max(
+            (m for m in parse_gemini_model_quotas(models_data) if m["usage_percentage"] is not None and m["reset_time"]),
+            key=lambda m: m["usage_percentage"],
+            default=None,
+        )
 
         has_5h = bool(bucket_5h) and bucket_5h.get("remainingFraction") is not None
         has_weekly = bool(bucket_weekly) and bucket_weekly.get("remainingFraction") is not None
@@ -708,6 +727,19 @@ def extract_gemini_status(
                 # Bucket duration without a reset: the daily heuristic release would be wrong
                 seconds_remaining = None
                 release_time = None
+
+        if urgent_model and (not has_5h or urgent_model["usage_percentage"] > usage_percentage):
+            usage_percentage = urgent_model["usage_percentage"]
+            rem_m = 1.0 - usage_percentage / 100.0
+            available_capacity = max(0, round(total_capacity * rem_m))
+            used_capacity = total_capacity - available_capacity
+            release_sec = parse_timestamp(urgent_model["reset_time"])
+            seconds_remaining = max(0, int(release_sec - now_sec))
+            release_time = urgent_model["reset_time"]
+            native_source = "api"
+            native_api_fields = ["release"]  # duracao do bucket de modelo nao e informada pela API
+            if not has_5h:
+                native_window_seconds = GEMINI_5H_SECONDS
 
         # Weekly window from official API
         if bucket_weekly and bucket_weekly.get("remainingFraction") is not None:
