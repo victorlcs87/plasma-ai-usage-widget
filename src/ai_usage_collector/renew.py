@@ -7,10 +7,13 @@ Conta e registradas so como classe (`cli_missing`, `timeout`, `failed`), nunca c
 
 from __future__ import annotations
 
+import json
 import os
+import select
 import shutil
 import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any, Callable
 
@@ -34,11 +37,65 @@ def _run(binary: str, args: list[str], env_name: str, profile: Path) -> None:
         raise RuntimeError("exit")
 
 
-# Gancho por provedor: Codex (#59) e Gemini (#60) entram aqui.
+def _codex_refresh(profile: Path) -> None:
+    """Pede ao app-server do Codex (CODEX_HOME = Perfil Isolado) `account/read` com refreshToken.
+
+    Teste real (22/10/2026, copia de perfil com id_token vencido): `codex login status`, `doctor`
+    e `debug models` NAO renovam o token; so o JSON-RPC `account/read {refreshToken: true}` do
+    `codex app-server` renova (reescreve auth.json, sem gastar tokens de modelo). O app-server
+    sai ao fechar o stdin, entao o processo fica aberto ate a resposta (id 2) ou o timeout.
+    """
+    exe = shutil.which("codex")
+    if not exe:
+        raise FileNotFoundError("codex")
+    proc = subprocess.Popen(
+        [exe, "app-server", "--listen", "stdio://"], env={**os.environ, "CODEX_HOME": str(profile)},
+        stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
+    )
+    try:
+        msgs = [
+            {"id": 1, "method": "initialize", "params": {"clientInfo": {"name": "ai-usage-widget", "version": "0"}}},
+            {"method": "initialized"},
+            {"id": 2, "method": "account/read", "params": {"refreshToken": True}},
+        ]
+        proc.stdin.write("".join(json.dumps(m) + "\n" for m in msgs))
+        proc.stdin.flush()
+        deadline = time.monotonic() + TIMEOUT_SECONDS
+        fd, buf = proc.stdout.fileno(), b""  # buffer proprio: select no fd cru nao enxerga o buffer do TextIOWrapper
+        while (left := deadline - time.monotonic()) > 0:
+            if not select.select([fd], [], [], left)[0]:
+                break
+            chunk = os.read(fd, 65536)
+            if not chunk:
+                raise RuntimeError("exit")
+            buf += chunk
+            *lines, buf = buf.split(b"\n")
+            for line in lines:
+                try:
+                    msg = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(msg, dict) and msg.get("id") == 2:
+                    if "error" in msg:
+                        raise RuntimeError("rpc")
+                    return
+        raise subprocess.TimeoutExpired("codex app-server", TIMEOUT_SECONDS)
+    finally:
+        try:
+            proc.stdin.close()  # o app-server sai sozinho; da tempo de terminar a escrita do auth.json
+            proc.wait(timeout=2)
+        except Exception:
+            proc.kill()
+            proc.wait()
+        proc.stdout.close()
+
+
+# Gancho por provedor: Gemini (#60) entra aqui.
 RENEWERS: dict[str, Callable[[Path], None]] = {
     "claude": lambda profile: _run("claude", ["auth", "status"], "CLAUDE_CONFIG_DIR", profile),
+    "codex": _codex_refresh,
 }
-_PROFILE_KEYS = {"claude": "claude_dir"}
+_PROFILE_KEYS = {"claude": "claude_dir", "codex": "codex_dir"}
 
 
 def renew_inactive(
