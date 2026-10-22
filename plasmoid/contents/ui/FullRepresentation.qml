@@ -33,7 +33,9 @@ Item {
         var cm = plasmoidItem && plasmoidItem.compactModel ? plasmoidItem.compactModel : [];
         return hp ? (cm.filter(function (m) { return m.provider === hp; })[0] || null) : null;
     }
-    onHighlightChanged: flick.contentY = 0  // o destaque fica no topo da lista: mostra-o ao abrir
+    // O destaque fica no topo da lista: ao trocar de provedor mostra-o (não ao recalcular o modelo, que preserva a rolagem)
+    readonly property string highlightKey: plasmoidItem ? plasmoidItem.highlightProvider : ""
+    onHighlightKeyChanged: flick.contentY = 0
     readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
     readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
     readonly property bool spinning: refreshing && isOpen && !reducedMotion  // ícone girando: nunca com o widget oculto

@@ -211,6 +211,17 @@ def test_highlight_follows_remaining_unknown_windows_and_absent_cases(tmp_path):
     assert hidden["count"] == 0  # provedor oculto no painel não tem item para clicar: nada destacado
 
 
+def test_model_refresh_keeps_scroll_while_highlight_is_shown(tmp_path):
+    drive = """
+    var fl = named('popupFlick')[0]; fl.contentY = 60; var y0 = fl.contentY
+    logic.statusData = JSON.parse(JSON.stringify(logic.statusData))  // novo status: recalcula compactModel
+    wait(50); obs('kept', [y0 > 0, fl.contentY === y0])
+    logic.highlightProvider = 'claude'; wait(50); obs('reset', fl.contentY)
+    """
+    out = popup(tmp_path, "hlscroll", drive=drive, highlight="codex", size=(460, 300))
+    assert out["kept"] == [True, True] and out["reset"] == 0
+
+
 def collector(cmds, args):
     """Comando do coletor (Collector.js) com este `args`; o caminho configurado (collectorPath) vazio vai como $1."""
     return any(c.startswith("bash -c 'c=") and c.endswith(" _ '' " + args) for c in cmds)
