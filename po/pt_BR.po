@@ -177,35 +177,35 @@ msgstr "Link copiado para a Área de Transferência!"
 msgid "Copy invite link to the clipboard"
 msgstr "Copiar link de convite para a Área de Transferência"
 
-#: contents/ui/CompactRepresentation.qml:108
+#: contents/ui/CompactRepresentation.qml:110
 msgid "AI monitor hidden: no CLI running. Activate to open"
 msgstr "Monitor de IA oculto: nenhuma CLI em execução. Ative para abrir"
 
-#: contents/ui/CompactRepresentation.qml:109
+#: contents/ui/CompactRepresentation.qml:111
 msgid "AI monitor: floating Notch active. Activate to open"
 msgstr "Monitor de IA: Notch flutuante ativo. Ative para abrir"
 
-#: contents/ui/CompactRepresentation.qml:203 contents/ui/NotchModel.js:233
+#: contents/ui/CompactRepresentation.qml:206 contents/ui/NotchModel.js:233
 msgid "Session expired"
 msgstr "Sessão expirada"
 
-#: contents/ui/CompactRepresentation.qml:204 contents/ui/NotchModel.js:234
+#: contents/ui/CompactRepresentation.qml:207 contents/ui/NotchModel.js:234
 msgid "Account not set up"
 msgstr "Conta não configurada"
 
-#: contents/ui/CompactRepresentation.qml:204 contents/ui/NotchModel.js:235
+#: contents/ui/CompactRepresentation.qml:207 contents/ui/NotchModel.js:235
 msgid "Account error"
 msgstr "Erro na conta"
 
-#: contents/ui/CompactRepresentation.qml:218 contents/ui/CompactRepresentation.qml:221
+#: contents/ui/CompactRepresentation.qml:221 contents/ui/CompactRepresentation.qml:224
 msgid "New CLI version available"
 msgstr "Nova versão de CLI disponível"
 
-#: contents/ui/CompactRepresentation.qml:235
+#: contents/ui/CompactRepresentation.qml:238
 msgid "New widget version available"
 msgstr "Nova versão do widget disponível"
 
-#: contents/ui/CompactRepresentation.qml:257 contents/ui/main.qml:150
+#: contents/ui/CompactRepresentation.qml:260 contents/ui/main.qml:150
 msgid "%1 invite available"
 msgid_plural "%1 invites available"
 msgstr[0] "%1 convite disponível"
