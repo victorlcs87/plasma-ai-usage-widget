@@ -81,9 +81,9 @@ function barWidth(unit) { return Math.max(3, Math.round(unit * 0.2)); }
 function barsWidth(unit) { return 2 * barWidth(unit) + 4; }
 
 function size(o, unit, f, ip) {
-    var p = parts(o.style, o.mode), lh = Math.ceil(f * 1.3), box = Math.ceil(f * 1.2), markW = Math.ceil(f);
+    var p = parts(o.style, o.mode), lh = Math.ceil(f * 1.3), box = o.vertical ? Math.ceil(f * 1.2) : unit, markW = Math.ceil(f);
     var aW = 0, aH = 0, n = 0;
-    if (p.head) { aW += box + markW; aH = lh; n++; }  // inicial (círculo da sessão) + marca de nível
+    if (p.head) { aW += box + markW; aH = Math.max(lh, box); n++; }  // logo (círculo da sessão): na altura da unidade; em painel vertical a largura limita, fica no tamanho da fonte + marca de nível
     if (p.graphic) { aW += o.style === "bar" ? barsWidth(unit) : unit; aH = Math.max(aH, unit); n++; }
     aW += Math.max(0, n - 1) * o.gap;
     var pw = adv("100%", f), w, h;

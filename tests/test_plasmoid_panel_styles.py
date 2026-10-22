@@ -111,7 +111,7 @@ def test_styles_keep_contract_level_color_and_non_color_cues():
     for src in (item, bars, compact, (UI_DIR / "PanelStyle.js").read_text(encoding="utf-8")):
         assert "< 70" not in src and "<= 90" not in src and "usage_percentage" not in src  # nunca limiares fixos
     assert "levelColor" in item and "setLineDash" in bars and "elapsed" in bars.lower()
-    assert item.count("Accessible.ignored: true") == 3 and "Loader {" in item  # leitor de tela sem duplicar; só um gráfico
+    assert item.count("Accessible.ignored: true") == 2 and "ProviderLogo {" in item and "Accessible.ignored: true" in (UI_DIR / "ProviderLogo.qml").read_text(encoding="utf-8") and "Loader {" in item  # leitor de tela sem duplicar; só um gráfico
     assert "PanelStyle.barWidth" in bars and "barsWidth" in item  # largura da barra em um lugar só
     assert "setLineDash" in ring and "SessionMark" in ring and "SessionMark" in item
     assert "reducedMotion" in item and "Kirigami.Units.longDuration === 0" in compact

@@ -36,7 +36,7 @@ STUBS = {
                           " Component.onCompleted: Log.sources.push(this) }"}),
 }
 
-FILES = ("FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
+FILES = ("ProviderLogo.qml", "logo-claude.svg", "logo-codex.svg", "logo-gemini.svg", "FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
          "DualRing.qml", "SessionMark.qml", "Presets.js", "I18n.js", "Collector.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """

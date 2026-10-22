@@ -22,7 +22,8 @@ STUBS = {
         "Types.qml": "pragma Singleton\nimport QtQuick\nQtObject { enum FormFactor { Planar = 0, Horizontal = 2, Vertical = 3 } }"}),
 }
 
-COMPACT_FILES = ("CompactRepresentation.qml", "DualRing.qml", "PanelItem.qml", "LevelBars.qml", "SessionMark.qml",
+LOGO_FILES = ("ProviderLogo.qml", "logo-claude.svg", "logo-codex.svg", "logo-gemini.svg")
+COMPACT_FILES = LOGO_FILES + ("CompactRepresentation.qml", "DualRing.qml", "PanelItem.qml", "LevelBars.qml", "SessionMark.qml",
                  "Presets.js", "I18n.js", "Collector.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
@@ -205,7 +206,7 @@ def test_destroying_pill_with_mouse_over_releases_hover(tmp_path):
 def test_session_animations_stop_when_hidden_by_idle(tmp_path):
     """Widget oculto por ociosidade (active: false) ou janela oculta: nenhuma animacao roda."""
     (tmp_path / "imp").mkdir()
-    for f in ("DualRing.qml", "SessionMark.qml", "Presets.js"):
+    for f in LOGO_FILES + ("DualRing.qml", "SessionMark.qml", "Presets.js"):
         shutil.copy(UI_DIR / f, tmp_path / f)
     (tmp_path / "h.qml").write_text("""
 import QtQuick

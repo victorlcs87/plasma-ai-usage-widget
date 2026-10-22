@@ -515,7 +515,7 @@ def test_config_general_qml_combobox_native_breeze_compliance():
 
     # 5. Visual color indicator is maintained safely outside ComboBox layout
     assert "providerIndicator" in content
-    assert "configRoot.getProviderColor(providerComboBox.currentText)" in content
+    assert "provider: (providerComboBox.currentText || \"\").toLowerCase()" in content  # logo do provedor selecionado
 
 
 def test_gui_capture_and_login_shell_injection_resilience(tmp_path: Path):
