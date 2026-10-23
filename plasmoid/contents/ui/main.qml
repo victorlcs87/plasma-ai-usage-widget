@@ -142,6 +142,11 @@ PlasmoidItem {
     }
 
     function getSummaryToolTip() {
+        var base = summaryToolTipBody();
+        return collectorAttention ? I18n.tr("Collector needs attention") + "\n" + base : base;
+    }
+
+    function summaryToolTipBody() {
         if (compactModel.length === 0) {
             return I18n.tr("No provider visible in the panel.");
         }
@@ -218,6 +223,43 @@ PlasmoidItem {
         repeat: true
         running: root.pillHovered && !root.open
         onTriggered: root.now = Date.now()
+    }
+
+    // Instalador do Coletor (ADR-0012), só o estado: `status` roda na partida, ao abrir o popup e quando o cache
+    // falta, no máximo uma vez a cada 30 s, e de hora em hora; nunca no laço de 15 s. O botão de instalar é o ticket 50.
+    property var collectorStatus: null
+    readonly property bool collectorAttention: Collector.needsAttention(collectorStatus)
+    readonly property string widgetVersion: Plasmoid.metaData ? String(Plasmoid.metaData.version || "") : ""
+    property double collectorCheckedAt: 0
+    readonly property string cacheMissingPlain: I18n.tr("Status cache not found. Run the collector.")
+    readonly property string cacheMissingCard: I18n.tr("Status cache not found. See the collector notice.")
+
+    function checkCollector() {
+        var t = Date.now();
+        if (root.widgetVersion === "" || t - root.collectorCheckedAt < 30000) return;
+        root.collectorCheckedAt = t;
+        var script = Collector.scriptPath(Qt.resolvedUrl("../code/collector-installer.py"));
+        statusCheckSource.connectSource(Collector.buildStatusCommand(script, root.widgetVersion, Plasmoid.configuration.collectorPath));
+    }
+
+    Plasma5Support.DataSource {
+        id: statusCheckSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            root.collectorStatus = Collector.parseStatus(data["stdout"] || "", data["exit code"]);
+            // O aviso de cache ausente remete ao card quando o coletor precisa de atenção
+            if (root.lastError === root.cacheMissingPlain || root.lastError === root.cacheMissingCard)
+                root.lastError = root.collectorAttention ? root.cacheMissingCard : root.cacheMissingPlain;
+            disconnectSource(sourceName);
+        }
+    }
+
+    Timer {
+        interval: 3600000
+        repeat: true
+        running: true
+        onTriggered: root.checkCollector()
     }
 
     function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, Plasmoid.configuration.collectorPath); }
@@ -382,7 +424,8 @@ PlasmoidItem {
                 }
             } else {
                 if (exitCode !== 0) {
-                    root.lastError = I18n.tr("Status cache not found. Run the collector.");
+                    root.lastError = root.collectorAttention ? root.cacheMissingCard : root.cacheMissingPlain;
+                    if (root.collectorStatus === null) root.checkCollector();  // estado ainda desconhecido; nunca em laço
                 }
             }
             disconnectSource(sourceName);
@@ -504,6 +547,7 @@ PlasmoidItem {
             hoverOpenTimer.stop();
             hoverCloseTimer.stop();
         }
+        if (root.open) root.checkCollector();
         if (root.open && (Plasmoid.configuration.autoRefreshOnExpand !== false)) {
             root.loadStatus();
         }
@@ -512,6 +556,7 @@ PlasmoidItem {
     Component.onCompleted: {
         if (root.idleWanted) idleDelay.restart();
         if (root.rawIdle !== "") providerIdleDelay.restart();
+        root.checkCollector();
         root.loadStatus();
     }
 
