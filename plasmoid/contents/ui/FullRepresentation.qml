@@ -36,6 +36,19 @@ Item {
     // O destaque fica no topo da lista: ao trocar de provedor mostra-o (não ao recalcular o modelo, que preserva a rolagem)
     readonly property string highlightKey: plasmoidItem ? (plasmoidItem.highlightProvider || "") : ""
     onHighlightKeyChanged: flick.contentY = 0
+    // Instalador do Coletor (ADR-0012): estado do `status` (main.qml); `ok` e desconhecido não mostram card
+    readonly property var collector: plasmoidItem && plasmoidItem.collectorStatus ? plasmoidItem.collectorStatus : null
+    readonly property string collectorState: collector && collector.state !== "ok" ? collector.state : ""
+    readonly property string collectorTitle: {
+        var c = collector, inst = c && c.installed ? c.installed : I18n.tr("unknown");
+        return collectorState === "ausente" ? I18n.tr("Collector not installed")
+            : collectorState === "desatualizado" ? I18n.tr("Collector is older than the widget: %1 installed, %2 required", inst, c.required)
+            : collectorState === "python_indisponivel" ? I18n.tr("Python 3 is not available")
+            : collectorState === "mais_novo" ? I18n.tr("Collector is newer than the widget: %1 installed, %2 required. No action needed.", inst, c.required) : "";
+    }
+    readonly property string collectorBody: collectorState === "ausente" ? I18n.tr("The widget needs the collector to read your usage data. Until it is installed, no data is shown.")
+        : collectorState === "desatualizado" ? I18n.tr("The widget may not work correctly until the collector is updated.")
+        : collectorState === "python_indisponivel" ? I18n.tr("Install Python 3 with venv support (on Arch: sudo pacman -S python; on Debian/Ubuntu: sudo apt install python3-venv).") : ""
     readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
     readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
     readonly property bool spinning: refreshing && isOpen && !reducedMotion  // ícone girando: nunca com o widget oculto
@@ -319,6 +332,71 @@ Item {
                 color: Presets.ui.fg
                 wrapMode: Text.Wrap
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
+            }
+        }
+
+        // Coletor ausente, antigo, sem Python ou mais novo (ticket 49). Só informa: instalar/atualizar é o ticket 50.
+        Rectangle {
+            objectName: "collectorCard"
+            visible: fullRoot.collectorState !== ""
+            Layout.fillWidth: true
+            implicitHeight: collectorCol.implicitHeight + Kirigami.Units.smallSpacing * 3
+            radius: 6
+            color: Presets.ui.card
+            border.color: fullRoot.collectorState === "mais_novo" ? Presets.neutral : Presets.warning
+            border.width: 1
+            Accessible.role: Accessible.Grouping
+            Accessible.name: fullRoot.collectorTitle
+            Accessible.description: fullRoot.collectorBody + (fullRoot.collector && fullRoot.collector.message ? " " + I18n.tr("Details: %1", fullRoot.collector.message) : "")
+
+            ColumnLayout {
+                id: collectorCol
+                anchors.fill: parent
+                anchors.margins: Kirigami.Units.smallSpacing * 1.5
+                spacing: Kirigami.Units.smallSpacing
+
+                QQC2.Label {
+                    objectName: "collectorTitle"
+                    Accessible.ignored: true
+                    Layout.fillWidth: true
+                    // forma além da cor: "!" para ação necessária, "i" para o aviso informativo
+                    text: (fullRoot.collectorState === "mais_novo" ? "ⓘ " : "⚠ ") + fullRoot.collectorTitle
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.bold: true
+                    color: Presets.ui.fg
+                }
+                QQC2.Label {
+                    objectName: "collectorBody"
+                    visible: text !== ""
+                    Accessible.ignored: true
+                    Layout.fillWidth: true
+                    text: fullRoot.collectorBody
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Presets.ui.fg
+                }
+                // Texto do instalador (message do JSON): sempre texto puro
+                QQC2.Label {
+                    objectName: "collectorMessage"
+                    visible: text !== ""
+                    Accessible.ignored: true
+                    Layout.fillWidth: true
+                    text: fullRoot.collector && fullRoot.collector.message ? I18n.tr("Details: %1", fullRoot.collector.message) : ""
+                    textFormat: Text.PlainText
+                    wrapMode: Text.Wrap
+                    font.pointSize: Kirigami.Theme.smallFont.pointSize
+                    color: Presets.ui.muted
+                }
+                // PONTO DE EXTENSÃO do ticket 50: o botão Instalar/Atualizar (com a confirmação) entra nesta linha,
+                // só para ausente/desatualizado. Reservada vazia; python_indisponivel e mais_novo nunca têm ação.
+                RowLayout {
+                    objectName: "collectorActions"
+                    visible: fullRoot.collectorState === "ausente" || fullRoot.collectorState === "desatualizado"
+                    Layout.fillWidth: true
+                    Layout.preferredHeight: Kirigami.Units.smallSpacing
+                }
             }
         }
 

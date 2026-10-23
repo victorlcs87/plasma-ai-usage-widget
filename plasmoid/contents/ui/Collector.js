@@ -36,3 +36,30 @@ function buildSessionCommand(collectorPath) {
            "elif [ -n \"$c\" ] && [ -x \"$c\" ]; then \"$c\" --session-state; " +
            "else python3 -m ai_usage_collector --session-state; fi' _ " + shellQuote(collectorPath || "");
 }
+
+// Estado do Instalador do Coletor (ticket 49): `collector-installer.py status` imprime uma linha JSON (ADR-0012).
+// Só mostra e valida; nada aqui instala. O script roda com o python3 do sistema; sem ele o shell devolve 127.
+var COLLECTOR_STATES = ["ausente", "desatualizado", "ok", "mais_novo", "python_indisponivel"];
+
+// scriptUrl: Qt.resolvedUrl(...) do script empacotado (funciona instalado e em diretório com espaço/acento)
+function scriptPath(scriptUrl) { return decodeURIComponent(String(scriptUrl).replace(/^file:\/\//, "")); }
+
+function buildStatusCommand(scriptFile, required, collectorPath) {
+    return "python3 " + shellQuote(scriptFile) + " status --required " + shellQuote(required) +
+           " --collector-path " + shellQuote(collectorPath || "");
+}
+
+// Saída do status -> {state, installed, required, message} ou null (vazia, inválida ou estado desconhecido: sem card)
+function parseStatus(stdout, exitCode) {
+    if (exitCode === 127) return { state: "python_indisponivel", installed: "", required: "", message: "" };
+    var o;
+    try { o = JSON.parse(stdout); } catch (e) { return null; }
+    if (!o || typeof o !== "object" || COLLECTOR_STATES.indexOf(o.state) < 0) return null;
+    var str = function (v) { return v === null || v === undefined ? "" : String(v); };
+    return { state: o.state, installed: str(o.installed), required: str(o.required), message: str(o.message) };
+}
+
+// Precisa de ação do usuário (marcador no painel/Notch); `mais_novo` é só aviso no popup
+function needsAttention(st) {
+    return !!st && (st.state === "ausente" || st.state === "desatualizado" || st.state === "python_indisponivel");
+}

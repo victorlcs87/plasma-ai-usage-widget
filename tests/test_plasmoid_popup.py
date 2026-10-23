@@ -48,6 +48,7 @@ import org.kde.plasma.plasma5support
 import org.kde.kirigami as Kirigami
 import "NotchModel.js" as NotchModel
 import "I18n.js" as I18n
+import "Collector.js" as Collector
 Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
   Item { id: logic
     property var statusData: %(data)s
@@ -63,6 +64,7 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     property var sessionOverlay: %(overlay)s
     property string highlightProvider: %(hl)s
     property var compactModel: NotchModel.buildModel(statusData, {providerOrder: "claude,codex,gemini", hiddenProviders: "%(hidden)s", remaining: false}, I18n.tr, Date.now())
+    property var collectorStatus: null
     property var calls: []
     function setPopupHovered(h) { calls.push("popupHover:" + h) }
     function closePopup() { calls.push("close") }
