@@ -7,13 +7,21 @@ Conta e registradas so como classe (`cli_missing`, `timeout`, `failed`), nunca c
 
 from __future__ import annotations
 
+import base64
 import json
+import mmap
 import os
+import re
 import select
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
+import urllib.error
+import urllib.parse
+import urllib.request
+from datetime import timedelta
 from pathlib import Path
 from typing import Any, Callable
 
@@ -90,12 +98,154 @@ def _codex_refresh(profile: Path) -> None:
         proc.stdout.close()
 
 
-# Gancho por provedor: Gemini (#60) entra aqui.
+class RenewError(Exception):
+    """Falha de renovacao ja classificada; `code` e a unica coisa que vai para o estado e o stderr."""
+
+    def __init__(self, code: str):
+        super().__init__(code)
+        self.code = code
+
+
+# --- Gemini (Spec 08, ticket 60) -------------------------------------------------------------
+# Renova o access_token da Conta inativa com o refresh_token da copia isolada (POST
+# grant_type=refresh_token). O client_id vem do `aud` do id_token das proprias credenciais. O Google
+# exige client_secret do MESMO app OAuth; o das credenciais e o da Antigravity. Em vez de embutir o
+# segredo no repositorio (app de terceiro, repositorio publico), ele e lido EM TEMPO DE EXECUCAO do
+# binario da Antigravity instalado na maquina do usuario: candidatos `GOCSPX-` + 28 caracteres, o
+# par certo e o que o Google aceita (invalid_client -> proximo candidato). O segredo fica so em
+# memoria durante a chamada: nunca em log, erro, estado, status.json nem argumento de processo.
+GOOGLE_TOKEN_URL = "https://oauth2.googleapis.com/token"
+HTTP_TIMEOUT_SECONDS = 10
+MAX_SECRET_CANDIDATES = 8
+_CLIENT_ID_RE = re.compile(r"[0-9]+-[a-z0-9]+\.apps\.googleusercontent\.com")
+_SECRET_RE = re.compile(rb"GOCSPX-[A-Za-z0-9_-]{28}")
+
+
+def _agy_binary() -> Path:
+    exe = shutil.which("agy") or "~/.local/bin/agy"  # testes substituem
+    path = Path(exe).expanduser().resolve()
+    if not path.is_file():
+        raise RenewError("binary_missing")
+    return path
+
+
+def _client_id_from(creds: dict[str, Any]) -> str:
+    try:
+        payload = str(creds["id_token"]).split(".")[1]
+        aud = json.loads(base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4)))["aud"]
+    except Exception:
+        raise RenewError("client_id_missing") from None
+    if not isinstance(aud, str) or not _CLIENT_ID_RE.fullmatch(aud):
+        raise RenewError("client_id_missing")
+    return aud
+
+
+def _secret_candidates(binary: Path, client_id: str) -> list[str]:
+    """Ate MAX_SECRET_CANDIDATES segredos candidatos do binario, se ele contem o client_id."""
+    try:
+        with open(binary, "rb") as f, mmap.mmap(f.fileno(), 0, access=mmap.ACCESS_READ) as mm:
+            if mm.find(client_id.encode()) < 0:
+                raise RenewError("client_id_not_in_binary")
+            found: dict[str, None] = {}
+            for m in _SECRET_RE.finditer(mm):
+                found[m.group().decode()] = None
+                if len(found) >= MAX_SECRET_CANDIDATES:
+                    break
+    except RenewError:
+        raise
+    except (OSError, ValueError):  # ValueError: arquivo vazio nao pode ser mapeado
+        raise RenewError("binary_unreadable") from None
+    if not found:
+        raise RenewError("no_secret_candidates")
+    return list(found)
+
+
+def _post_refresh(client_id: str, secret: str, refresh_token: str) -> dict[str, Any]:
+    """Um POST de renovacao. Devolve a resposta; erro vira RenewError (invalid_client = tentar outro)."""
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token", "refresh_token": refresh_token,
+        "client_id": client_id, "client_secret": secret,
+    }).encode()
+    req = urllib.request.Request(GOOGLE_TOKEN_URL, data=body, method="POST", headers={
+        "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
+    try:
+        with refresh.NO_REDIRECT_OPENER.open(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
+            data = json.loads(resp.read())
+    except urllib.error.HTTPError as exc:
+        try:
+            err = json.loads(exc.read(100_000)).get("error")
+        except Exception:
+            err = None
+        if err == "invalid_grant":
+            raise RenewError("revoked") from None
+        if err == "invalid_client" or exc.code == 401:
+            raise RenewError("invalid_client") from None
+        raise RenewError("failed") from None
+    except (urllib.error.URLError, OSError, TimeoutError):
+        raise RenewError("network") from None
+    except ValueError:
+        raise RenewError("invalid_response") from None
+    token, ttl = (data.get("access_token"), data.get("expires_in")) if isinstance(data, dict) else (None, None)
+    if not isinstance(token, str) or not token or isinstance(ttl, bool) or not isinstance(ttl, (int, float)) or ttl <= 0:
+        raise RenewError("invalid_response")
+    return data
+
+
+def _write_private_atomic(path: Path, data: dict[str, Any]) -> None:
+    """Temporario 0600 no mesmo diretorio + os.replace. Nao segue symlink: o alvo e sempre o arquivo do perfil."""
+    fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".oauth_", suffix=".tmp")  # mkstemp ja cria 0600
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+            f.write("\n")
+        os.chmod(tmp, 0o600)
+        os.replace(tmp, path)
+    except Exception:
+        Path(tmp).unlink(missing_ok=True)
+        raise
+
+
+def _gemini_refresh(profile: Path) -> None:
+    cred = profile / "oauth_creds.json"
+    if cred.is_symlink():
+        raise RenewError("failed")  # nunca escrever por um link para fora do Perfil Isolado
+    try:
+        creds = json.loads(cred.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        raise RenewError("failed") from None
+    refresh_token = creds.get("refresh_token") if isinstance(creds, dict) else None
+    if not isinstance(refresh_token, str) or not refresh_token:
+        raise RenewError("revoked")
+    client_id = _client_id_from(creds)
+    candidates = _secret_candidates(_agy_binary(), client_id)
+    for secret in candidates:
+        try:
+            data = _post_refresh(client_id, secret, refresh_token)
+            break
+        except RenewError as exc:
+            if exc.code != "invalid_client":
+                raise
+    else:
+        raise RenewError("no_valid_secret")
+    del candidates, secret
+    expires_in = int(data["expires_in"])
+    creds["access_token"] = data["access_token"]
+    creds["expires_in"] = expires_in
+    creds["expiry"] = (refresh.utcnow() + timedelta(seconds=expires_in)).isoformat()
+    creds.pop("expiry_date", None)  # leitores preferem expiry_date (ms); o antigo faria o token novo parecer vencido
+    for key in ("id_token", "refresh_token", "token_type"):  # refresh_token so se o Google rotacionar
+        if isinstance(data.get(key), str) and data[key]:
+            creds[key] = data[key]
+    _write_private_atomic(cred, creds)
+
+
+# Gancho por provedor
 RENEWERS: dict[str, Callable[[Path], None]] = {
     "claude": lambda profile: _run("claude", ["auth", "status"], "CLAUDE_CONFIG_DIR", profile),
     "codex": _codex_refresh,
+    "gemini": _gemini_refresh,
 }
-_PROFILE_KEYS = {"claude": "claude_dir", "codex": "codex_dir"}
+_PROFILE_KEYS = {"claude": "claude_dir", "codex": "codex_dir", "gemini": "gemini_dir"}
 
 
 def renew_inactive(
@@ -117,6 +267,8 @@ def renew_inactive(
     error = None
     try:
         renewer(profile)
+    except RenewError as exc:
+        error = exc.code
     except FileNotFoundError:
         error = "cli_missing"
     except subprocess.TimeoutExpired:
