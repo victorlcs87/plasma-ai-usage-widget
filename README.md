@@ -45,6 +45,18 @@ coletor** (Configuração > Geral; `collectorPath` em `main.xml`, vazio por padr
 - **Perfis Órfãos** (Perfis Isolados sem Conta): `--list-orphans` lista em JSON, `--reimport-orphan PROVEDOR PERFIL` reimporta como Conta (funde se a identidade já existir) e `--delete-orphan PROVEDOR PERFIL --confirm` exclui do disco. Nada é apagado sem `--confirm`.
 - **Opções `--set-*`** (as mesmas que a tela de configuração aplica): `--set-provider-config PROVEDOR` (`--credential-path`, e no Claude `--api-base-url`, `--api-key-stdin`, `--clear-api-key`), `--set-alert-config` (`--alert-mode pace|threshold`, `--alert-warning`, `--alert-critical`), `--set-notify-config` (`--notify-warning`, `--notify-critical`, `--notify-early`, `--notify-reset`, `--notify-mute`), `--set-update-config` (`--update-check on|off`) e `--set-visibility-config` (`--hide-when-not-running off|widget|provider`).
 
+## Renovação automática das Contas inativas
+
+A cada Intervalo de Atualização o coletor renova, antes de consultar o uso, as Contas **inativas** com login vencido. Só mexe no Perfil Isolado da Conta (`profiles/`); a Conta Ativa no Sistema nunca é renovada pelo coletor. No máximo uma tentativa por Conta por intervalo.
+
+- **Claude:** `claude auth status` com o perfil da Conta.
+- **Codex:** `codex app-server` (`account/read` com renovação do token), sem gastar tokens de modelo.
+- **Gemini:** renovação do token no Google. O segredo do app OAuth é lido do binário `agy` (Antigravity) instalado, nunca vem no repositório.
+
+Requisitos: Plasma aberto, `claude` e `codex` no `PATH` e `agy` instalado para o Gemini. Limites: o refresh token vale cerca de 30 dias; a Conta Ativa depende do uso da própria CLI. Tokens e saída das CLIs não vão para log nem para o `status.json`; só a classe do erro.
+
+O card da Conta explica o estado: renovação pendente (nova tentativa na próxima consulta), login revogado, CLI ou `agy` não encontrado, tempo esgotado, rede indisponível ou falha genérica. Nos casos sem solução automática, faça login no provedor com a Conta. Riscos e decisões: `docs/adr/0013-renovacao-de-conta-inativa.md`.
+
 ## Credencial do Gemini
 
 A captura (`--capture-current gemini`) procura a sessão ativa nesta ordem: chaveiro (`secret-tool`, serviço `gemini`, usuário `antigravity`), `~/.gemini/oauth_creds.json` e `~/.gemini/antigravity-cli/antigravity-oauth-token` (CLI Antigravity, formato aninhado em `token`). `GEMINI_CONFIG_DIR` troca `~/.gemini`. Esses arquivos e o chaveiro são só lidos na captura; a cópia fica isolada em `profiles/` com permissão 0600.
