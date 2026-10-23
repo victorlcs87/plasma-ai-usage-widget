@@ -5,7 +5,7 @@ from test_plasmoid_popup import acct, fixture, popup, pytestmark  # noqa: F401
 
 CASES = [
     (None, "token expired; automatic renewal will be retried"),
-    ({"error": None, "at": "2026-10-20T15:00:00+00:00"}, "token expired; automatic renewal will be retried"),
+    ({"error": None, "at": "2026-10-20T15:00:00+00:00"}, "renewal ran, but the provider still refuses the token"),
     ({"error": "revoked"}, "login revoked at the provider"),
     ({"error": "cli_missing"}, "automatic renewal failed (the provider CLI was not found)"),
     ({"error": "binary_missing"}, "automatic renewal failed (the Antigravity binary was not found)"),

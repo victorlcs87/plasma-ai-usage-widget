@@ -12,7 +12,7 @@ from io import BytesIO
 import pytest
 
 from ai_usage_collector import renew
-from test_refresh import API_OK, T0, FakeHttp, FakeResp, acc_of, configure, env, make_profile  # noqa: F401
+from test_refresh import API_OK, T0, FakeHttp, FakeResp, acc_of, configure, env, make_expired_profile, make_profile  # noqa: F401
 
 REAL_RENEWERS = dict(renew.RENEWERS)
 CLIENT_ID = "1071006060591-fakeclient123.apps.googleusercontent.com"
@@ -27,7 +27,7 @@ def _id_token(aud=CLIENT_ID):
 
 
 def _profile(tmp_path, name="g", aud=CLIENT_ID):
-    prof = make_profile(tmp_path, "gemini", name)
+    prof = make_expired_profile(tmp_path, "gemini", name)
     creds = {
         "access_token": OLD_ACCESS, "refresh_token": OLD_REFRESH, "id_token": _id_token(aud),
         "token_type": "Bearer", "auth_method": "consumer", "expires_in": 3599,

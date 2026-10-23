@@ -36,7 +36,7 @@ class FakeResp:
     def __init__(self, body):
         self._body = json.dumps(body).encode()
 
-    def read(self):
+    def read(self, amt=-1):
         return self._body
 
     def __enter__(self):
@@ -77,22 +77,35 @@ class FakeHttp:
         return FakeResp(resp)
 
 
-def make_profile(tmp_path, provider, name, token="tok-1"):
-    """Perfil isolado sem historico local, com credencial valida."""
+def make_profile(tmp_path, provider, name, token="tok-1", expired=False, ident=None):
+    """Perfil isolado sem historico local, com credencial valida (ou vencida ha 40 h com `expired`).
+
+    `ident` grava a Identidade da Conta (uuid no Claude, account_id no Codex, email no Gemini)."""
     d = tmp_path / "profiles" / provider / name
     d.mkdir(parents=True)
-    future = (T0 + timedelta(days=5))
+    # `expired`: True = venceu ha 40 h; timedelta = validade relativa a T0 (ex.: +30 min = vence antes do proximo Intervalo)
+    exp = T0 + (expired if isinstance(expired, timedelta) else -timedelta(hours=40)) if expired else T0 + timedelta(days=5)
     if provider == "claude":
         cred = d / ".credentials.json"
-        cred.write_text(json.dumps({"claudeAiOauth": {"accessToken": token, "expiresAt": future.isoformat()}}))
+        cred.write_text(json.dumps({"claudeAiOauth": {"accessToken": token, "expiresAt": exp.isoformat()}}))
+        if ident:
+            (d / ".claude.json").write_text(json.dumps({"oauthAccount": {"accountUuid": ident}}))
         return {"id": name, "label": name, "claude_dir": str(d), "credential_path": str(cred)}
     if provider == "codex":
         cred = d / "auth.json"
-        cred.write_text(json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": token, "account_id": "acc"}}))
+        tokens = {"access_token": token, "account_id": ident or "acc"}
+        cred.write_text(json.dumps({"auth_mode": "chatgpt", "tokens": tokens}))
         return {"id": name, "label": name, "codex_dir": str(d), "credential_path": str(cred)}
     cred = d / "oauth_creds.json"
-    cred.write_text(json.dumps({"access_token": token, "refresh_token": "r", "expiry_date": int(future.timestamp() * 1000)}))
+    data = {"access_token": token, "refresh_token": "r", "expiry_date": int(exp.timestamp() * 1000)}
+    if ident:
+        data["email"] = ident
+    cred.write_text(json.dumps(data))
     return {"id": name, "label": name, "gemini_dir": str(d), "credential_path": str(cred)}
+
+
+def make_expired_profile(tmp_path, provider, name, **kw):
+    return make_profile(tmp_path, provider, name, expired=True, **kw)
 
 
 @pytest.fixture

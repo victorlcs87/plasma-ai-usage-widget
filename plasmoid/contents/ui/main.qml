@@ -277,13 +277,14 @@ PlasmoidItem {
         return Math.max(3600, Plasmoid.configuration[key] || 3600);
     }
 
-    function runCollectorRefresh(dueProviders) {
+    function runCollectorRefresh(dueProviders, forceRenew) {
         if (root.isRefreshing) return;
         var now = Date.now();
         var targets = dueProviders || root.providers;
         for (var i = 0; i < targets.length; i++) root.lastProviderRefresh[targets[i]] = now;
 
         var args = Collector.shellQuote("--refresh");
+        if (forceRenew) args += " " + Collector.shellQuote("--force-renew");
         if (dueProviders) args += " " + Collector.shellQuote("--provider") + " " + Collector.shellQuote(dueProviders.join(","));
         for (var j = 0; j < root.providers.length; j++) {
             var p = root.providers[j];
@@ -294,9 +295,10 @@ PlasmoidItem {
         collectorDataSource.connectSource(buildCollectorCommand(args));
     }
 
-    // "Atualizar agora": ignora o intervalo de todos os provedores
+    // "Atualizar agora": ignora o intervalo de todos os provedores e força a renovação das Contas vencidas
+    // (o agendador de 15 s nunca envia --force-renew)
     function refreshCollector() {
-        runCollectorRefresh(null);
+        runCollectorRefresh(null, true);
     }
 
     Timer {

@@ -938,7 +938,7 @@ def test_combined_real_fixtures_highlight_reflects_gemini_models(tmp_path):
     assert nw["usage_percentage"] == 22.4
     assert nw["release_time"] == "2026-10-23T02:32:02+00:00"
     assert nw["source"] == "api" and nw["api_fields"] == ["release"]  # duracao do modelo nao vem da API
-    assert nw["window_seconds"] == 18000
+    assert nw["window_seconds"] is None and nw["type"] == "custom"  # duracao do bucket do modelo e desconhecida
     assert ww["usage_percentage"] == 0.0 and ww["source"] == "api"
     assert res["health"]["status"] == "valid"
 
@@ -1017,3 +1017,19 @@ def test_fetch_gemini_model_quota_api_calls_retrieve_user_quota():
     req = mock_urlopen.call_args[0][0]
     assert req.full_url.endswith("/v1internal:retrieveUserQuota")
     assert req.data == b"{}" and req.get_header("Authorization") == "Bearer tok"
+
+
+def test_expired_model_bucket_is_ignored_for_the_window_but_kept_in_details(tmp_path):
+    late = _NOW_REAL + timedelta(days=3)  # o resetTime dos modelos (23/10) ja venceu
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"), now=late)
+    assert res["native_window"]["usage_percentage"] != 22.4
+    assert res["usage_details"]["quota_by_model"]
+
+
+def test_model_bucket_over_5h_summary_has_unknown_duration(tmp_path):
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
+    assert res["native_window"]["window_seconds"] is None

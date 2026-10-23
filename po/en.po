@@ -72,136 +72,140 @@ msgid "%1: login expired at the provider. Log in at the provider with this accou
 msgstr "%1: login expired at the provider. Log in at the provider with this account."
 
 #: contents/ui/AccountCard.qml:161
+msgid "%1: renewal ran, but the provider still refuses the token. Log in at the provider with this account to reactivate it."
+msgstr "%1: renewal ran, but the provider still refuses the token. Log in at the provider with this account to reactivate it."
+
+#: contents/ui/AccountCard.qml:162
 msgid "%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account."
 msgstr "%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account."
 
-#: contents/ui/AccountCard.qml:163
+#: contents/ui/AccountCard.qml:164
 msgid "%1: login revoked at the provider. Log in at the provider with this account to reactivate it."
 msgstr "%1: login revoked at the provider. Log in at the provider with this account to reactivate it."
 
-#: contents/ui/AccountCard.qml:164
+#: contents/ui/AccountCard.qml:165
 msgid "%1: automatic renewal failed (the provider CLI was not found). Log in at the provider with this account to reactivate it."
 msgstr "%1: automatic renewal failed (the provider CLI was not found). Log in at the provider with this account to reactivate it."
 
-#: contents/ui/AccountCard.qml:165
+#: contents/ui/AccountCard.qml:166
 msgid "%1: automatic renewal failed (the Antigravity binary was not found). Log in at the provider with this account to reactivate it."
 msgstr "%1: automatic renewal failed (the Antigravity binary was not found). Log in at the provider with this account to reactivate it."
 
-#: contents/ui/AccountCard.qml:166
+#: contents/ui/AccountCard.qml:167
 msgid "%1: automatic renewal failed (timed out). It will be retried at the next check; to reactivate it now, log in at the provider with this account."
 msgstr "%1: automatic renewal failed (timed out). It will be retried at the next check; to reactivate it now, log in at the provider with this account."
 
-#: contents/ui/AccountCard.qml:167
+#: contents/ui/AccountCard.qml:168
 msgid "%1: automatic renewal failed (network error). It will be retried at the next check; to reactivate it now, log in at the provider with this account."
 msgstr "%1: automatic renewal failed (network error). It will be retried at the next check; to reactivate it now, log in at the provider with this account."
 
-#: contents/ui/AccountCard.qml:168
+#: contents/ui/AccountCard.qml:169
 msgid "%1: automatic renewal failed. Log in at the provider with this account to reactivate it."
 msgstr "%1: automatic renewal failed. Log in at the provider with this account to reactivate it."
 
-#: contents/ui/AccountCard.qml:176
+#: contents/ui/AccountCard.qml:177
 msgid "Provider rate limit reached (HTTP 429); waiting for the requested pause."
 msgstr "Provider rate limit reached (HTTP 429); waiting for the requested pause."
 
-#: contents/ui/AccountCard.qml:178
+#: contents/ui/AccountCard.qml:179
 msgid "Failed to query the provider (network unavailable)."
 msgstr "Failed to query the provider (network unavailable)."
 
-#: contents/ui/AccountCard.qml:179
+#: contents/ui/AccountCard.qml:180
 msgid "The provider answered without the expected usage data."
 msgstr "The provider answered without the expected usage data."
 
-#: contents/ui/AccountCard.qml:187 contents/ui/configGeneral.qml:1869
+#: contents/ui/AccountCard.qml:188 contents/ui/configGeneral.qml:1869
 msgid "Valid"
 msgstr "Valid"
 
-#: contents/ui/AccountCard.qml:188 contents/ui/configGeneral.qml:1870
+#: contents/ui/AccountCard.qml:189 contents/ui/configGeneral.qml:1870
 msgid "Expired"
 msgstr "Expired"
 
-#: contents/ui/AccountCard.qml:189 contents/ui/configGeneral.qml:1871
+#: contents/ui/AccountCard.qml:190 contents/ui/configGeneral.qml:1871
 msgid "Not set up"
 msgstr "Not set up"
 
-#: contents/ui/AccountCard.qml:190
+#: contents/ui/AccountCard.qml:191
 msgid "Error"
 msgstr "Error"
 
-#: contents/ui/AccountCard.qml:203
+#: contents/ui/AccountCard.qml:204
 msgid "No data from the provider"
 msgstr "No data from the provider"
 
-#: contents/ui/AccountCard.qml:205
+#: contents/ui/AccountCard.qml:206
 msgid "Data from %1"
 msgstr "Data from %1"
 
-#: contents/ui/AccountCard.qml:207
+#: contents/ui/AccountCard.qml:208
 msgid "Next check at %1"
 msgstr "Next check at %1"
 
-#: contents/ui/AccountCard.qml:266
+#: contents/ui/AccountCard.qml:267
 msgid "Activating..."
 msgstr "Activating..."
 
-#: contents/ui/AccountCard.qml:266
+#: contents/ui/AccountCard.qml:267
 msgid "⚡ Activate on System"
 msgstr "⚡ Activate on System"
 
-#: contents/ui/AccountCard.qml:268
+#: contents/ui/AccountCard.qml:269
 msgid "Activate %1 on the system"
 msgstr "Activate %1 on the system"
 
-#: contents/ui/AccountCard.qml:270
+#: contents/ui/AccountCard.qml:271
 msgid "Activating account on the system..."
 msgstr "Activating account on the system..."
 
-#: contents/ui/AccountCard.qml:271
+#: contents/ui/AccountCard.qml:272
 msgid "Activate this account as the default profile for the system CLI"
 msgstr "Activate this account as the default profile for the system CLI"
 
-#: contents/ui/AccountCard.qml:286 contents/ui/AccountCard.qml:299
+#: contents/ui/AccountCard.qml:287 contents/ui/AccountCard.qml:300
 msgid "This account is set as the active account on the system."
 msgstr "This account is set as the active account on the system."
 
-#: contents/ui/AccountCard.qml:292
+#: contents/ui/AccountCard.qml:293
 msgid "✓ Active in the CLI"
 msgstr "✓ Active in the CLI"
 
-#: contents/ui/AccountCard.qml:310
+#: contents/ui/AccountCard.qml:311
 msgid "Account health: %1"
 msgstr "Account health: %1"
 
-#: contents/ui/AccountCard.qml:392
+#: contents/ui/AccountCard.qml:393
 msgid "History and details"
 msgstr "History and details"
 
-#: contents/ui/AccountCard.qml:393
+#: contents/ui/AccountCard.qml:394
 msgid "History and details for %1"
 msgstr "History and details for %1"
 
-#: contents/ui/AccountCard.qml:430
+#: contents/ui/AccountCard.qml:431
 msgid "%1 free trial invite available"
 msgid_plural "%1 free trial invites available"
 msgstr[0] "%1 free trial invite available"
 msgstr[1] "%1 free trial invites available"
 
-#: contents/ui/AccountCard.qml:437
+#: contents/ui/AccountCard.qml:438
 msgid "Copied!"
 msgstr "Copied!"
 
-#: contents/ui/AccountCard.qml:437
+#: contents/ui/AccountCard.qml:438
 msgid "Copy Link"
 msgstr "Copy Link"
 
-#: contents/ui/AccountCard.qml:438
+#: contents/ui/AccountCard.qml:439
 msgid "Copy invite link for %1"
 msgstr "Copy invite link for %1"
 
-#: contents/ui/AccountCard.qml:441
+#: contents/ui/AccountCard.qml:442
 msgid "Link copied to the clipboard!"
 msgstr "Link copied to the clipboard!"
 
-#: contents/ui/AccountCard.qml:442
+#: contents/ui/AccountCard.qml:443
 msgid "Copy invite link to the clipboard"
 msgstr "Copy invite link to the clipboard"
 
@@ -1441,10 +1445,10 @@ msgstr "Error running the collector: %1"
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr "The collector did not respond within 120 s; retrying on the next cycle."
 
-#: contents/ui/main.qml:379
+#: contents/ui/main.qml:381
 msgid "Error reading status JSON: %1"
 msgstr "Error reading status JSON: %1"
 
-#: contents/ui/main.qml:383
+#: contents/ui/main.qml:385
 msgid "Status cache not found. Run the collector."
 msgstr "Status cache not found. Run the collector."

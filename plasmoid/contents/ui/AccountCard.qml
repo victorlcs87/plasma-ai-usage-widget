@@ -158,6 +158,7 @@ Rectangle {
         var name = cardRoot.accountName;
         var code = renewal ? renewal.error : null;
         if (cardRoot.isActive) return I18n.tr("%1: login expired at the provider. Log in at the provider with this account.", name);  // a ativa não é renovada pelo coletor
+        if (!code && renewal && renewal.at) return I18n.tr("%1: renewal ran, but the provider still refuses the token. Log in at the provider with this account to reactivate it.", name);
         if (!code) return I18n.tr("%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account.", name);
         switch (code) {
         case "revoked": return I18n.tr("%1: login revoked at the provider. Log in at the provider with this account to reactivate it.", name);
