@@ -65,10 +65,13 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     property string highlightProvider: %(hl)s
     property var compactModel: NotchModel.buildModel(statusData, {providerOrder: "claude,codex,gemini", hiddenProviders: "%(hidden)s", remaining: false}, I18n.tr, Date.now())
     property var collectorStatus: null
+    property var collectorInstall: ({state: "idle"})
+    property string widgetVersion: "1.2.0"
     property var calls: []
     function setPopupHovered(h) { calls.push("popupHover:" + h) }
     function closePopup() { calls.push("close") }
     function refreshCollector() { calls.push("refresh") }
+    function installCollector() { calls.push("install") }
     function loadStatus() { calls.push("load") }
   }
   FullRepresentation { id: f; plasmoidItem: logic; anchors.fill: parent }
