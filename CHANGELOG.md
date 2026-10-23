@@ -8,6 +8,10 @@
 - Intervalo de Atualização padrão e mínimo de 1 h (os provedores respondiam HTTP 429).
 
 ### Melhorias
+- Instalador do Coletor pelo widget: card com botão "Install collector"/"Update collector", confirmação inline, instala do PyPI a versão exata do widget no venv próprio (`~/.local/share/plasma-ai-usage/venv`) com atalhos em `~/.local/bin`, sem `sudo` e nunca automático. Falhas mostram a causa (ADR-0012).
+- O Coletor é publicado no PyPI (`plasma-ai-usage-collector`) por Trusted Publisher (OIDC), só em tag `vX.Y.Z`; o workflow confere tag, `pyproject.toml` e `metadata.json`.
+- Licença GPL-3.0-or-later e aviso de marcas (Anthropic, OpenAI, Google) sem afiliação.
+- Documentação de distribuição: instalação por três caminhos no README, `docs/store/kde-store.md` e `docs/release-checklist.md`.
 - Renovação automática das Contas inativas pelas próprias CLIs (Claude, Codex); a Conta Ativa nunca é tocada (ADR-0013).
 - Renovação das Contas Gemini inativas é opt-in, desligada por padrão (usa o app OAuth da Antigravity e lê o segredo do `agy`; pode contrariar os termos do Google): `--set-renew-config --renew-gemini on|off` e controle na aba Geral. Desligada, o `agy` nunca é lido e a Conta vencida só pede novo login.
 - Mensagens por estado quando o login vence: renovação pendente, revogado, CLI ou `agy` ausente, tempo esgotado, rede.
