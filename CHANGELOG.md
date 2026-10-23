@@ -2,7 +2,15 @@
 
 ## Não lançado
 
+### Correções
+- Gemini: sem token válido ou sem resposta da API, a janela fica sem dados em vez de 0%.
+- Gemini: o consumo por modelo combina `retrieveUserQuotaSummary` e `retrieveUserQuota`.
+- Intervalo de Atualização padrão e mínimo de 1 h (os provedores respondiam HTTP 429).
+
 ### Melhorias
+- Renovação automática das Contas inativas pelas próprias CLIs (Claude, Codex) e, no Gemini, pelo refresh token com o segredo lido do `agy` instalado; a Conta Ativa nunca é tocada (ADR-0013).
+- Mensagens por estado quando o login vence: renovação pendente, revogado, CLI ou `agy` ausente, tempo esgotado, rede.
+- Claude: o extrator aceita o array `limits` além de `five_hour`/`seven_day`.
 - Painel: cada item mostra o Logo do Provedor e só o Arco de Horário (Janela Nativa), ocupando a espessura do painel; a escala só reduz. Clicar no item abre o popup com os dois arcos desse provedor no topo; o hover não destaca (ADR-0011).
 - Logos de Claude, Codex e Gemini (Simple Icons, CC0) substituem as letras de provedor.
 - Gemini: a conta capturada da Antigravity acompanha o arquivo vivo e entende `expiry` ISO.
