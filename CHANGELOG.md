@@ -1,6 +1,6 @@
 # Changelog
 
-## Não lançado
+## 1.2.0
 
 ### Correções
 - Gemini: sem token válido ou sem resposta da API, a janela fica sem dados em vez de 0%.
