@@ -49,6 +49,40 @@ Item {
     readonly property string collectorBody: collectorState === "ausente" ? I18n.tr("The widget needs the collector to read your usage data. Until it is installed, no data is shown.")
         : collectorState === "desatualizado" ? I18n.tr("The widget may not work correctly until the collector is updated.")
         : collectorState === "python_indisponivel" ? I18n.tr("Install Python 3 with venv support (on Arch: sudo pacman -S python; on Debian/Ubuntu: sudo apt install python3-venv).") : ""
+    // Instalação pelo widget (ticket 50): o estado vive no main.qml (sobrevive ao fechar o popup); aqui só a confirmação
+    readonly property var collectorInstall: plasmoidItem && plasmoidItem.collectorInstall ? plasmoidItem.collectorInstall : ({ state: "idle" })
+    readonly property bool collectorInstalling: collectorInstall.state === "running"
+    readonly property bool collectorInstallFailed: collectorInstall.state === "error"
+    readonly property string widgetVersion: plasmoidItem && plasmoidItem.widgetVersion ? plasmoidItem.widgetVersion : ""
+    readonly property bool collectorVersionOk: Collector.isVersion(widgetVersion)
+    readonly property bool collectorCanAct: collectorState === "ausente" || collectorState === "desatualizado"
+    property bool collectorConfirming: false
+    readonly property string collectorConfirmTitle: collectorState === "desatualizado" ? I18n.tr("Update collector to version %1?", widgetVersion) : I18n.tr("Install collector version %1?", widgetVersion)
+    onCollectorStateChanged: collectorConfirming = false
+    onIsOpenChanged: if (!isOpen) collectorConfirming = false
+    onCollectorInstallingChanged: if (collectorInstalling) collectorConfirming = false
+    function cancelCollectorInstall() { collectorConfirming = false; forceActiveFocus(); }
+    function confirmCollectorInstall() {
+        if (!collectorConfirming || collectorInstalling || !collectorVersionOk || !plasmoidItem) return;  // clique repetido não duplica
+        collectorConfirming = false;
+        forceActiveFocus();
+        plasmoidItem.installCollector();
+    }
+    function stepName(step) {
+        return step === "venv" ? I18n.tr("Preparing the environment") : step === "download" ? I18n.tr("Downloading the package")
+            : step === "install" ? I18n.tr("Installing the package") : step === "link" ? I18n.tr("Creating the shortcut")
+            : step === "verify" ? I18n.tr("Verifying the installation") : "";
+    }
+    readonly property string installCauseText: {
+        var c = collectorInstall.cause;
+        return c === "python_indisponivel" ? I18n.tr("Python 3 with venv support is not available. Install it and try again.")
+            : c === "rede" ? I18n.tr("Could not download the package. Check your internet connection and try again.")
+            : c === "versao_inexistente" ? I18n.tr("This collector version is not available on PyPI yet.")
+            : c === "permissao" ? I18n.tr("Permission denied while writing to the installation folders.")
+            : c === "conflito_em_local_bin" ? I18n.tr("Another file already exists in ~/.local/bin and was not overwritten.")
+            : c === "verificacao" ? I18n.tr("The installed collector did not pass the verification check.")
+            : collectorInstallFailed ? I18n.tr("The installation failed.") : "";
+    }
     readonly property int accountCount: providers.reduce(function (n, p) { return n + p.accounts.length; }, 0)
     readonly property bool refreshing: Boolean(plasmoidItem && plasmoidItem.isRefreshing)
     readonly property bool spinning: refreshing && isOpen && !reducedMotion  // ícone girando: nunca com o widget oculto
@@ -91,7 +125,7 @@ Item {
     }
     // Foco no popup ao abrir, para o Escape funcionar (precisa de verificação no Plasma real)
     onVisibleChanged: if (visible) fullRoot.forceActiveFocus()
-    Keys.onEscapePressed: if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup()
+    Keys.onEscapePressed: { if (fullRoot.collectorConfirming) fullRoot.cancelCollectorInstall(); else if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup(); }
     // Rolagem pelo teclado com o foco na raiz (sem botão focado)
     function scrollBy(dy) { flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + dy)); }
     Keys.onUpPressed: scrollBy(-Kirigami.Units.gridUnit * 2)
@@ -335,7 +369,7 @@ Item {
             }
         }
 
-        // Coletor ausente, antigo, sem Python ou mais novo (ticket 49). Só informa: instalar/atualizar é o ticket 50.
+        // Coletor ausente, antigo, sem Python ou mais novo (ticket 49); instalar/atualizar com confirmação é o ticket 50.
         Rectangle {
             objectName: "collectorCard"
             visible: fullRoot.collectorState !== ""
@@ -389,13 +423,139 @@ Item {
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     color: Presets.ui.muted
                 }
-                // PONTO DE EXTENSÃO do ticket 50: o botão Instalar/Atualizar (com a confirmação) entra nesta linha,
-                // só para ausente/desatualizado. Reservada vazia; python_indisponivel e mais_novo nunca têm ação.
+                // Ação (ticket 50): Instalar/Atualizar só para ausente/desatualizado; o clique abre a confirmação abaixo e
+                // nada roda antes dela. python_indisponivel e mais_novo nunca têm ação.
                 RowLayout {
                     objectName: "collectorActions"
-                    visible: fullRoot.collectorState === "ausente" || fullRoot.collectorState === "desatualizado"
+                    visible: fullRoot.collectorCanAct
                     Layout.fillWidth: true
-                    Layout.preferredHeight: Kirigami.Units.smallSpacing
+                    NotchButton {
+                        objectName: "collectorInstallButton"
+                        visible: !fullRoot.collectorConfirming
+                        enabled: !fullRoot.collectorInstalling && fullRoot.collectorVersionOk
+                        text: fullRoot.collectorInstalling ? I18n.tr("Installing the collector…")
+                            : fullRoot.collectorInstallFailed ? I18n.tr("Try again")
+                            : fullRoot.collectorState === "desatualizado" ? I18n.tr("Update collector") : I18n.tr("Install collector")
+                        hint: I18n.tr("Asks for confirmation first; nothing is installed until you confirm.")
+                        onClicked: if (!fullRoot.collectorInstalling) fullRoot.collectorConfirming = true
+                    }
+                    QQC2.ProgressBar {
+                        objectName: "collectorInstallBar"
+                        visible: fullRoot.collectorInstalling
+                        Layout.fillWidth: true
+                        indeterminate: !fullRoot.reducedMotion && fullRoot.isOpen
+                        value: 1
+                        Accessible.name: I18n.tr("Installing the collector…")
+                    }
+                    QQC2.Label {
+                        objectName: "collectorInstallStep"
+                        visible: fullRoot.collectorInstalling && text !== ""
+                        Layout.fillWidth: true
+                        text: fullRoot.stepName(fullRoot.collectorInstall.step)
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        color: Presets.ui.muted
+                    }
+                }
+                // Confirmação inline (Dialog em popup do Plasma é frágil): foco inicial em Cancelar; Esc cancela
+                ColumnLayout {
+                    id: collectorConfirm
+                    objectName: "collectorConfirm"
+                    visible: fullRoot.collectorConfirming && fullRoot.collectorCanAct
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+                    Accessible.role: Accessible.Grouping
+                    Accessible.name: fullRoot.collectorConfirmTitle
+                    onVisibleChanged: if (visible) cancelInstall.forceActiveFocus()
+                    Keys.onEscapePressed: fullRoot.cancelCollectorInstall()
+                    QQC2.Label {
+                        objectName: "collectorConfirmTitle"
+                        Layout.fillWidth: true
+                        text: fullRoot.collectorConfirmTitle
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.bold: true
+                        color: Presets.ui.fg
+                    }
+                    QQC2.Label {
+                        objectName: "collectorConfirmDetails"
+                        Layout.fillWidth: true
+                        text: I18n.tr("Package %1 version %2 will be downloaded from PyPI.", "plasma-ai-usage-collector", fullRoot.widgetVersion) + "\n"
+                            + I18n.tr("It will be installed in %1, with a shortcut in %2.", "~/.local/share/plasma-ai-usage/venv", "~/.local/bin") + "\n"
+                            + I18n.tr("No sudo is used and the system Python is not changed.")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        color: Presets.ui.fg
+                    }
+                    RowLayout {
+                        spacing: Kirigami.Units.smallSpacing
+                        NotchButton {
+                            id: cancelInstall
+                            objectName: "collectorCancelButton"
+                            text: I18n.tr("Cancel")
+                            hint: I18n.tr("Closes this question without installing anything.")
+                            onClicked: fullRoot.cancelCollectorInstall()
+                        }
+                        NotchButton {
+                            objectName: "collectorConfirmButton"
+                            text: I18n.tr("Install")
+                            hint: I18n.tr("Downloads and installs the collector now.")
+                            onClicked: fullRoot.confirmCollectorInstall()
+                        }
+                    }
+                }
+                // Falha: causa traduzida, mensagem e log resumido, tudo texto puro
+                ColumnLayout {
+                    objectName: "collectorInstallError"
+                    visible: fullRoot.collectorInstallFailed && fullRoot.collectorCanAct
+                    Layout.fillWidth: true
+                    spacing: Kirigami.Units.smallSpacing
+                    Accessible.role: Accessible.AlertMessage
+                    Accessible.name: fullRoot.installCauseText
+                    QQC2.Label {
+                        objectName: "collectorInstallCause"
+                        Layout.fillWidth: true
+                        text: fullRoot.installCauseText
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.bold: true
+                        color: Presets.ui.fg
+                    }
+                    QQC2.Label {
+                        objectName: "collectorInstallMessage"
+                        visible: text !== ""
+                        Layout.fillWidth: true
+                        text: (fullRoot.collectorInstall.message ? I18n.tr("Details: %1", fullRoot.collectorInstall.message) : "")
+                            + (fullRoot.collectorInstall.failedStep ? (fullRoot.collectorInstall.message ? "\n" : "") + I18n.tr("Stopped during: %1", fullRoot.stepName(fullRoot.collectorInstall.failedStep)) : "")
+                        textFormat: Text.PlainText
+                        wrapMode: Text.Wrap
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize
+                        color: Presets.ui.muted
+                    }
+                    QQC2.ScrollView {
+                        id: logScroll
+                        objectName: "collectorInstallLogScroll"
+                        visible: logLabel.text !== ""
+                        Layout.fillWidth: true
+                        Layout.preferredHeight: Math.min(logLabel.implicitHeight + Kirigami.Units.smallSpacing, Kirigami.Units.gridUnit * 5)
+                        clip: true
+                        Accessible.role: Accessible.StaticText
+                        Accessible.name: I18n.tr("Installation log (last lines)")
+                        Accessible.description: logLabel.text
+                        QQC2.Label {
+                            id: logLabel
+                            objectName: "collectorInstallLog"
+                            width: logScroll.availableWidth
+                            text: fullRoot.collectorInstall.log ? fullRoot.collectorInstall.log.join("\n") : ""
+                            textFormat: Text.PlainText
+                            wrapMode: Text.Wrap
+                            font.family: "monospace"
+                            font.pointSize: Kirigami.Theme.smallFont.pointSize
+                            color: Presets.ui.muted
+                        }
+                    }
                 }
             }
         }

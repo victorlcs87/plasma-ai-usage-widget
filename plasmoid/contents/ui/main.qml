@@ -226,7 +226,7 @@ PlasmoidItem {
     }
 
     // Instalador do Coletor (ADR-0012), só o estado: `status` roda na partida, ao abrir o popup e quando o cache
-    // falta, no máximo uma vez a cada 30 s, e de hora em hora; nunca no laço de 15 s. O botão de instalar é o ticket 50.
+    // falta, no máximo uma vez a cada 30 s, e de hora em hora; nunca no laço de 15 s. A instalação (ticket 50) fica mais abaixo.
     property var collectorStatus: null
     readonly property bool collectorAttention: Collector.needsAttention(collectorStatus)
     readonly property string widgetVersion: Plasmoid.metaData ? String(Plasmoid.metaData.version || "") : ""
@@ -248,10 +248,53 @@ PlasmoidItem {
         connectedSources: []
         onNewData: (sourceName, data) => {
             root.collectorStatus = Collector.parseStatus(data["stdout"] || "", data["exit code"]);
+            if (root.collectorInstall.verifying)  // recheck pós-install: ok => idle; senão erro de verificação
+                root.collectorInstall = root.collectorAttention ? { state: "error", cause: "verificacao", message: "", log: [], failedStep: "verify" } : { state: "idle" };
             // O aviso de cache ausente remete ao card quando o coletor precisa de atenção
             if (root.lastError === root.cacheMissingPlain || root.lastError === root.cacheMissingCard)
                 root.lastError = root.collectorAttention ? root.cacheMissingCard : root.cacheMissingPlain;
             disconnectSource(sourceName);
+        }
+    }
+
+    // Instalação do Coletor (ticket 50): SÓ pelo clique + confirmação no popup (installCollector); nunca na partida,
+    // por timer ou ao abrir o popup. O DataSource vive aqui (não no popup): fechar o popup não interrompe o install.
+    // state: idle | running | error. O engine "executable" entrega stdout/exit code ao fim; se vier parcial (sem
+    // "exit code"), só o passo atual é atualizado.
+    property var collectorInstall: ({ state: "idle" })
+
+    function installCollector() {
+        if (root.collectorInstall.state === "running") return;  // um único install por vez
+        var script = Collector.scriptPath(Qt.resolvedUrl("../code/collector-installer.py"));
+        var cmd = Collector.buildInstallCommand(script, root.widgetVersion);  // "" se a versão não for X.Y.Z
+        if (cmd === "") {
+            root.collectorInstall = { state: "error", cause: "falha", message: "", log: [], failedStep: "" };
+            return;
+        }
+        root.collectorInstall = { state: "running", step: "" };
+        installSource.connectSource(cmd);
+    }
+
+    Plasma5Support.DataSource {
+        id: installSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            var out = data["stdout"] || "";
+            if (data["exit code"] === undefined) {  // saída parcial: só o progresso
+                root.collectorInstall = { state: "running", step: Collector.currentStep(out) };
+                return;
+            }
+            disconnectSource(sourceName);
+            var r = Collector.parseInstall(out, data["exit code"]);
+            if (!r.ok) {
+                root.collectorInstall = { state: "error", cause: r.cause, message: r.message, log: r.log, failedStep: r.failedStep };
+                return;
+            }
+            root.collectorInstall = { state: "running", step: "verify", verifying: true };  // fica "running" até o recheck do status
+            root.collectorCheckedAt = 0;  // o recheck do status não pode cair na janela de 30 s
+            root.checkCollector();
+            root.runCollectorRefresh(null, false);  // dados sem reiniciar o Plasma (somente --refresh)
         }
     }
 

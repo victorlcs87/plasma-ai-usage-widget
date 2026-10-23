@@ -63,3 +63,44 @@ function parseStatus(stdout, exitCode) {
 function needsAttention(st) {
     return !!st && (st.state === "ausente" || st.state === "desatualizado" || st.state === "python_indisponivel");
 }
+
+// ---- Instalação pelo widget (ticket 50, ADR-0012): só roda depois da confirmação do usuário ----
+// A versão vai ao shell: só X.Y.Z estrito (nunca URL, índice ou texto livre); inválida => "" e nada é executado.
+function isVersion(v) { return /^[0-9]+\.[0-9]+\.[0-9]+$/.test(String(v === null || v === undefined ? "" : v)); }
+
+function buildInstallCommand(scriptFile, version) {
+    if (!isVersion(version)) return "";
+    return "python3 " + shellQuote(scriptFile) + " install --version " + shellQuote(version);
+}
+
+var INSTALL_CAUSES = ["python_indisponivel", "rede", "versao_inexistente", "permissao", "conflito_em_local_bin", "verificacao", "falha"];
+var INSTALL_STEPS = ["venv", "download", "install", "link", "verify"];
+
+// Linhas JSON do `install` -> {steps: [{step, status, message}], result: objeto final ou null}. Linhas inválidas são ignoradas.
+function _installLines(stdout) {
+    var steps = [], result = null, lines = String(stdout || "").split("\n");
+    for (var i = 0; i < lines.length; i++) {
+        var o;
+        try { o = JSON.parse(lines[i]); } catch (e) { continue; }
+        if (!o || typeof o !== "object") continue;
+        if (typeof o.result === "string") result = o;
+        else if (INSTALL_STEPS.indexOf(o.step) >= 0) steps.push({ step: o.step, status: String(o.status || ""), message: String(o.message || "") });
+    }
+    return { steps: steps, result: result };
+}
+
+// Passo em andamento (último "start" sem "ok"/"error" depois) ou "" — para o progresso quando a saída chega parcial
+function currentStep(stdout) {
+    var st = _installLines(stdout).steps;
+    return st.length && st[st.length - 1].status === "start" ? st[st.length - 1].step : "";
+}
+
+// Saída completa do `install` -> {ok, cause, message, log: [texto], failedStep}. Sucesso só com exit 0 E linha final result=ok.
+function parseInstall(stdout, exitCode) {
+    var p = _installLines(stdout), r = p.result, failed = "";
+    for (var i = 0; i < p.steps.length; i++) if (p.steps[i].status === "error") failed = p.steps[i].step;
+    if (exitCode === 0 && r && r.result === "ok") return { ok: true, cause: "", message: String(r.message || ""), log: [], failedStep: "" };
+    var cause = exitCode === 127 ? "python_indisponivel" : (r && INSTALL_CAUSES.indexOf(r.cause) >= 0 ? r.cause : "falha");
+    var log = (r && Array.isArray(r.log) ? r.log : []).slice(-30).map(function (l) { return String(l).slice(0, 300); });
+    return { ok: false, cause: cause, message: r ? String(r.message || "") : "", log: log, failedStep: failed };
+}
