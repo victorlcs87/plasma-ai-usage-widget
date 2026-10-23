@@ -2,6 +2,56 @@
 
 Coletor de métricas de uso e cotas de agentes de IA (Claude, Codex e Gemini) para o widget nativo KDE Plasma 6.
 
+## Instalação
+
+O widget (QML) só mostra dados que o **Coletor** (pacote Python `plasma-ai-usage-collector`, sem dependências) grava. **O Coletor é obrigatório**: sem ele o widget não exibe nada. Há três caminhos; escolha um.
+
+### a) Loja KDE e botão "Install collector" (recomendado)
+
+1. Instale o widget pela loja (Adicionar widgets > Obter novos widgets, busque "AI Usage").
+2. Abra o popup. Sem Coletor, aparece um card com o botão **Install collector** (ou **Update collector**, se o Coletor for mais antigo que o widget).
+3. Clique e confirme. A confirmação mostra o pacote, a versão e o destino.
+
+O que o botão faz:
+
+- Baixa do PyPI o pacote `plasma-ai-usage-collector` na **versão exata do widget** (`==X.Y.Z`), nunca "a mais recente".
+- Cria o venv do widget em `~/.local/share/plasma-ai-usage/venv` e instala nele.
+- Cria os atalhos `ai-usage-collector` e `ai-usage-session-state` em `~/.local/bin`.
+- Não usa `sudo` e não mexe no Python do sistema.
+- Só roda com a sua confirmação. Nunca é automático: nem ao adicionar o widget, nem ao abrir o popup, nem por timer.
+- Nunca mexe num Coletor que você já tenha (pipx ou de desenvolvimento): se `~/.local/bin/ai-usage-collector` existir e não for do widget, a instalação para sem alterar nada. Coletor mais novo que o widget só gera um aviso.
+- Sem `python3` com `venv` e `ensurepip`, não instala nada: o card diz o que instalar (ex.: `python3-venv` no Debian/Ubuntu).
+- Ao terminar, verifica a versão instalada e atualiza os dados.
+
+Em caso de falha o card mostra a causa (sem Python, rede, versão ausente no PyPI, permissão, conflito em `~/.local/bin`, verificação) e o botão vira "Try again".
+
+### b) pipx
+
+```bash
+pipx install plasma-ai-usage-collector
+```
+
+Sem pipx, use um venv próprio e não instale no Python global:
+
+```bash
+python3 -m venv ~/.local/share/plasma-ai-usage/venv
+~/.local/share/plasma-ai-usage/venv/bin/pip install plasma-ai-usage-collector==X.Y.Z   # a versão do Plasmoid
+ln -s ~/.local/share/plasma-ai-usage/venv/bin/ai-usage-collector ~/.local/bin/
+```
+
+Para atualizar depois, use o botão "Update collector" do widget ou repita o `pip install ...==X.Y.Z` com a versão do Plasmoid (não use `--upgrade` sem versão: o widget exige a versão exata).
+
+Depois instale só o widget pela loja. O widget acha o Coletor (ver "Onde o widget procura o coletor"). Mantenha as duas versões iguais.
+
+### c) A partir do código
+
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e .
+scripts/install-plasmoid.sh
+```
+
+Aponte o widget para `.venv/bin/ai-usage-collector` em Configuração > Geral > **Caminho do coletor**. `scripts/package-release.sh` gera o `.plasmoid` e a wheel em `dist/`.
+
 ## Waybar
 
 `ai-usage-collector --waybar` imprime uma linha JSON (`text`, `tooltip`, `class`, `alt` e, quando há nível, `percentage`) a partir do cache, sem consultar provedores nem a rede, sempre com exit code 0. Mantenha o cache atualizado com `ai-usage-collector --refresh` (ou pelo Plasmoid).

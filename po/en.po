@@ -23,7 +23,7 @@ msgstr "%1, account %2"
 msgid "Active on the system"
 msgstr "Active on the system"
 
-#: contents/ui/AccountCard.qml:122 contents/ui/main.qml:242
+#: contents/ui/AccountCard.qml:122 contents/ui/main.qml:329
 msgid "Exit code %1"
 msgstr "Exit code %1"
 
@@ -213,143 +213,295 @@ msgstr "Link copied to the clipboard!"
 msgid "Copy invite link to the clipboard"
 msgstr "Copy invite link to the clipboard"
 
-#: contents/ui/CompactRepresentation.qml:123
+#: contents/ui/CompactRepresentation.qml:125
 msgid "AI monitor hidden: no CLI running. Activate to open"
 msgstr "AI monitor hidden: no CLI running. Activate to open"
 
-#: contents/ui/CompactRepresentation.qml:124
+#: contents/ui/CompactRepresentation.qml:126
 msgid "AI monitor: floating Notch active. Activate to open"
 msgstr "AI monitor: floating Notch active. Activate to open"
 
-#: contents/ui/CompactRepresentation.qml:220 contents/ui/NotchModel.js:233
+#: contents/ui/CompactRepresentation.qml:222 contents/ui/CompactRepresentation.qml:225 contents/ui/main.qml:146
+msgid "Collector needs attention"
+msgstr "Collector needs attention"
+
+#: contents/ui/CompactRepresentation.qml:249 contents/ui/NotchModel.js:233
 msgid "Session expired"
 msgstr "Session expired"
 
-#: contents/ui/CompactRepresentation.qml:221 contents/ui/NotchModel.js:234
+#: contents/ui/CompactRepresentation.qml:250 contents/ui/NotchModel.js:234
 msgid "Account not set up"
 msgstr "Account not set up"
 
-#: contents/ui/CompactRepresentation.qml:221 contents/ui/NotchModel.js:235
+#: contents/ui/CompactRepresentation.qml:250 contents/ui/NotchModel.js:235
 msgid "Account error"
 msgstr "Account error"
 
-#: contents/ui/CompactRepresentation.qml:235 contents/ui/CompactRepresentation.qml:238
+#: contents/ui/CompactRepresentation.qml:264 contents/ui/CompactRepresentation.qml:267
 msgid "New CLI version available"
 msgstr "New CLI version available"
 
-#: contents/ui/CompactRepresentation.qml:252
+#: contents/ui/CompactRepresentation.qml:281
 msgid "New widget version available"
 msgstr "New widget version available"
 
-#: contents/ui/CompactRepresentation.qml:274 contents/ui/main.qml:153
+#: contents/ui/CompactRepresentation.qml:303 contents/ui/main.qml:158
 msgid "%1 invite available"
 msgid_plural "%1 invites available"
 msgstr[0] "%1 invite available"
 msgstr[1] "%1 invites available"
 
-#: contents/ui/FloatingFrame.qml:20 contents/ui/FullRepresentation.qml:96 contents/ui/FullRepresentation.qml:166 contents/ui/main.qml:28
+#: contents/ui/FloatingFrame.qml:20 contents/ui/FullRepresentation.qml:143 contents/ui/FullRepresentation.qml:213 contents/ui/main.qml:28
 msgid "AI Usage Monitor"
 msgstr "AI Usage Monitor"
 
-#: contents/ui/FullRepresentation.qml:104
+#: contents/ui/FullRepresentation.qml:43
+msgid "unknown"
+msgstr "unknown"
+
+#: contents/ui/FullRepresentation.qml:44
+msgid "Collector not installed"
+msgstr "Collector not installed"
+
+#: contents/ui/FullRepresentation.qml:45
+msgid "Collector is older than the widget: %1 installed, %2 required"
+msgstr "Collector is older than the widget: %1 installed, %2 required"
+
+#: contents/ui/FullRepresentation.qml:46
+msgid "Python 3 is not available"
+msgstr "Python 3 is not available"
+
+#: contents/ui/FullRepresentation.qml:47
+msgid "Collector is newer than the widget: %1 installed, %2 required. No action needed."
+msgstr "Collector is newer than the widget: %1 installed, %2 required. No action needed."
+
+#: contents/ui/FullRepresentation.qml:49
+msgid "The widget needs the collector to read your usage data. Until it is installed, no data is shown."
+msgstr "The widget needs the collector to read your usage data. Until it is installed, no data is shown."
+
+#: contents/ui/FullRepresentation.qml:50
+msgid "The widget may not work correctly until the collector is updated."
+msgstr "The widget may not work correctly until the collector is updated."
+
+#: contents/ui/FullRepresentation.qml:51
+msgid "Install Python 3 with venv support (on Arch: sudo pacman -S python; on Debian/Ubuntu: sudo apt install python3-venv)."
+msgstr "Install Python 3 with venv support (on Arch: sudo pacman -S python; on Debian/Ubuntu: sudo apt install python3-venv)."
+
+#: contents/ui/FullRepresentation.qml:60
+msgid "Update collector to version %1?"
+msgstr "Update collector to version %1?"
+
+#: contents/ui/FullRepresentation.qml:60
+msgid "Install collector version %1?"
+msgstr "Install collector version %1?"
+
+#: contents/ui/FullRepresentation.qml:72
+msgid "Preparing the environment"
+msgstr "Preparing the environment"
+
+#: contents/ui/FullRepresentation.qml:72
+msgid "Downloading the package"
+msgstr "Downloading the package"
+
+#: contents/ui/FullRepresentation.qml:73
+msgid "Installing the package"
+msgstr "Installing the package"
+
+#: contents/ui/FullRepresentation.qml:73
+msgid "Creating the shortcut"
+msgstr "Creating the shortcut"
+
+#: contents/ui/FullRepresentation.qml:74
+msgid "Verifying the installation"
+msgstr "Verifying the installation"
+
+#: contents/ui/FullRepresentation.qml:78
+msgid "Python 3 with venv support is not available. Install it and try again."
+msgstr "Python 3 with venv support is not available. Install it and try again."
+
+#: contents/ui/FullRepresentation.qml:79
+msgid "Could not download the package. Check your internet connection and try again."
+msgstr "Could not download the package. Check your internet connection and try again."
+
+#: contents/ui/FullRepresentation.qml:80
+msgid "This collector version is not available on PyPI yet."
+msgstr "This collector version is not available on PyPI yet."
+
+#: contents/ui/FullRepresentation.qml:81
+msgid "Permission denied while writing to the installation folders."
+msgstr "Permission denied while writing to the installation folders."
+
+#: contents/ui/FullRepresentation.qml:82
+msgid "Another file already exists in ~/.local/bin and was not overwritten."
+msgstr "Another file already exists in ~/.local/bin and was not overwritten."
+
+#: contents/ui/FullRepresentation.qml:83
+msgid "The installed collector did not pass the verification check."
+msgstr "The installed collector did not pass the verification check."
+
+#: contents/ui/FullRepresentation.qml:84
+msgid "The installation failed."
+msgstr "The installation failed."
+
+#: contents/ui/FullRepresentation.qml:151
 msgid "%1 account"
 msgid_plural "%1 accounts"
 msgstr[0] "%1 account"
 msgstr[1] "%1 accounts"
 
-#: contents/ui/FullRepresentation.qml:178 contents/ui/FullRepresentation.qml:195
+#: contents/ui/FullRepresentation.qml:225 contents/ui/FullRepresentation.qml:242
 msgid "Updating metrics..."
 msgstr "Updating metrics..."
 
-#: contents/ui/FullRepresentation.qml:179
+#: contents/ui/FullRepresentation.qml:226
 msgid "Recently updated"
 msgstr "Recently updated"
 
-#: contents/ui/FullRepresentation.qml:191 contents/ui/FullRepresentation.qml:195
+#: contents/ui/FullRepresentation.qml:238 contents/ui/FullRepresentation.qml:242
 msgid "Update now"
 msgstr "Update now"
 
-#: contents/ui/FullRepresentation.qml:216
+#: contents/ui/FullRepresentation.qml:263
 msgid "Settings"
 msgstr "Settings"
 
-#: contents/ui/FullRepresentation.qml:219
+#: contents/ui/FullRepresentation.qml:266
 msgid "Manage accounts and settings"
 msgstr "Manage accounts and settings"
 
-#: contents/ui/FullRepresentation.qml:237
+#: contents/ui/FullRepresentation.qml:284
 msgid "Used"
 msgstr "Used"
 
-#: contents/ui/FullRepresentation.qml:237
+#: contents/ui/FullRepresentation.qml:284
 msgid "Show how much of the quota has been used"
 msgstr "Show how much of the quota has been used"
 
-#: contents/ui/FullRepresentation.qml:238
+#: contents/ui/FullRepresentation.qml:285
 msgid "Remaining"
 msgstr "Remaining"
 
-#: contents/ui/FullRepresentation.qml:238
+#: contents/ui/FullRepresentation.qml:285
 msgid "Show how much of the quota is left"
 msgstr "Show how much of the quota is left"
 
-#: contents/ui/FullRepresentation.qml:239
+#: contents/ui/FullRepresentation.qml:286
 msgid "Countdown"
 msgstr "Countdown"
 
-#: contents/ui/FullRepresentation.qml:239
+#: contents/ui/FullRepresentation.qml:286
 msgid "Show the time until release"
 msgstr "Show the time until release"
 
-#: contents/ui/FullRepresentation.qml:240
+#: contents/ui/FullRepresentation.qml:287
 msgid "Date"
 msgstr "Date"
 
-#: contents/ui/FullRepresentation.qml:240
+#: contents/ui/FullRepresentation.qml:287
 msgid "Show the release date and time"
 msgstr "Show the release date and time"
 
-#: contents/ui/FullRepresentation.qml:290
+#: contents/ui/FullRepresentation.qml:337
 msgid "View release"
 msgstr "View release"
 
-#: contents/ui/FullRepresentation.qml:291
+#: contents/ui/FullRepresentation.qml:338
 msgid "View release: %1"
 msgstr "View release: %1"
 
-#: contents/ui/FullRepresentation.qml:292
+#: contents/ui/FullRepresentation.qml:339
 msgid "Open the release page in the browser"
 msgstr "Open the release page in the browser"
 
-#: contents/ui/FullRepresentation.qml:398 contents/ui/NotchModel.js:238
+#: contents/ui/FullRepresentation.qml:384 contents/ui/FullRepresentation.qml:420 contents/ui/FullRepresentation.qml:530
+msgid "Details: %1"
+msgstr "Details: %1"
+
+#: contents/ui/FullRepresentation.qml:436 contents/ui/FullRepresentation.qml:448
+msgid "Installing the collector…"
+msgstr "Installing the collector…"
+
+#: contents/ui/FullRepresentation.qml:437
+msgid "Try again"
+msgstr "Try again"
+
+#: contents/ui/FullRepresentation.qml:438
+msgid "Update collector"
+msgstr "Update collector"
+
+#: contents/ui/FullRepresentation.qml:438
+msgid "Install collector"
+msgstr "Install collector"
+
+#: contents/ui/FullRepresentation.qml:439
+msgid "Asks for confirmation first; nothing is installed until you confirm."
+msgstr "Asks for confirmation first; nothing is installed until you confirm."
+
+#: contents/ui/FullRepresentation.qml:484
+msgid "Package %1 version %2 will be downloaded from PyPI."
+msgstr "Package %1 version %2 will be downloaded from PyPI."
+
+#: contents/ui/FullRepresentation.qml:485
+msgid "It will be installed in %1, with a shortcut in %2."
+msgstr "It will be installed in %1, with a shortcut in %2."
+
+#: contents/ui/FullRepresentation.qml:486
+msgid "No sudo is used and the system Python is not changed."
+msgstr "No sudo is used and the system Python is not changed."
+
+#: contents/ui/FullRepresentation.qml:497 contents/ui/configGeneral.qml:2219 contents/ui/configGeneral.qml:2277 contents/ui/configGeneral.qml:2349
+msgid "Cancel"
+msgstr "Cancel"
+
+#: contents/ui/FullRepresentation.qml:498
+msgid "Closes this question without installing anything."
+msgstr "Closes this question without installing anything."
+
+#: contents/ui/FullRepresentation.qml:503
+msgid "Install"
+msgstr "Install"
+
+#: contents/ui/FullRepresentation.qml:504
+msgid "Downloads and installs the collector now."
+msgstr "Downloads and installs the collector now."
+
+#: contents/ui/FullRepresentation.qml:531
+msgid "Stopped during: %1"
+msgstr "Stopped during: %1"
+
+#: contents/ui/FullRepresentation.qml:545
+msgid "Installation log (last lines)"
+msgstr "Installation log (last lines)"
+
+#: contents/ui/FullRepresentation.qml:636 contents/ui/NotchModel.js:238
 msgid "Native window"
 msgstr "Native window"
 
-#: contents/ui/FullRepresentation.qml:407 contents/ui/NotchModel.js:239
+#: contents/ui/FullRepresentation.qml:645 contents/ui/NotchModel.js:239
 msgid "Weekly"
 msgstr "Weekly"
 
-#: contents/ui/FullRepresentation.qml:430 contents/ui/NotchModel.js:100 contents/ui/TokenHistory.qml:77
+#: contents/ui/FullRepresentation.qml:668 contents/ui/NotchModel.js:100 contents/ui/TokenHistory.qml:77
 msgid "%1, %2"
 msgstr "%1, %2"
 
-#: contents/ui/FullRepresentation.qml:458
+#: contents/ui/FullRepresentation.qml:696
 msgid "no accounts"
 msgstr "no accounts"
 
-#: contents/ui/FullRepresentation.qml:460 contents/ui/NotchModel.js:167
+#: contents/ui/FullRepresentation.qml:698 contents/ui/NotchModel.js:167
 msgid "no account active on the system"
 msgstr "no account active on the system"
 
-#: contents/ui/FullRepresentation.qml:507
+#: contents/ui/FullRepresentation.qml:745
 msgid "No provider visible in the popup. Choose providers in Settings."
 msgstr "No provider visible in the popup. Choose providers in Settings."
 
-#: contents/ui/FullRepresentation.qml:508
+#: contents/ui/FullRepresentation.qml:746
 msgid "No accounts found"
 msgstr "No accounts found"
 
-#: contents/ui/FullRepresentation.qml:509 contents/ui/configGeneral.qml:2003
+#: contents/ui/FullRepresentation.qml:747 contents/ui/configGeneral.qml:2003
 msgid "Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json"
 msgstr "Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json"
 
@@ -1401,10 +1553,6 @@ msgstr "Delete Orphan Profile"
 msgid "Permanently delete the profile '%1' from disk? Its credentials will be erased."
 msgstr "Permanently delete the profile '%1' from disk? Its credentials will be erased."
 
-#: contents/ui/configGeneral.qml:2219 contents/ui/configGeneral.qml:2277 contents/ui/configGeneral.qml:2349
-msgid "Cancel"
-msgstr "Cancel"
-
 #: contents/ui/configGeneral.qml:2224
 msgid "Delete Profile"
 msgstr "Delete Profile"
@@ -1441,30 +1589,34 @@ msgstr "Save"
 msgid "Updated at %1"
 msgstr "Updated at %1"
 
-#: contents/ui/main.qml:146
+#: contents/ui/main.qml:151
 msgid "No provider visible in the panel."
 msgstr "No provider visible in the panel."
 
-#: contents/ui/main.qml:149
+#: contents/ui/main.qml:154
 msgid "No data collected yet."
 msgstr "No data collected yet."
 
-#: contents/ui/main.qml:156
+#: contents/ui/main.qml:161
 msgid "Session state unavailable: reinstall the collector package (pip install -e .)"
 msgstr "Session state unavailable: reinstall the collector package (pip install -e .)"
 
-#: contents/ui/main.qml:243
+#: contents/ui/main.qml:234
+msgid "Status cache not found. Run the collector."
+msgstr "Status cache not found. Run the collector."
+
+#: contents/ui/main.qml:235
+msgid "Status cache not found. See the collector notice."
+msgstr "Status cache not found. See the collector notice."
+
+#: contents/ui/main.qml:330
 msgid "Error running the collector: %1"
 msgstr "Error running the collector: %1"
 
-#: contents/ui/main.qml:266
+#: contents/ui/main.qml:353
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr "The collector did not respond within 120 s; retrying on the next cycle."
 
-#: contents/ui/main.qml:381
+#: contents/ui/main.qml:468
 msgid "Error reading status JSON: %1"
 msgstr "Error reading status JSON: %1"
-
-#: contents/ui/main.qml:385
-msgid "Status cache not found. Run the collector."
-msgstr "Status cache not found. Run the collector."

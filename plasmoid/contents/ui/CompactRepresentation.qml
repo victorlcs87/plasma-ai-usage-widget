@@ -36,6 +36,7 @@ Item {
     readonly property bool remaining: ViewPrefs.config(Plasmoid.configuration).remaining  // usado/restante (ticket 33)
     readonly property bool widgetUpdate: !!(compactRoot.plasmoidItem && compactRoot.plasmoidItem.updateInfo && compactRoot.plasmoidItem.updateInfo.widget)
     readonly property color updateColor: Presets.onPill(Kirigami.Theme.highlightColor.r, Kirigami.Theme.highlightColor.g, Kirigami.Theme.highlightColor.b)
+    readonly property bool collectorAttention: !!compactRoot.plasmoidItem && compactRoot.plasmoidItem.collectorAttention === true
     readonly property bool cliUpdate: rings.some(function (r) { return !!r.update; })
 
     // No painel (não hospedado): anel simples (Arco de Horário) que ocupa a espessura; o Notch flutuante mantém o Anel Duplo
@@ -70,11 +71,12 @@ Item {
     readonly property var geoPref: PanelStyle.layout(geoOptsC, vertical ? width : height)
     readonly property var geoMin: PanelStyle.layout(geoOptsC, crossMin)
     // Selos entram no fluxo da pílula, depois dos itens (num grupo: no Ring, com fundo escuro próprio)
-    readonly property int badgeCount: (health !== "" ? 1 : 0) + (cliUpdate ? 1 : 0) + (widgetUpdate ? 1 : 0) + (totalInvites > 0 ? 1 : 0)
+    readonly property int badgeCount: (collectorAttention ? 1 : 0) + (health !== "" ? 1 : 0) + (cliUpdate ? 1 : 0) + (widgetUpdate ? 1 : 0) + (totalInvites > 0 ? 1 : 0)
     readonly property int badgePad: style === "ring" ? 3 : 0
     readonly property bool lean: eff.lean === true  // sem espaço nem para a pílula completa: sem % e sem selos, antes de encolher
     function badgeLengthFor(st, lean) { return badgeCount === 0 || lean ? 0 : badgeInner + 2 * (st === "ring" ? 3 : 0); }
     readonly property int badgeInner: gap
+        + (collectorAttention ? (vertical ? collectorBadge.implicitHeight : collectorBadge.implicitWidth) + gap : 0)
         + (health !== "" ? healthDot.implicitWidth + gap : 0)
         + (cliUpdate ? updateDot.implicitWidth + gap : 0)
         + (widgetUpdate ? (vertical ? widgetBadge.implicitHeight : widgetBadge.implicitWidth) + gap : 0)
@@ -202,9 +204,36 @@ Item {
                 GridLayout {
                     id: badgeGrid
                     anchors.centerIn: parent
-                    columns: compactRoot.vertical ? 1 : 4
+                    columns: compactRoot.vertical ? 1 : 5
                     rowSpacing: compactRoot.gap
                     columnSpacing: compactRoot.gap
+
+                // Selo "!" em quadrado arredondado: o coletor precisa de atenção (card no popup). Forma e texto, não só cor.
+                Rectangle {
+                    objectName: "badge"
+                    id: collectorBadge
+                    visible: compactRoot.collectorAttention
+                    Layout.alignment: Qt.AlignCenter
+                    implicitHeight: Math.max(14, Kirigami.Units.gridUnit * 0.9)
+                    implicitWidth: implicitHeight
+                    radius: 3
+                    color: Presets.warning
+                    Accessible.role: Accessible.Indicator
+                    Accessible.name: I18n.tr("Collector needs attention")
+                    HoverHandler { id: collectorBadgeHover }
+                    QQC2.ToolTip.visible: collectorBadgeHover.hovered
+                    QQC2.ToolTip.text: I18n.tr("Collector needs attention")
+
+                    QQC2.Label {
+                        anchors.centerIn: parent
+                        text: "!"
+                        font.bold: true
+                        font.pointSize: Kirigami.Theme.smallFont.pointSize * 1.1
+                        color: Presets.ui.panel
+                        textFormat: Text.PlainText
+                        Accessible.ignored: true
+                    }
+                }
 
                 // Selo de saúde (só com Conta Ativa com sessão expirada, sem configurar ou com erro)
                 Rectangle {

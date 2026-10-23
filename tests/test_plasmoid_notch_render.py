@@ -45,6 +45,7 @@ Window { visible: true; width: %(w)d; height: %(h)d; color: "%(bg)s"
     property string toolTipSubText: ""
     property bool expanded: false
     property bool idleHidden: false
+    property bool collectorAttention: false
     property var calls: []
     property var clicked: []
     function setPillHovered(h) { calls.push("hover:" + h) }

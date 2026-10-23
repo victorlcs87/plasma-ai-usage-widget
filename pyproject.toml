@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "plasma-ai-usage-collector"
-version = "1.1.1"
+version = "1.2.0"
 description = "Coletor de métricas de uso e cotas de agentes de IA para KDE Plasma 6"
 readme = "README.md"
 requires-python = ">=3.10"
