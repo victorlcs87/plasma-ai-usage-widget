@@ -67,113 +67,141 @@ msgstr "Janela semanal com reset antecipado"
 msgid "Limits changed: %1"
 msgstr "Limites mudaram: %1"
 
-#: contents/ui/AccountCard.qml:159
+#: contents/ui/AccountCard.qml:160
+msgid "%1: login expired at the provider. Log in at the provider with this account."
+msgstr "%1: login expirado no provedor. Faça login no provedor com esta Conta."
+
+#: contents/ui/AccountCard.qml:161
+msgid "%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account."
+msgstr "%1: token vencido; a renovação automática será tentada na próxima verificação. Para reativá-la agora, faça login no provedor com esta Conta."
+
+#: contents/ui/AccountCard.qml:163
+msgid "%1: login revoked at the provider. Log in at the provider with this account to reactivate it."
+msgstr "%1: login revogado no provedor. Faça login no provedor com esta Conta para reativá-la."
+
+#: contents/ui/AccountCard.qml:164
+msgid "%1: automatic renewal failed (the provider CLI was not found). Log in at the provider with this account to reactivate it."
+msgstr "%1: a renovação automática falhou (a CLI do provedor não foi encontrada). Faça login no provedor com esta Conta para reativá-la."
+
+#: contents/ui/AccountCard.qml:165
+msgid "%1: automatic renewal failed (the Antigravity binary was not found). Log in at the provider with this account to reactivate it."
+msgstr "%1: a renovação automática falhou (o binário da Antigravity não foi encontrado). Faça login no provedor com esta Conta para reativá-la."
+
+#: contents/ui/AccountCard.qml:166
+msgid "%1: automatic renewal failed (timed out). It will be retried at the next check; to reactivate it now, log in at the provider with this account."
+msgstr "%1: a renovação automática falhou (tempo esgotado). Ela será tentada de novo na próxima verificação; para reativá-la agora, faça login no provedor com esta Conta."
+
+#: contents/ui/AccountCard.qml:167
+msgid "%1: automatic renewal failed (network error). It will be retried at the next check; to reactivate it now, log in at the provider with this account."
+msgstr "%1: a renovação automática falhou (erro de rede). Ela será tentada de novo na próxima verificação; para reativá-la agora, faça login no provedor com esta Conta."
+
+#: contents/ui/AccountCard.qml:168
+msgid "%1: automatic renewal failed. Log in at the provider with this account to reactivate it."
+msgstr "%1: a renovação automática falhou. Faça login no provedor com esta Conta para reativá-la."
+
+#: contents/ui/AccountCard.qml:176
 msgid "Provider rate limit reached (HTTP 429); waiting for the requested pause."
 msgstr "Limite de requisições do provedor atingido (HTTP 429); aguardando a pausa pedida."
 
-#: contents/ui/AccountCard.qml:160
-msgid "Login expired or revoked at the provider; log in again."
-msgstr "Login expirado ou revogado no provedor; faça login novamente."
-
-#: contents/ui/AccountCard.qml:161
+#: contents/ui/AccountCard.qml:178
 msgid "Failed to query the provider (network unavailable)."
 msgstr "Falha ao consultar o provedor (rede indisponível)."
 
-#: contents/ui/AccountCard.qml:162
+#: contents/ui/AccountCard.qml:179
 msgid "The provider answered without the expected usage data."
 msgstr "O provedor respondeu sem os dados de uso esperados."
 
-#: contents/ui/AccountCard.qml:170 contents/ui/configGeneral.qml:1869
+#: contents/ui/AccountCard.qml:187 contents/ui/configGeneral.qml:1869
 msgid "Valid"
 msgstr "Válida"
 
-#: contents/ui/AccountCard.qml:171 contents/ui/configGeneral.qml:1870
+#: contents/ui/AccountCard.qml:188 contents/ui/configGeneral.qml:1870
 msgid "Expired"
 msgstr "Expirada"
 
-#: contents/ui/AccountCard.qml:172 contents/ui/configGeneral.qml:1871
+#: contents/ui/AccountCard.qml:189 contents/ui/configGeneral.qml:1871
 msgid "Not set up"
 msgstr "Não config."
 
-#: contents/ui/AccountCard.qml:173
+#: contents/ui/AccountCard.qml:190
 msgid "Error"
 msgstr "Erro"
 
-#: contents/ui/AccountCard.qml:186
+#: contents/ui/AccountCard.qml:203
 msgid "No data from the provider"
 msgstr "Sem dados do provedor"
 
-#: contents/ui/AccountCard.qml:188
+#: contents/ui/AccountCard.qml:205
 msgid "Data from %1"
 msgstr "Dados de %1"
 
-#: contents/ui/AccountCard.qml:190
+#: contents/ui/AccountCard.qml:207
 msgid "Next check at %1"
 msgstr "Próxima consulta às %1"
 
-#: contents/ui/AccountCard.qml:249
+#: contents/ui/AccountCard.qml:266
 msgid "Activating..."
 msgstr "Ativando..."
 
-#: contents/ui/AccountCard.qml:249
+#: contents/ui/AccountCard.qml:266
 msgid "⚡ Activate on System"
 msgstr "⚡ Ativar no Sistema"
 
-#: contents/ui/AccountCard.qml:251
+#: contents/ui/AccountCard.qml:268
 msgid "Activate %1 on the system"
 msgstr "Ativar %1 no sistema"
 
-#: contents/ui/AccountCard.qml:253
+#: contents/ui/AccountCard.qml:270
 msgid "Activating account on the system..."
 msgstr "Ativando conta no sistema..."
 
-#: contents/ui/AccountCard.qml:254
+#: contents/ui/AccountCard.qml:271
 msgid "Activate this account as the default profile for the system CLI"
 msgstr "Ativar esta conta como perfil padrão no CLI do sistema"
 
-#: contents/ui/AccountCard.qml:269 contents/ui/AccountCard.qml:282
+#: contents/ui/AccountCard.qml:286 contents/ui/AccountCard.qml:299
 msgid "This account is set as the active account on the system."
 msgstr "Esta conta está configurada como a conta ativa no sistema."
 
-#: contents/ui/AccountCard.qml:275
+#: contents/ui/AccountCard.qml:292
 msgid "✓ Active in the CLI"
 msgstr "✓ Ativa no CLI"
 
-#: contents/ui/AccountCard.qml:293
+#: contents/ui/AccountCard.qml:310
 msgid "Account health: %1"
 msgstr "Saúde da conta: %1"
 
-#: contents/ui/AccountCard.qml:375
+#: contents/ui/AccountCard.qml:392
 msgid "History and details"
 msgstr "Histórico e detalhes"
 
-#: contents/ui/AccountCard.qml:376
+#: contents/ui/AccountCard.qml:393
 msgid "History and details for %1"
 msgstr "Histórico e detalhes de %1"
 
-#: contents/ui/AccountCard.qml:413
+#: contents/ui/AccountCard.qml:430
 msgid "%1 free trial invite available"
 msgid_plural "%1 free trial invites available"
 msgstr[0] "%1 convite de teste gratuito disponível"
 msgstr[1] "%1 convites de teste gratuito disponíveis"
 
-#: contents/ui/AccountCard.qml:420
+#: contents/ui/AccountCard.qml:437
 msgid "Copied!"
 msgstr "Copiado!"
 
-#: contents/ui/AccountCard.qml:420
+#: contents/ui/AccountCard.qml:437
 msgid "Copy Link"
 msgstr "Copiar Link"
 
-#: contents/ui/AccountCard.qml:421
+#: contents/ui/AccountCard.qml:438
 msgid "Copy invite link for %1"
 msgstr "Copiar link de convite de %1"
 
-#: contents/ui/AccountCard.qml:424
+#: contents/ui/AccountCard.qml:441
 msgid "Link copied to the clipboard!"
 msgstr "Link copiado para a Área de Transferência!"
 
-#: contents/ui/AccountCard.qml:425
+#: contents/ui/AccountCard.qml:442
 msgid "Copy invite link to the clipboard"
 msgstr "Copiar link de convite para a Área de Transferência"
 

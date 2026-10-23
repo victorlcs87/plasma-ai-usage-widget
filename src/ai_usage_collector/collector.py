@@ -242,6 +242,9 @@ def _collect(
                 is_active=is_active,
                 usage_details=usage_details,
             )
+            last_renewal = None if is_active else cyc.renewals.get(f"{agent_id}:{acc_id}")
+            if last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
+                acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}
             outcome = cyc.take_outcome()
             identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
             refresh.apply_outcome(
