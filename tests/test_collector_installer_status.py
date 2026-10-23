@@ -7,6 +7,7 @@ import json
 import os
 import subprocess
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -127,6 +128,18 @@ def test_version_que_trava_falha_ou_e_lixo_nao_e_confiavel(env, capsys, body):
     r = run(capsys, "--required", "1.1.1")
     assert r["state"] == "desatualizado" and r["installed"] is None and r["path"] == exe
     assert r["message"] and "lixo" not in r["message"]
+
+
+def test_version_com_neto_segurando_o_pipe_nao_pendura(env, tmp_path):
+    home, bin_dir = env
+    pidf = tmp_path / "neto.pid"
+    exe = _exe(bin_dir / "ai-usage-collector", f'/usr/bin/sleep 60 &\necho $! > {pidf}\necho "ai-usage-collector 1.1.1"')
+    t = time.monotonic()
+    assert installer.read_version(exe) is None
+    assert time.monotonic() - t < 10
+    time.sleep(0.3)
+    with pytest.raises(ProcessLookupError):
+        os.kill(int(pidf.read_text()), 0)  # o grupo inteiro foi morto
 
 
 def test_erro_inesperado_vira_json(env, capsys, monkeypatch):

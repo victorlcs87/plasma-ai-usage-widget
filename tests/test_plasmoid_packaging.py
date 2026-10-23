@@ -592,6 +592,14 @@ def test_release_workflow_security_hardening():
     assert content.count("secrets.") == 1
     assert "check-release-versions.py" in build and "twine check" in build
     assert "dist/*.whl" in _job("release")
+    # o job release também valida a versão da tag antes de empacotar
+    rel = _job("release")
+    assert 'check-release-versions.py "$TAG_REF"' in rel and "if: github.ref_type == 'tag'" in rel
+    assert rel.index("check-release-versions.py") < rel.index("package-release.sh")
+    # pypi-build: commit da tag precisa estar na main
+    assert "fetch-depth: 0" in build and "fetch origin main" in build
+    assert 'merge-base --is-ancestor "$GITHUB_SHA" origin/main' in build
+    assert build.index("is-ancestor") < build.index("twine check")
 
 
 def _job(name: str) -> str:

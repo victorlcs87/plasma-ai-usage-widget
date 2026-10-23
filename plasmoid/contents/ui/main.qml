@@ -237,6 +237,8 @@ PlasmoidItem {
     function checkCollector() {
         var t = Date.now();
         if (root.widgetVersion === "" || t - root.collectorCheckedAt < 30000) return;
+        // durante o install um status obsoleto não pode julgar o pós-install; o recheck (verifying) é permitido
+        if (root.collectorInstall.state === "running" && !root.collectorInstall.verifying) return;
         root.collectorCheckedAt = t;
         var script = Collector.scriptPath(Qt.resolvedUrl("../code/collector-installer.py"));
         statusCheckSource.connectSource(Collector.buildStatusCommand(script, root.widgetVersion, Plasmoid.configuration.collectorPath));

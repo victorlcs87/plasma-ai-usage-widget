@@ -35,6 +35,12 @@ jobs:
           python -m pip install --upgrade pip
           pip install build
 
+      - name: Validate tag versions
+        if: github.ref_type == 'tag'
+        env:
+          TAG_REF: ${{ github.ref_name }}
+        run: python scripts/check-release-versions.py "$TAG_REF"
+
       - name: Package artifacts
         run: |
           chmod +x scripts/package-release.sh
@@ -78,7 +84,7 @@ jobs:
 
   # Publicação no PyPI por Trusted Publisher (OIDC), sem token guardado.
   # O que o mantenedor precisa fazer uma única vez:
-  #   1. No GitHub: Settings > Environments > criar o ambiente "pypi" (de preferência com revisor obrigatório).
+  #   1. No GitHub: Settings > Environments > criar o ambiente "pypi" (com revisor obrigatório).
   #   2. No PyPI: criar o projeto plasma-ai-usage-collector (ou um "pending publisher" se ele ainda não existir).
   #   3. No PyPI: Publishing > adicionar Trusted Publisher com owner victorlcs87,
   #      repo plasma-ai-usage-widget, workflow release.yml e environment pypi.
@@ -94,6 +100,15 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           persist-credentials: false
+          fetch-depth: 0
+
+      - name: Require tag commit on main
+        run: |
+          git fetch origin main
+          git merge-base --is-ancestor "$GITHUB_SHA" origin/main || {
+            echo "O commit da tag não está na main; nada foi publicado." >&2
+            exit 1
+          }
 
       - name: Set up Python 3.12
         uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0

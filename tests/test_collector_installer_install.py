@@ -1,6 +1,6 @@
 """Instalador do Coletor (Spec 07, ticket 51): subcomando `install`.
 
-Roda o script como processo, em HOME temporário, com o .whl local como índice (PIP_NO_INDEX/PIP_FIND_LINKS):
+Roda o script como processo, em HOME temporário, com o .whl local como índice (PLASMA_AI_INSTALLER_FIND_LINKS):
 nunca toca no HOME real nem usa a rede.
 """
 
@@ -59,8 +59,8 @@ class Sandbox:
         self.bin = tmp_path / "pybin"
         self.bin.mkdir()
         (self.bin / "python3").symlink_to(sys.executable)
-        self.env = {"HOME": str(self.home), "PATH": str(self.bin), "PIP_NO_INDEX": "1",
-                    "PIP_FIND_LINKS": str(find_links), "PIP_CONFIG_FILE": os.devnull}
+        self.env = {"HOME": str(self.home), "PATH": str(self.bin),
+                    "PLASMA_AI_INSTALLER_FIND_LINKS": str(find_links)}
         self.venv = self.home / ".local/share/plasma-ai-usage/venv"
         self.link = self.home / ".local/bin/ai-usage-collector"
 
@@ -118,17 +118,33 @@ def test_rede_simulada(sb):
     s.bind(("127.0.0.1", 0))
     port = s.getsockname()[1]
     s.close()  # porta fechada
-    env = {k: v for k, v in sb.env.items() if k != "PIP_NO_INDEX"}
-    sb.env = env
-    code, lines, _ = sb.install(PIP_INDEX_URL=f"http://127.0.0.1:{port}/simple", PIP_RETRIES="1",
-                                PIP_FIND_LINKS="")
+    sb.env.pop("PLASMA_AI_INSTALLER_FIND_LINKS")
+    code, lines, _ = sb.install(PLASMA_AI_INSTALLER_INDEX=f"http://127.0.0.1:{port}/simple")
     assert code != 0
     assert final(lines)["cause"] == "rede", final(lines)
     assert sb.no_leftovers()
 
 
+def test_pip_ignora_pip_env_e_pip_conf_do_usuario(sb, wheelhouse):
+    """PIP_INDEX_URL malicioso, PIP_FIND_LINKS e pip.conf do usuário não valem; proxy/cert da allowlist sim."""
+    h = _Hang()
+    try:
+        (sb.home / ".config/pip").mkdir(parents=True)
+        (sb.home / ".config/pip/pip.conf").write_text(f"[global]\nindex-url = {h.url}\nfind-links = {wheelhouse}\n")
+        sb.env.pop("PLASMA_AI_INSTALLER_FIND_LINKS")
+        # sem override o índice é o PyPI; o proxy (allowlist) é repassado e recusa a conexão, sem sair da máquina
+        code, lines, _ = sb.install(PIP_INDEX_URL=h.url, PIP_EXTRA_INDEX_URL=h.url, PIP_FIND_LINKS=str(wheelhouse),
+                                    PIP_CONFIG_FILE=str(sb.home / ".config/pip/pip.conf"),
+                                    HTTPS_PROXY="http://127.0.0.1:9", HTTP_PROXY="http://127.0.0.1:9")
+        assert code != 0 and final(lines)["cause"] == "rede", final(lines)
+        assert not h.got.is_set()  # o índice do ambiente nunca foi consultado
+        assert "Connection refused" in "\n".join(final(lines)["log"])  # tentou o PyPI pelo proxy (porta 9), não o índice do ambiente
+    finally:
+        h.close()
+
+
 def test_log_sem_caminho_pessoal_nem_credencial(sb):
-    code, lines, _ = sb.install("9.9.9", PIP_FIND_LINKS=str(sb.home / "x"))
+    code, lines, _ = sb.install("9.9.9", PLASMA_AI_INSTALLER_FIND_LINKS=str(sb.home / "x"))
     blob = json.dumps(final(lines))
     assert str(sb.home) not in blob
 
@@ -214,7 +230,7 @@ def test_atualizacao_preserva_dados_do_usuario(tmp_path, wheelhouse, old_wheelho
     for p, t in sentinelas.items():
         p.parent.mkdir(parents=True, exist_ok=True)
         p.write_text(t)
-    code, lines, _ = sb.install(VERSION, PIP_FIND_LINKS=str(wheelhouse))
+    code, lines, _ = sb.install(VERSION, PLASMA_AI_INSTALLER_FIND_LINKS=str(wheelhouse))
     assert code == 0, lines
     assert subprocess.run([str(sb.link), "--version"], capture_output=True, text=True, env=sb.env).stdout.strip() == \
         f"ai-usage-collector {VERSION}"
@@ -255,8 +271,8 @@ class _Hang:
 @pytest.fixture
 def hang(sb):
     h = _Hang()
-    sb.env = {k: v for k, v in sb.env.items() if k not in ("PIP_NO_INDEX", "PIP_FIND_LINKS")}
-    sb.env.update(PIP_INDEX_URL=h.url, PIP_TIMEOUT="60", PIP_RETRIES="0")
+    sb.env = {k: v for k, v in sb.env.items() if k != "PLASMA_AI_INSTALLER_FIND_LINKS"}
+    sb.env.update(PLASMA_AI_INSTALLER_INDEX=h.url)
     yield h
     h.close()
 
@@ -279,8 +295,8 @@ def test_interrupcao_limpa_e_nao_bloqueia_a_proxima(sb, hang, wheelhouse, sig):
     assert (f["result"], f["cause"]) == ("error", "falha")
     assert sb.no_leftovers()
     # a tentativa seguinte funciona (lock solto, nada sobrou)
-    sb.env.pop("PIP_INDEX_URL")
-    sb.env.update(PIP_NO_INDEX="1", PIP_FIND_LINKS=str(wheelhouse))
+    sb.env.pop("PLASMA_AI_INSTALLER_INDEX")
+    sb.env.update(PLASMA_AI_INSTALLER_FIND_LINKS=str(wheelhouse))
     assert sb.install()[0] == 0
 
 
@@ -300,8 +316,8 @@ def test_kill_9_nao_deixa_lock_preso(sb, hang, wheelhouse):
     _wait_download(a, hang)
     a.kill()  # sem chance de limpar: sobra venv parcial e o pip órfão
     a.communicate(timeout=30)
-    sb.env.pop("PIP_INDEX_URL")
-    sb.env.update(PIP_NO_INDEX="1", PIP_FIND_LINKS=str(wheelhouse))
+    sb.env.pop("PLASMA_AI_INSTALLER_INDEX")
+    sb.env.update(PLASMA_AI_INSTALLER_FIND_LINKS=str(wheelhouse))
     code, lines, _ = sb.install()
     assert code == 0, lines
 

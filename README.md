@@ -35,9 +35,11 @@ Sem pipx, use um venv próprio e não instale no Python global:
 
 ```bash
 python3 -m venv ~/.local/share/plasma-ai-usage/venv
-~/.local/share/plasma-ai-usage/venv/bin/pip install --upgrade plasma-ai-usage-collector
+~/.local/share/plasma-ai-usage/venv/bin/pip install plasma-ai-usage-collector==X.Y.Z   # a versão do Plasmoid
 ln -s ~/.local/share/plasma-ai-usage/venv/bin/ai-usage-collector ~/.local/bin/
 ```
+
+Para atualizar depois, use o botão "Update collector" do widget ou repita o `pip install ...==X.Y.Z` com a versão do Plasmoid (não use `--upgrade` sem versão: o widget exige a versão exata).
 
 Depois instale só o widget pela loja. O widget acha o Coletor (ver "Onde o widget procura o coletor"). Mantenha as duas versões iguais.
 

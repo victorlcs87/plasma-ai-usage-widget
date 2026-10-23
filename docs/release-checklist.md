@@ -2,16 +2,19 @@
 
 Ordem obrigatória. O PyPI vem antes da loja KDE, porque o botão do widget instala do PyPI a versão exata do widget. Itens marcados "primeiro release" só se confirmam no primeiro release real (PyPI real, loja real); nada disso foi exercitado ainda.
 
+> **BLOQUEANTE (antes de tornar o repositório público e antes de qualquer tag):** o nome `plasma-ai-usage-collector` precisa estar publicado no PyPI e ser seu. Enquanto ele estiver livre, qualquer pessoa pode registrá-lo (squatting) e o botão do widget instalaria o pacote dela, executando código arbitrário na máquina do usuário. Crie o projeto (ou o pending publisher) e faça o primeiro publish (pode ser manual, com token do projeto; ver passo 7) ANTES de divulgar o `.plasmoid` ou o repositório.
+
 ## 1. Contas e Trusted Publisher (uma única vez)
 
 - [ ] Conta no PyPI com 2FA.
-- [ ] No GitHub: Settings > Environments > criar o ambiente `pypi` (de preferência com revisor obrigatório).
+- [ ] No GitHub: Settings > Environments > criar o ambiente `pypi` com **revisor obrigatório** (Required reviewers) e restrinja o deploy a tags `v*`.
 - [ ] No PyPI, como o projeto `plasma-ai-usage-collector` ainda não existe, criar um *pending publisher* (Account settings > Publishing). Campos exatos:
   - Project name: `plasma-ai-usage-collector`
   - Owner: `victorlcs87`
   - Repository: `plasma-ai-usage-widget`
   - Workflow: `release.yml`
   - Environment: `pypi`
+- [ ] Settings > Tags (ou Rulesets): proteção para tags `v*` (só mantenedores criam, ninguém apaga/move).
 - [ ] Conta no store.kde.org.
 
 ## 2. Versão e verificações
@@ -23,15 +26,17 @@ Ordem obrigatória. O PyPI vem antes da loja KDE, porque o botão do widget inst
 
 ## 3. Tornar o repositório público
 
+- [ ] **Bloqueante:** `https://pypi.org/project/plasma-ai-usage-collector/` existe e é seu (primeiro publish já feito).
 - [ ] Rode `gitleaks detect` no histórico inteiro. Achados conhecidos e aceitos: fixtures falsas `sk-dummy-12345` e `ya29.vencido`. Qualquer outro achado bloqueia a publicação.
 - [ ] Revise issues, specs e `docs/` por caminhos pessoais ou dados reais.
 - [ ] Settings > Danger Zone > Change visibility > Public.
 
 ## 4. Tag e workflow
 
+- [ ] **Bloqueante:** o nome no PyPI já é seu (aviso do topo) e o commit da tag está na `main` (o `pypi-build` recusa o contrário).
 - [ ] Na `main` atualizada: crie e envie a tag `vX.Y.Z` (a mesma versão do passo 2). Só tags `vX.Y.Z[-sufixo]` disparam o PyPI.
 - [ ] Acompanhe em Actions (`Release Automation`): `release` (GitHub Release com `.plasmoid` e `.whl`), `pypi-build` e `pypi-publish`. Os jobs do PyPI rodam em paralelo ao release do GitHub; um pode falhar sem o outro.
-- [ ] Se o environment `pypi` exigir revisor, aprove o `pypi-publish`.
+- [ ] Aprove o `pypi-publish` (o environment `pypi` tem revisor obrigatório).
 - [ ] Primeiro release: o Trusted Publisher só se confirma aqui. Se o `pypi-publish` falhar por permissão, revise os campos do passo 1.
 
 ## 5. Confirmar o PyPI e o instalador

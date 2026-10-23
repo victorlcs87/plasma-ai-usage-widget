@@ -23,7 +23,7 @@ msgstr ""
 msgid "Active on the system"
 msgstr ""
 
-#: contents/ui/AccountCard.qml:122 contents/ui/main.qml:327
+#: contents/ui/AccountCard.qml:122 contents/ui/main.qml:329
 msgid "Exit code %1"
 msgstr ""
 
@@ -1609,14 +1609,14 @@ msgstr ""
 msgid "Status cache not found. See the collector notice."
 msgstr ""
 
-#: contents/ui/main.qml:328
+#: contents/ui/main.qml:330
 msgid "Error running the collector: %1"
 msgstr ""
 
-#: contents/ui/main.qml:351
+#: contents/ui/main.qml:353
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr ""
 
-#: contents/ui/main.qml:466
+#: contents/ui/main.qml:468
 msgid "Error reading status JSON: %1"
 msgstr ""

@@ -8,8 +8,10 @@ Imprime sempre UMA linha de JSON e sai com 0:
 
 Uso: collector-installer.py install --version X.Y.Z
 Instala plasma-ai-usage-collector==X.Y.Z no venv do widget (~/.local/share/plasma-ai-usage/venv) e liga
-~/.local/bin/ai-usage-collector a ele. Sem privilegios elevados e sem shell. O indice vem so do ambiente (PIP_INDEX_URL,
-PIP_FIND_LINKS, PIP_NO_INDEX...), nunca de argumento. Saida: uma linha JSON por evento (flush a cada linha):
+~/.local/bin/ai-usage-collector a ele. Sem privilegios elevados e sem shell. O pip roda com --isolated e
+--index-url https://pypi.org/simple (ignora PIP_* e pip.conf do usuario). Override SO para testes/ambientes offline,
+por ambiente (nunca por argumento): PLASMA_AI_INSTALLER_INDEX (URL) e PLASMA_AI_INSTALLER_FIND_LINKS (diretorio de .whl;
+usa --no-index). Proxy/certificado: HTTPS_PROXY, HTTP_PROXY, NO_PROXY, SSL_CERT_FILE, REQUESTS_CA_BUNDLE, PIP_CERT. Saida: uma linha JSON por evento (flush a cada linha):
   {"step": venv|download|install|link|verify, "status": start|ok|error, "message": str}
 e a ultima: {"result": ok|error, "cause": null|python_indisponivel|rede|versao_inexistente|permissao|
   conflito_em_local_bin|verificacao|falha, "message": str, "log": [ultimas ~30 linhas do pip]}.
@@ -55,12 +57,18 @@ def find_collector(configured):
 def read_version(path):
     """Executa `<path> --version` sem shell; devolve o texto X.Y.Z ou None se não for confiável."""
     try:
-        r = subprocess.run([path, "--version"], capture_output=True, text=True, errors="replace",
-                           timeout=VERSION_TIMEOUT, stdin=subprocess.DEVNULL)
-    except (OSError, subprocess.SubprocessError):
+        proc = subprocess.Popen([path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                                errors="replace", stdin=subprocess.DEVNULL, start_new_session=True)
+    except OSError:
         return None
-    m = re.fullmatch(BIN + r" (\d+\.\d+\.\d+[A-Za-z0-9.+-]*)", r.stdout.strip())
-    return m[1] if r.returncode == 0 and m else None
+    try:
+        stdout, _ = proc.communicate(timeout=VERSION_TIMEOUT)
+    except subprocess.TimeoutExpired:
+        _killpg(proc)  # mata também netos que seguram o pipe
+        proc.communicate()
+        return None
+    m = re.fullmatch(BIN + r" (\d+\.\d+\.\d+[A-Za-z0-9.+-]*)", stdout.strip())
+    return m[1] if proc.returncode == 0 and m else None
 
 
 def python_ok():
@@ -108,9 +116,10 @@ LINKS = (BIN, "ai-usage-session-state")
 PIP_TIMEOUT = 300
 VENV_TIMEOUT = 120
 _STRICT = re.compile(r"[0-9]+\.[0-9]+\.[0-9]+")
-# variáveis que redirecionariam onde o pip escreve (o índice, ao contrário, vem do ambiente)
-_DROP_ENV = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "PIP_TARGET", "PIP_PREFIX", "PIP_ROOT", "PIP_USER",
-             "PIP_PYTHON", "PIP_CACHE_DIR")
+PYPI_INDEX = "https://pypi.org/simple"
+# allowlist: do ambiente do usuário o pip só recebe proxy/certificado; o resto de PIP_* é removido
+_PIP_KEEP = ("HTTPS_PROXY", "HTTP_PROXY", "NO_PROXY", "SSL_CERT_FILE", "REQUESTS_CA_BUNDLE", "PIP_CERT")
+_DROP_ENV = ("PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV")
 _NOPERM = (errno.EACCES, errno.EPERM, errno.EROFS)
 
 
@@ -233,7 +242,8 @@ def _do_install(version, home, created):
     venv = os.path.join(base, "venv")
     binds = os.path.join(home, ".local", "bin")
     vbin = os.path.join(venv, "bin")
-    env = {k: v for k, v in os.environ.items() if k not in _DROP_ENV}
+    env = {k: v for k, v in os.environ.items()
+           if k not in _DROP_ENV and (k in _PIP_KEEP or not k.upper().startswith("PIP_"))}
     log = collections.deque(maxlen=2000)
     try:
         _link_state(os.path.join(binds, BIN), venv)  # conflito primeiro: falha cedo, sem efeito colateral
@@ -242,8 +252,16 @@ def _do_install(version, home, created):
         _prepare_venv(venv, base, env, created, home)
         _step("venv", "ok", "Ambiente pronto.")
 
-        cmd = [os.path.join(vbin, "pip"), "install", "--disable-pip-version-check", "--no-input", "--no-cache-dir",
-               "%s==%s" % (PACKAGE, version)]
+        cmd = [os.path.join(vbin, "pip"), "--isolated", "install", "--disable-pip-version-check", "--no-input",
+               "--no-cache-dir"]
+        if env.get("PIP_CERT"):  # --isolated ignora a variável; repassa como opção
+            cmd += ["--cert", env["PIP_CERT"]]
+        find_links = os.environ.get("PLASMA_AI_INSTALLER_FIND_LINKS")  # só testes/offline
+        if find_links:
+            cmd += ["--no-index", "--find-links", find_links]
+        else:
+            cmd += ["--index-url", os.environ.get("PLASMA_AI_INSTALLER_INDEX") or PYPI_INDEX]
+        cmd.append("%s==%s" % (PACKAGE, version))
         code, installing, timed_out = _run_pip(cmd, env, home, log)
         if code != 0 or timed_out:
             cause = "rede" if timed_out else _classify("\n".join(log))
