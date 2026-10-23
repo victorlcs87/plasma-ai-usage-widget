@@ -36,7 +36,7 @@ class FakeResp:
     def __init__(self, body):
         self._body = json.dumps(body).encode()
 
-    def read(self):
+    def read(self, amt=-1):
         return self._body
 
     def __enter__(self):
@@ -57,10 +57,19 @@ class FakeHttp:
     def __init__(self, **responses):
         self.responses = responses
         self.calls = {p: 0 for p in PROVIDER_URLS}
+        self.urls: list[str] = []
 
     def __call__(self, req, timeout=None):
         prov = next(p for p, host in PROVIDER_URLS.items() if host in req.full_url)
+        self.urls.append(req.full_url)
         queue = self.responses[prov]
+        if prov == "gemini" and req.full_url.endswith(":retrieveUserQuota") and "gemini_models" in self.responses:
+            queue = self.responses["gemini_models"]  # fila propria do endpoint de cota por modelo
+            resp = queue[min(sum(u.endswith(":retrieveUserQuota") for u in self.urls) - 1, len(queue) - 1)]
+            self.calls[prov] += 1
+            if isinstance(resp, Exception):
+                raise resp
+            return FakeResp(resp)
         resp = queue[min(self.calls[prov], len(queue) - 1)]
         self.calls[prov] += 1
         if isinstance(resp, Exception):
@@ -68,22 +77,35 @@ class FakeHttp:
         return FakeResp(resp)
 
 
-def make_profile(tmp_path, provider, name, token="tok-1"):
-    """Perfil isolado sem historico local, com credencial valida."""
+def make_profile(tmp_path, provider, name, token="tok-1", expired=False, ident=None):
+    """Perfil isolado sem historico local, com credencial valida (ou vencida ha 40 h com `expired`).
+
+    `ident` grava a Identidade da Conta (uuid no Claude, account_id no Codex, email no Gemini)."""
     d = tmp_path / "profiles" / provider / name
     d.mkdir(parents=True)
-    future = (T0 + timedelta(days=5))
+    # `expired`: True = venceu ha 40 h; timedelta = validade relativa a T0 (ex.: +30 min = vence antes do proximo Intervalo)
+    exp = T0 + (expired if isinstance(expired, timedelta) else -timedelta(hours=40)) if expired else T0 + timedelta(days=5)
     if provider == "claude":
         cred = d / ".credentials.json"
-        cred.write_text(json.dumps({"claudeAiOauth": {"accessToken": token, "expiresAt": future.isoformat()}}))
+        cred.write_text(json.dumps({"claudeAiOauth": {"accessToken": token, "expiresAt": exp.isoformat()}}))
+        if ident:
+            (d / ".claude.json").write_text(json.dumps({"oauthAccount": {"accountUuid": ident}}))
         return {"id": name, "label": name, "claude_dir": str(d), "credential_path": str(cred)}
     if provider == "codex":
         cred = d / "auth.json"
-        cred.write_text(json.dumps({"auth_mode": "chatgpt", "tokens": {"access_token": token, "account_id": "acc"}}))
+        tokens = {"access_token": token, "account_id": ident or "acc"}
+        cred.write_text(json.dumps({"auth_mode": "chatgpt", "tokens": tokens}))
         return {"id": name, "label": name, "codex_dir": str(d), "credential_path": str(cred)}
     cred = d / "oauth_creds.json"
-    cred.write_text(json.dumps({"access_token": token, "refresh_token": "r", "expiry_date": int(future.timestamp() * 1000)}))
+    data = {"access_token": token, "refresh_token": "r", "expiry_date": int(exp.timestamp() * 1000)}
+    if ident:
+        data["email"] = ident
+    cred.write_text(json.dumps(data))
     return {"id": name, "label": name, "gemini_dir": str(d), "credential_path": str(cred)}
+
+
+def make_expired_profile(tmp_path, provider, name, **kw):
+    return make_profile(tmp_path, provider, name, expired=True, **kw)
 
 
 @pytest.fixture
@@ -104,7 +126,7 @@ def env(tmp_path, monkeypatch):
 
 
 def configure(env, tmp_path, accounts_by_provider):
-    save_config({"version": 1, "agents": {p: {"accounts": accs} for p, accs in accounts_by_provider.items()}}, env["config"])
+    save_config({"version": 1, "renew": {"gemini": True}, "agents": {p: {"accounts": accs} for p, accs in accounts_by_provider.items()}}, env["config"])
 
 
 def acc_of(status, provider, idx=0):
@@ -535,3 +557,96 @@ def test_claude_validator_rejects_non_dict_window():
     assert not valid({"five_hour": None, "seven_day": "x"})
     assert not valid({"seven_day": [1]})
     assert not valid({})
+
+
+def test_gemini_expired_token_makes_no_quota_call_and_shows_no_data(env, tmp_path):
+    prof = make_profile(tmp_path, "gemini", "a")
+    creds = Path(prof["credential_path"])
+    creds.write_text(json.dumps({
+        "access_token": "tok-vencido", "refresh_token": "r",
+        "expiry_date": int((T0 - timedelta(hours=40)).timestamp() * 1000),
+    }))
+    (Path(prof["gemini_dir"]) / "history.jsonl").write_text(
+        json.dumps({"timestamp": int(T0.timestamp() * 1000) - 60000, "display": "oi"}) + "\n"
+    )
+    configure(env, tmp_path, {"gemini": [prof]})
+    http = FakeHttp(gemini=[API_OK["gemini"]])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    acc = acc_of(status, "gemini")
+    assert http.calls["gemini"] == 0
+    assert acc["no_data"] is True
+    for win in ("native_window", "weekly_window"):
+        assert acc[win]["usage_percentage"] is None
+    assert acc["native_window"]["messages_used"] == 1  # historico local segue como informacao auxiliar
+    assert "tok-vencido" not in json.dumps(status)
+
+
+def test_gemini_network_failure_keeps_last_data_stale(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[API_OK["gemini"], urllib.error.URLError("sem rede")])
+    env["run"]("--provider", "gemini", "--refresh-interval", "gemini=3600", http=http)
+
+    env["clock"]["now"] = T0 + timedelta(seconds=3600)
+    status = env["run"]("--provider", "gemini", http=http)
+
+    acc = acc_of(status, "gemini")
+    assert acc["stale"] is True
+    assert acc["fetch_error"]["kind"] == "network"
+    assert acc["fetched_at"] == T0.isoformat()
+    assert acc["native_window"]["usage_percentage"] == 42.0
+    assert "no_data" not in acc
+
+
+GEMINI_SUMMARY = {"groups": [{"displayName": "Claude and GPT models", "buckets": [
+    {"bucketId": "3p-5h", "window": "5h", "remainingFraction": 1, "resetTime": "2026-10-20T20:00:00Z"}]}]}
+GEMINI_MODELS = {"buckets": [
+    {"modelId": "gemini-2.5-pro", "remainingFraction": 0.83, "resetTime": "2026-10-20T18:00:00Z"}]}
+
+
+def test_gemini_one_call_per_endpoint_per_query_and_models_reach_highlight(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[GEMINI_MODELS])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    assert sorted(u.rsplit(":", 1)[1] for u in http.urls) == ["retrieveUserQuota", "retrieveUserQuotaSummary"]
+    acc = acc_of(status, "gemini")
+    assert acc["native_window"]["usage_percentage"] == 17.0
+    assert acc["stale"] is False
+
+
+def test_gemini_429_on_first_endpoint_pauses_account_and_skips_second_call(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[http_error(429, "226")], gemini_models=[GEMINI_MODELS])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    assert http.calls["gemini"] == 1
+    acc = acc_of(status, "gemini")
+    assert acc["fetch_error"]["kind"] == "rate_limited" and acc["no_data"] is True
+
+
+def test_gemini_429_on_second_endpoint_pauses_account(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[http_error(429, "226")])
+
+    status = env["run"]("--provider", "gemini", http=http)
+    acc = acc_of(status, "gemini")
+    assert acc["fetch_error"]["kind"] == "rate_limited"
+
+    env["clock"]["now"] = T0 + timedelta(seconds=60)
+    env["run"]("--provider", "gemini", http=http)
+    assert http.calls["gemini"] == 2  # pausada: nenhuma chamada nova
+
+
+def test_gemini_one_endpoint_failing_keeps_the_other_fresh(env, tmp_path):
+    configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
+    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[urllib.error.URLError("sem rede")])
+
+    status = env["run"]("--provider", "gemini", http=http)
+
+    acc = acc_of(status, "gemini")
+    assert acc["stale"] is False and "fetch_error" not in acc
+    assert acc["native_window"]["usage_percentage"] == 0.0

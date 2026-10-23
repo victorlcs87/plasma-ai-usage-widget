@@ -611,3 +611,12 @@ def set_visibility_settings(mode: str | None = None, config_path: str | Path | N
         cfg["visibility"] = {"hide_when_not_running": mode}
         save_config(cfg, config_path)
     return True, f"Ocultar sem o processo da CLI: {mode}."
+
+
+def set_renew_settings(gemini: bool, config_path: str | Path | None = None) -> tuple[bool, str]:
+    """Liga/desliga a renovacao da Conta Gemini inativa (opt-in; padrao desligada)."""
+    with config_lock(config_path):
+        cfg = load_config(config_path)
+        cfg["renew"] = {"gemini": gemini}
+        save_config(cfg, config_path)
+    return True, f"Renovação de Contas Gemini inativas {'ligada' if gemini else 'desligada'}."

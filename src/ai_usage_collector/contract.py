@@ -31,6 +31,8 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     Ticket 37: optional per-agent "running" (bool|null: the CLI process runs for the current user; null =
 #     undeterminable), top-level "running_checked_at" (ISO) and "visibility" {hide_when_not_running}: new
 #     optional keys that old readers ignore: no version bump
+#     Spec 08 / ticket 61: optional per-account "renewal" {error: str|null, at: ISO} = classified result of the last
+#     automatic renewal attempt of an inactive Account (error code only, never CLI output or tokens): no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 
@@ -276,6 +278,12 @@ def validate_status_contract(data: Any) -> bool:
             if "isActive" in acc and not isinstance(acc["isActive"], bool):
                 return False
             if acc.get("session_state") not in (None, "busy", "waiting", "idle", "unknown"):
+                return False
+            renewal = acc.get("renewal")
+            if renewal is not None and not (
+                isinstance(renewal, dict) and isinstance(renewal.get("at"), str)
+                and (renewal.get("error") is None or isinstance(renewal["error"], str))
+            ):
                 return False
             if "token_history" in acc and not isinstance(acc["token_history"], dict):
                 return False

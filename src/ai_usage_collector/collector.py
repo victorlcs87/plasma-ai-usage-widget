@@ -9,7 +9,7 @@ from typing import Any
 
 from datetime import datetime, timezone
 
-from ai_usage_collector import refresh, updates
+from ai_usage_collector import refresh, renew, updates
 from ai_usage_collector.orphans import list_orphans
 from ai_usage_collector.capture import (
     find_matching_account,
@@ -93,6 +93,7 @@ def collect_and_save(
     now: datetime | None = None,
     providers: list[str] | None = None,
     intervals: dict[str, int] | None = None,
+    force_renew: bool = False,
 ) -> dict[str, Any]:
     """Collect and write canonical status.json (ADR-0007).
 
@@ -104,7 +105,7 @@ def collect_and_save(
     outbox: list[dict[str, Any]] = []
     update_plan: dict[str, bool] = {}
     with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
-        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan)
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan, force_renew)
         save_status_cache(status_payload, cache_file)
     deliver(outbox, cache_file)  # fora do lock: D-Bus lento nao segura o status.json
     if update_plan:
@@ -138,6 +139,7 @@ def _collect(
     cyc: refresh.RefreshCycle,
     outbox: list[dict[str, Any]],
     update_plan: dict[str, bool] | None = None,
+    force_renew: bool = False,
 ) -> dict[str, Any]:
     config = load_config(config_path)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
@@ -160,7 +162,11 @@ def _collect(
         account_statuses: list[dict[str, Any]] = []
 
         agent_has_valid_account = False
-        active_acc_id = detect_active_account_id(agent_id, accounts, credential_override(agent_id, config))
+        try:
+            active_acc_id = detect_active_account_id(agent_id, accounts, credential_override(agent_id, config))
+        except Exception as e:  # sem deteccao nao ha Conta Ativa conhecida; a renovacao tem a propria guarda fail-closed
+            sys.stderr.write(f"Aviso: Conta Ativa {agent_id} nao detectada: {type(e).__name__}\n")
+            active_acc_id = None
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
@@ -187,6 +193,11 @@ def _collect(
                 except Exception as e:
                     sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
+            if not is_active:  # nunca a Conta Ativa no Sistema: quem a renova e a propria CLI
+                renew.renew_inactive(
+                    cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config),
+                    force=force_renew, config_path=config_path,
+                )
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None
@@ -240,12 +251,22 @@ def _collect(
                 is_active=is_active,
                 usage_details=usage_details,
             )
+            last_renewal = None if is_active else cyc.renewals.get(f"{agent_id}:{acc_id}")
+            if agent_id == "gemini" and not is_active and not renew.renew_gemini_enabled(config):
+                acc_status["renewal"] = {"error": "disabled", "at": refresh._iso(now_dt.timestamp())}  # so avisar
+            elif last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
+                acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}
             outcome = cyc.take_outcome()
             identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
             refresh.apply_outcome(
                 acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
                 identity_key=identity.key if identity else None,
             )
+            if (
+                agent_id == "gemini" and "no_data" not in acc_status
+                and all(acc_status[w].get("usage_percentage") is None for w in ("native_window", "weekly_window"))
+            ):  # token ausente/vencido ou API muda: sem dados, nunca 0% (leitura local e so auxiliar)
+                acc_status["no_data"] = True
             account_statuses.append(acc_status)
 
         status_payload["agents"][agent_id]["accounts"] = account_statuses
@@ -270,6 +291,8 @@ def _collect(
     except OSError as e:  # Perfis Orfaos sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Perfis Orfaos nao listados: {e}\n")
         status_payload["orphan_profiles"] = []
+
+    status_payload["renew"] = {"gemini": renew.renew_gemini_enabled(config)}  # a tela de configuracao le daqui
 
     try:
         apply_token_history(status_payload, config, cache_file, now_dt)
@@ -319,6 +342,7 @@ def reapply_alert_levels(config_path: str | Path | None = None, cache_path: str 
             status["notifications"] = notify_settings(config)  # a tela de configuracao le daqui
             updates.apply_updates(status, config, cache_file)  # idem; sem rede
             status["visibility"] = visibility_settings(config)
+            status["renew"] = {"gemini": renew.renew_gemini_enabled(config)}
             save_status_cache(status, cache_file)
 
 

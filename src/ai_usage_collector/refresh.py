@@ -184,6 +184,21 @@ def _load_state(path: Path, now_ts: float) -> dict[str, dict[str, Any]]:
     return state
 
 
+def _load_renewals(path: Path) -> dict[str, dict[str, Any]]:
+    """Ultima renovacao por Conta (`provedor:id`); entradas invalidas sao descartadas."""
+    try:
+        raw = json.loads(path.read_text(encoding="utf-8")).get("renewals")
+    except (OSError, ValueError, AttributeError):
+        return {}
+    out: dict[str, dict[str, Any]] = {}
+    for key, entry in (raw.items() if isinstance(raw, dict) else []):
+        at = _finite(entry.get("at")) if isinstance(entry, dict) else None
+        if at is not None and at >= 0:
+            err = entry.get("error")
+            out[str(key)] = {"at": at, "error": err if isinstance(err, str) else None}
+    return out
+
+
 class RefreshCycle:
     """Estado de um ciclo de coleta: memo por credencial e pausas por Conta."""
 
@@ -194,6 +209,19 @@ class RefreshCycle:
         self._memo: dict[str, tuple[dict[str, Any] | None, dict[str, Any]]] = {}
         self._pending: list[dict[str, Any]] = []
         self._account_key: str | None = None
+        self.renewals = _load_renewals(state_path)
+        self.system_creds: dict[str, Any] = {}  # credencial de sistema por provedor, lida uma vez por ciclo
+        self.renew_started: float | None = None  # inicio (monotonic) da primeira renovacao do ciclo
+
+    def renewal_due(self, provider: str, account_id: str, interval: int) -> bool:
+        """True se a Conta ainda nao foi renovada neste Intervalo de Atualizacao."""
+        last = self.renewals.get(f"{provider}:{account_id}", {}).get("at")
+        now_ts = self.now.timestamp()
+        return last is None or last > now_ts or last + interval <= now_ts
+
+    def record_renewal(self, provider: str, account_id: str, error: str | None) -> None:
+        """Marca a tentativa (sucesso ou nao) e a classe do erro, nunca detalhes ou tokens."""
+        self.renewals[f"{provider}:{account_id}"] = {"at": self.now.timestamp(), "error": error}
 
     def begin_account(self, provider: str, account_id: str) -> None:
         """Associa as proximas consultas a esta Conta (chave da pausa)."""
@@ -216,9 +244,10 @@ class RefreshCycle:
         if entry.get("paused_until", 0) > now_ts:
             data, outcome = None, {"kind": "rate_limited", "retry_at": entry["paused_until"]}
         else:
-            if credential not in self._memo:
-                self._memo[credential] = self._request(request, timeout, valid, int(entry.get("failures") or 0), opener)
-            data, outcome = self._memo[credential]
+            memo_key = f"{credential}|{request.full_url}"  # um provedor pode ter mais de um endpoint
+            if memo_key not in self._memo:
+                self._memo[memo_key] = self._request(request, timeout, valid, int(entry.get("failures") or 0), opener)
+            data, outcome = self._memo[memo_key]
             if outcome["kind"] == "rate_limited":
                 self.state[pause_key] = {"paused_until": outcome["retry_at"], "failures": outcome["failures"]}
             elif outcome["kind"] == "ok":
@@ -240,19 +269,29 @@ class RefreshCycle:
     def take_outcome(self) -> dict[str, Any] | None:
         """Resultado mais grave das consultas feitas desde a chamada anterior (None se nenhuma)."""
         pending, self._pending = self._pending, []
-        return max(pending, key=lambda o: _SEVERITY[o["kind"]]) if pending else None
+        worst = max(pending, key=lambda o: _SEVERITY[o["kind"]], default=None)
+        # Com varios endpoints, falha de rede/resposta invalida num deles nao descarta o que o outro trouxe
+        # (429 e auth continuam valendo: a Conta pausa / pede login)
+        if worst and _SEVERITY[worst["kind"]] == _SEVERITY["network"]:
+            return next((o for o in pending if o["kind"] == "ok"), worst)
+        return worst
 
     def save(self) -> None:
         # Descarta pausas vencidas ha mais de um dia (Contas removidas deixam chaves orfas)
         cutoff = self.now.timestamp() - 86400
         creds = {k: v for k, v in self.state.items() if v["paused_until"] > cutoff}
-        save_secure_json({"version": 2, "credentials": creds}, self.state_path, prefix="refresh_")
+        renewals = {k: v for k, v in self.renewals.items() if v["at"] > cutoff}
+        save_secure_json(
+            {"version": 2, "credentials": creds, "renewals": renewals}, self.state_path, prefix="refresh_"
+        )
 
 
 def forget_account(state_path: Path, provider: str, account_id: str) -> None:
     """Remove a pausa da Conta (chamar sob status_lock)."""
     cycle_ = RefreshCycle(state_path, utcnow())
-    if cycle_.state.pop(f"{provider}:{account_id}", None) is not None:
+    key = f"{provider}:{account_id}"
+    removed = [cycle_.state.pop(key, None), cycle_.renewals.pop(key, None)]
+    if any(r is not None for r in removed):
         cycle_.save()
 
 

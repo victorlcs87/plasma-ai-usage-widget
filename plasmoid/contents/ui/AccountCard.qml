@@ -152,12 +152,31 @@ Rectangle {
         }), I18n.tr));
     }
 
+    // Login vencido de uma Conta inativa: estado da renovação automática (acc.renewal.error, código do coletor),
+    // frases inteiras com a Conta como %1 e o caminho para reativá-la
+    function authErrorText(renewal) {
+        var name = cardRoot.accountName;
+        var code = renewal ? renewal.error : null;
+        if (cardRoot.isActive) return I18n.tr("%1: login expired at the provider. Log in at the provider with this account.", name);  // a ativa não é renovada pelo coletor
+        if (!code && renewal && renewal.at) return I18n.tr("%1: renewal ran, but the provider still refuses the token. Log in at the provider with this account to reactivate it.", name);
+        if (!code) return I18n.tr("%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account.", name);
+        switch (code) {
+        case "disabled": return I18n.tr("%1: token expired. Automatic renewal is off for Gemini accounts; log in at the provider with this account to reactivate it.", name);
+        case "revoked": return I18n.tr("%1: login revoked at the provider. Log in at the provider with this account to reactivate it.", name);
+        case "cli_missing": return I18n.tr("%1: automatic renewal failed (the provider CLI was not found). Log in at the provider with this account to reactivate it.", name);
+        case "binary_missing": return I18n.tr("%1: automatic renewal failed (the Antigravity binary was not found). Log in at the provider with this account to reactivate it.", name);
+        case "timeout": return I18n.tr("%1: automatic renewal failed (timed out). It will be retried at the next check; to reactivate it now, log in at the provider with this account.", name);
+        case "network": return I18n.tr("%1: automatic renewal failed (network error). It will be retried at the next check; to reactivate it now, log in at the provider with this account.", name);
+        default: return I18n.tr("%1: automatic renewal failed. Log in at the provider with this account to reactivate it.", name);
+        }
+    }
+
     // Mensagem do erro de consulta pelo `kind` (conjunto fechado do coletor); kind novo = a mensagem do coletor
     function fetchErrorText(err) {
         if (!err) return "";
         switch (err.kind) {
         case "rate_limited": return I18n.tr("Provider rate limit reached (HTTP 429); waiting for the requested pause.");
-        case "auth": return I18n.tr("Login expired or revoked at the provider; log in again.");
+        case "auth": return cardRoot.authErrorText(cardRoot.accountData?.renewal);
         case "network": return I18n.tr("Failed to query the provider (network unavailable).");
         case "invalid_response": return I18n.tr("The provider answered without the expected usage data.");
         default: return err.message || "";

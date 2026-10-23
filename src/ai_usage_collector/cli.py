@@ -29,6 +29,7 @@ from ai_usage_collector.config import (
     load_config,
     set_alert_settings,
     set_notify_settings,
+    set_renew_settings,
     set_update_settings,
     set_provider_settings,
     set_visibility_settings,
@@ -57,6 +58,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--refresh",
         action="store_true",
         help="Executa a coleta (respeitando pausas do provedor) e atualiza o arquivo de status",
+    )
+    parser.add_argument(
+        "--force-renew",
+        action="store_true",
+        help="Com --refresh: renova as Contas inativas vencidas mesmo dentro do Intervalo de Atualização (\"Atualizar agora\")",
     )
     parser.add_argument(
         "--status",
@@ -195,6 +201,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Liga/desliga a verificação diária de atualização (GitHub Releases e npm): --update-check on|off (padrão on)",
     )
     parser.add_argument("--update-check", choices=["on", "off"], default=None, help="Verificação diária de atualização")
+    parser.add_argument(
+        "--set-renew-config",
+        action="store_true",
+        help="Liga/desliga a renovação de Contas Gemini inativas (usa o app OAuth da Antigravity e lê o segredo do binário agy; pode contrariar os termos do Google): --renew-gemini on|off (padrão off)",
+    )
+    parser.add_argument("--renew-gemini", choices=["on", "off"], default=None, help="Renovação de Contas Gemini inativas")
     parser.add_argument(
         "--set-visibility-config",
         action="store_true",
@@ -361,6 +373,15 @@ def main(argv: Sequence[str] | None = None) -> int:
                 reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem consulta aos provedores
             (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
             return 0 if ok else 1
+
+        if args.set_renew_config:
+            if args.renew_gemini is None:
+                sys.stderr.write("Erro: --set-renew-config exige --renew-gemini on|off.\n")
+                return 1
+            ok, message = set_renew_settings(args.renew_gemini == "on", config_path)
+            reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem rede
+            sys.stdout.write(message + "\n")
+            return 0
 
         if args.set_update_config:
             if args.update_check is None:
@@ -559,6 +580,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             and not args.set_alert_config
             and not args.set_notify_config
             and not args.set_update_config
+            and not args.set_renew_config
             and not args.set_visibility_config
             and not args.detect_running
             and not args.switch_account
@@ -588,6 +610,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cache_path=cache_path,
                 providers=providers or None,
                 intervals=intervals,
+                force_renew=args.force_renew,
             )
 
         if should_output_status:

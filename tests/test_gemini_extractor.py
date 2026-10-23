@@ -105,15 +105,17 @@ def test_gemini_extractor_fresh_empty_directory(tmp_path):
 
     nw = result["native_window"]
     assert nw["type"] == "daily"
-    assert nw["used_capacity"] == 0
+    assert nw["messages_used"] == 0
     assert nw["total_capacity"] == 100
-    assert nw["available_capacity"] == 100
-    assert nw["usage_percentage"] == 0.0
+    assert nw["used_capacity"] is None  # sem API: sem dado, nunca 0% inventado
+    assert nw["available_capacity"] is None
+    assert nw["usage_percentage"] is None
     assert nw["release_time"] is None
     assert nw["seconds_remaining"] is None
 
     ww = result["weekly_window"]
-    assert ww["used_capacity"] == 0
+    assert ww["usage_percentage"] is None
+    assert ww["messages_used"] == 0
     assert ww["tokens_used"] == 0
     assert ww["cycle_reset_time"] is None
     assert ww["seconds_remaining"] is None
@@ -183,10 +185,10 @@ def test_gemini_extractor_active_daily_and_weekly_usage(tmp_path):
 
     nw = result["native_window"]
     assert nw["type"] == "daily"
-    assert nw["used_capacity"] == 3  # 18h, 5h, 1h
+    assert nw["messages_used"] == 3  # 18h, 5h, 1h (informacao auxiliar local)
     assert nw["total_capacity"] == 100
-    assert nw["available_capacity"] == 97
-    assert nw["usage_percentage"] == round((3 / 100) * 100, 1)  # 3.0%
+    assert nw["usage_percentage"] is None  # a contagem local nunca vira % de cota
+    assert nw["available_capacity"] is None
 
     # Oldest in 24h is 18h ago (dt_18h). 24h from then resets in 6h (21600s).
     expected_release = (now - timedelta(hours=18) + timedelta(days=1)).isoformat()
@@ -195,7 +197,8 @@ def test_gemini_extractor_active_daily_and_weekly_usage(tmp_path):
 
     ww = result["weekly_window"]
     # 4 conversations in 7 days (3d, 18h, 5h, 1h)
-    assert ww["used_capacity"] == 4
+    assert ww["messages_used"] == 4
+    assert ww["usage_percentage"] is None
     # Total steps across all conversations
     assert ww["total_tokens_or_turns"] == 10 + 25 + 15 + 5 + 8
     expected_cycle_reset = (now - timedelta(days=3) + timedelta(days=7)).isoformat()
@@ -226,8 +229,8 @@ def test_gemini_extractor_history_jsonl_fallback(tmp_path):
 
     result = extract_gemini_status(account, now=now)
     nw = result["native_window"]
-    assert nw["used_capacity"] == 2
-    assert nw["available_capacity"] == 98
+    assert nw["messages_used"] == 2
+    assert nw["available_capacity"] is None
 
 
 def test_gemini_extractor_quota_exhausted_or_exceeded(tmp_path):
@@ -256,9 +259,9 @@ def test_gemini_extractor_quota_exhausted_or_exceeded(tmp_path):
     result = extract_gemini_status(account, now=now)
     nw = result["native_window"]
     assert nw["total_capacity"] == 100
-    assert nw["used_capacity"] == 120
-    assert nw["available_capacity"] == 0
-    assert nw["usage_percentage"] == 100.0
+    assert nw["messages_used"] == 120
+    assert nw["available_capacity"] is None
+    assert nw["usage_percentage"] is None  # 120 mensagens locais nao dizem se a cota esgotou
     assert nw["release_time"] is not None
     assert nw["seconds_remaining"] > 0
 
@@ -312,7 +315,8 @@ def test_gemini_extractor_corrupted_sqlite_handled_gracefully(tmp_path):
     }
 
     result = extract_gemini_status(account, now=now)
-    assert result["native_window"]["used_capacity"] == 0
+    assert result["native_window"]["messages_used"] == 0
+    assert result["native_window"]["usage_percentage"] is None
     assert result["native_window"]["type"] == "daily"
 
 
@@ -371,7 +375,8 @@ def test_collector_integration_with_gemini_native_extractor(tmp_path):
     acc = gemini_agent["accounts"][0]
     assert acc["label"] == "Gemini (user@gmail.com)"
     assert acc["native_window"]["type"] == "daily"
-    assert acc["native_window"]["used_capacity"] == 1
+    assert acc["native_window"]["messages_used"] == 1
+    assert acc["native_window"]["usage_percentage"] is None
     assert acc["free_trial_invites"]["invite_url"] == "https://gemini.google/invite/SHARED"
 
 
@@ -509,16 +514,18 @@ def test_extract_gemini_status_fallback_when_api_fails(tmp_path):
         res = extract_gemini_status(account, now=now)
 
     nw = res["native_window"]
-    assert nw["used_capacity"] == 2
+    assert nw["messages_used"] == 2  # leitura local fica como informacao auxiliar
     assert nw["total_capacity"] == 100
-    assert nw["available_capacity"] == 98
-    assert nw["usage_percentage"] == round((2 / 100) * 100, 1)
+    assert nw["used_capacity"] is None
+    assert nw["available_capacity"] is None
+    assert nw["usage_percentage"] is None  # API sem resposta: sem dados, nunca % inventado
 
     ww = res["weekly_window"]
     assert ww["total_capacity"] == 100 * 7
-    assert ww["used_capacity"] == 2
-    assert ww["available_capacity"] == (100 * 7) - 2
-    assert ww["usage_percentage"] == round((2 / (100 * 7)) * 100, 1)
+    assert ww["messages_used"] == 2
+    assert ww["used_capacity"] is None
+    assert ww["available_capacity"] is None
+    assert ww["usage_percentage"] is None
     # Sem resumo de cota: fallback da heuristica local (janela diaria)
     assert nw["type"] == "daily"
     assert nw["window_seconds"] == 86400
@@ -714,6 +721,7 @@ def test_collector_gemini_status_json_reflects_ok_with_expired_file_but_active_k
     with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value="ya29.keyring_token"), \
          patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_raw", return_value=fake_keyring_raw), \
          patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=fake_api_response), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_model_quota_api", return_value=None), \
          patch("ai_usage_collector.discovery.get_gemini_keyring_credentials", return_value={
              "access_token": "ya29.keyring_token",
              "refresh_token": "1//refresh_val",
@@ -862,3 +870,166 @@ def test_gemini_source_markers_only_claim_what_was_read(tmp_path):
 
     nw, ww = _gemini_sources(tmp_path, {"gemini-5h": full["gemini-5h"]})
     assert (nw["source"], ww["source"]) == ("api", "api_missing")
+
+
+def test_gemini_token_vencido_nao_consulta_api_e_fica_sem_dados(tmp_path):
+    """Token vencido (perfil isolado): nada de chamada de cota nem 0% inventado."""
+    gemini_dir = tmp_path / "profiles" / "gemini" / "a"
+    gemini_dir.mkdir(parents=True)
+    now = datetime(2026, 10, 22, 12, 0, 0, tzinfo=timezone.utc)
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps({
+        "access_token": "ya29.vencido",
+        "refresh_token": "1//r",
+        "expiry_date": int((now - timedelta(hours=40)).timestamp() * 1000),
+    }))
+    account = {"id": "a", "provider": "gemini", "gemini_dir": str(gemini_dir)}
+
+    with patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=None) as api:
+        res = extract_gemini_status(account, now=now)
+
+    api.assert_not_called()
+    for win in (res["native_window"], res["weekly_window"]):
+        assert win["usage_percentage"] is None
+        assert win["used_capacity"] is None
+        assert win["available_capacity"] is None
+    assert res["native_window"]["source"] == "local"
+
+
+def test_gemini_api_sem_bucket_semanal_nao_inventa_percentual_semanal(tmp_path):
+    gemini_dir = tmp_path / ".gemini"
+    gemini_dir.mkdir()
+    (gemini_dir / "oauth_creds.json").write_text(json.dumps({"access_token": "ya29.ok"}))
+    now = datetime(2026, 10, 22, 12, 0, 0, tzinfo=timezone.utc)
+    data = {"buckets": [{"remainingFraction": 0.83, "duration": "18000s",
+                         "resetTime": (now + timedelta(hours=2)).isoformat()}]}
+    account = {"id": "a", "provider": "gemini", "gemini_dir": str(gemini_dir)}
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=data), \
+         patch("ai_usage_collector.extractors.gemini.parse_gemini_quota_buckets",
+               return_value=(data["buckets"][0], None)):
+        res = extract_gemini_status(account, now=now)
+    assert res["native_window"]["usage_percentage"] == 17.0
+    assert res["weekly_window"]["usage_percentage"] is None
+
+
+# --- Ticket 60: consumo combinado de grupos (resumo) e modelos (cota por modelo) ---
+
+FIXTURES = Path(__file__).parent / "fixtures"
+_NOW_REAL = datetime(2026, 10, 22, 23, 50, 0, tzinfo=timezone.utc)  # logo apos a captura das fixtures
+
+
+def _real(name):
+    return json.loads((FIXTURES / name).read_text())
+
+
+def _status_combined(account, summary, models, now=_NOW_REAL):
+    with patch("ai_usage_collector.extractors.gemini.get_gemini_keyring_token", return_value=None), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api", return_value=summary), \
+         patch("ai_usage_collector.extractors.gemini.fetch_gemini_model_quota_api", return_value=models):
+        return extract_gemini_status(account, now=now)
+
+
+def test_combined_real_fixtures_highlight_reflects_gemini_models(tmp_path):
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
+    nw, ww = res["native_window"], res["weekly_window"]
+    # Grupo Claude/GPT 100% restante (0% usado); modelos Gemini com 0.7764416 restante
+    assert nw["usage_percentage"] == 22.4
+    assert nw["release_time"] == "2026-10-23T02:32:02+00:00"
+    assert nw["source"] == "api" and nw["api_fields"] == ["release"]  # duracao do modelo nao vem da API
+    assert nw["window_seconds"] is None and nw["type"] == "custom"  # duracao do bucket do modelo e desconhecida
+    assert ww["usage_percentage"] == 0.0 and ww["source"] == "api"
+    assert res["health"]["status"] == "valid"
+
+
+def test_combined_details_list_remaining_and_release_per_model(tmp_path):
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
+    models = {m["model"]: m for m in res["usage_details"]["quota_by_model"]}
+    assert models["gemini-2.5-pro"] == {
+        "model": "gemini-2.5-pro", "window": None, "usage_percentage": 22.4,
+        "reset_time": "2026-10-23T02:32:02+00:00"}
+    assert models["claude-sonnet-4-6"]["usage_percentage"] == 0.0
+    assert models["tab_flash_lite_preview"]["reset_time"] is None  # sem liberacao: nao inventa
+
+
+def test_combined_83_percent_remaining_shows_17_used(tmp_path):
+    models = {"buckets": [
+        {"modelId": "gemini-2.5-pro", "remainingFraction": 0.83, "resetTime": "2026-10-23T02:32:02Z"},
+        {"modelId": "gemini-2.5-flash", "remainingFraction": 0.9, "resetTime": "2026-10-23T02:32:02Z"},
+    ]}
+    res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), models)
+    assert res["native_window"]["usage_percentage"] == 17.0
+    assert res["native_window"]["available_capacity"] == 83
+
+
+def test_combined_summary_more_urgent_than_models_keeps_summary(tmp_path):
+    summary = {"groups": [{"displayName": "Claude and GPT models", "buckets": [
+        {"bucketId": "3p-5h", "window": "5h", "remainingFraction": 0.1, "resetTime": "2026-10-23T04:48:52Z"},
+        {"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.5, "resetTime": "2026-10-29T23:48:52Z"}]}]}
+    res = _status_combined(_gemini_account(tmp_path), summary, _real("gemini_quota_by_model_real.json"))
+    assert res["native_window"]["usage_percentage"] == 90.0
+    assert res["native_window"]["release_time"] == "2026-10-23T04:48:52+00:00"
+    assert res["weekly_window"]["usage_percentage"] == 50.0
+
+
+def test_combined_models_only_when_summary_fails(tmp_path):
+    res = _status_combined(_gemini_account(tmp_path), None, _real("gemini_quota_by_model_real.json"))
+    assert res["native_window"]["usage_percentage"] == 22.4
+    assert res["native_window"]["api_fields"] == ["release"]  # duracao nao veio da API
+    # Semanal sem resumo: sem dado, nunca 0%
+    assert res["weekly_window"]["usage_percentage"] is None
+    assert res["usage_details"]["quota_by_model"]
+
+
+def test_combined_summary_only_when_models_fail(tmp_path):
+    res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), None)
+    assert res["native_window"]["usage_percentage"] == 0.0
+    assert res["weekly_window"]["usage_percentage"] == 0.0
+    assert "usage_details" not in res
+
+
+def test_combined_both_fail_is_no_data_not_zero(tmp_path):
+    res = _status_combined(_gemini_account(tmp_path), None, None)
+    assert res["native_window"]["usage_percentage"] is None
+    assert res["weekly_window"]["usage_percentage"] is None
+    assert "usage_details" not in res
+
+
+def test_combined_model_without_reset_never_becomes_window(tmp_path):
+    models = {"buckets": [{"modelId": "gemini-x", "remainingFraction": 0.1}]}
+    res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), models)
+    assert res["native_window"]["usage_percentage"] == 0.0
+    assert res["usage_details"]["quota_by_model"][0]["usage_percentage"] == 90.0
+
+
+def test_fetch_gemini_model_quota_api_calls_retrieve_user_quota():
+    from ai_usage_collector.extractors.gemini import fetch_gemini_model_quota_api
+
+    body = json.dumps(_real("gemini_quota_by_model_real.json")).encode()
+    resp = MagicMock(status=200)
+    resp.__enter__.return_value = resp
+    resp.read.return_value = body
+    with patch("urllib.request.urlopen", return_value=resp) as mock_urlopen:
+        assert fetch_gemini_model_quota_api("tok")["buckets"]
+    req = mock_urlopen.call_args[0][0]
+    assert req.full_url.endswith("/v1internal:retrieveUserQuota")
+    assert req.data == b"{}" and req.get_header("Authorization") == "Bearer tok"
+
+
+def test_expired_model_bucket_is_ignored_for_the_window_but_kept_in_details(tmp_path):
+    late = _NOW_REAL + timedelta(days=3)  # o resetTime dos modelos (23/10) ja venceu
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"), now=late)
+    assert res["native_window"]["usage_percentage"] != 22.4
+    assert res["usage_details"]["quota_by_model"]
+
+
+def test_model_bucket_over_5h_summary_has_unknown_duration(tmp_path):
+    res = _status_combined(
+        _gemini_account(tmp_path),
+        _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
+    assert res["native_window"]["window_seconds"] is None

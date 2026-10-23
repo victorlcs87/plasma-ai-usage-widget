@@ -42,6 +42,10 @@ _Avoid_: cadastro manual, edicao de json
 Acao de desvincular e excluir uma credencial cadastrada do arquivo de configuracao e da visualizacao do widget.
 _Avoid_: desativar, ocultar, desconectar
 
+**Renovacao de Conta Inativa**:
+Tentativa do Coletor, no maximo uma por Conta por Intervalo de Atualizacao, de renovar o login vencido de uma Conta que nao e a Ativa no Sistema, operando so no Perfil Isolado. O resultado fica como classe de erro no contrato (`renewal`), nunca como saida da CLI. Detalhes e riscos no ADR-0013.
+_Avoid_: refresh automatico, relogin, renovar a Conta Ativa
+
 ### Limites e uso
 
 **Janela Nativa**:
