@@ -21,7 +21,7 @@ def _failing(code):
 @pytest.mark.parametrize("code", ["revoked", "cli_missing", "timeout", None])
 def test_last_renewal_result_is_exposed_without_secrets(env, tmp_path, monkeypatch, provider, code):
     monkeypatch.setattr(renew, "RENEWERS", {provider: _failing(code)})
-    configure(env, tmp_path, {provider: [make_profile(tmp_path, provider, "a", token="SEGREDO-XYZ")]})
+    configure(env, tmp_path, {provider: [make_profile(tmp_path, provider, "a", token="SEGREDO-XYZ", expired=timedelta(minutes=30))]})
 
     status = env["run"]("--provider", provider, http=FakeHttp(**{provider: [http_error(401)]}))
 
@@ -33,7 +33,7 @@ def test_last_renewal_result_is_exposed_without_secrets(env, tmp_path, monkeypat
 
 def test_renewal_is_kept_inside_the_interval_and_absent_without_attempt(env, tmp_path, monkeypatch):
     monkeypatch.setattr(renew, "RENEWERS", {"claude": _failing("timeout")})
-    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a", expired=timedelta(minutes=30))]})
     http = FakeHttp(claude=[http_error(401)])
     env["run"]("--provider", "claude", http=http)
     env["clock"]["now"] = T0 + timedelta(minutes=30)
@@ -41,7 +41,7 @@ def test_renewal_is_kept_inside_the_interval_and_absent_without_attempt(env, tmp
     assert acc["renewal"] == {"error": "timeout", "at": T0.isoformat()}  # nao tentou de novo, mas informa a ultima
 
     monkeypatch.setattr(renew, "RENEWERS", {})
-    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "b")]})
+    configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "b", expired=timedelta(minutes=30))]})
     assert "renewal" not in acc_of(env["run"]("--provider", "claude", http=http), "claude")
 
 

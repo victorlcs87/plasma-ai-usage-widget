@@ -696,7 +696,11 @@ def extract_gemini_status(
         # Claude/GPT esconderia os modelos Gemini). Sem liberacao conhecida nao ha janela.
         # ponytail: urgencia = maior uso; o nivel de alerta (ritmo) e calculado depois, so por janela
         urgent_model = max(
-            (m for m in parse_gemini_model_quotas(models_data) if m["usage_percentage"] is not None and m["reset_time"]),
+            (
+                m for m in parse_gemini_model_quotas(models_data)
+                # reset vencido: o bucket ja virou; o dado e defasado e nao pode virar a janela (fica so nos detalhes)
+                if m["usage_percentage"] is not None and m["reset_time"] and (parse_timestamp(m["reset_time"]) or 0) > now_sec
+            ),
             key=lambda m: m["usage_percentage"],
             default=None,
         )
@@ -738,8 +742,7 @@ def extract_gemini_status(
             release_time = urgent_model["reset_time"]
             native_source = "api"
             native_api_fields = ["release"]  # duracao do bucket de modelo nao e informada pela API
-            if not has_5h:
-                native_window_seconds = GEMINI_5H_SECONDS
+            native_window_seconds = None  # duracao desconhecida: nao rotular como 5 h
 
         # Weekly window from official API
         if bucket_weekly and bucket_weekly.get("remainingFraction") is not None:
@@ -782,7 +785,7 @@ def extract_gemini_status(
             }
 
     native_window = {
-        "type": window_type_from_seconds(native_window_seconds),
+        "type": window_type_from_seconds(native_window_seconds) if native_window_seconds else "custom",
         "source": native_source,
         "api_fields": native_api_fields,
         "window_seconds": native_window_seconds,

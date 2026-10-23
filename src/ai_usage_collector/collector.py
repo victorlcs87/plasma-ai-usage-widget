@@ -93,6 +93,7 @@ def collect_and_save(
     now: datetime | None = None,
     providers: list[str] | None = None,
     intervals: dict[str, int] | None = None,
+    force_renew: bool = False,
 ) -> dict[str, Any]:
     """Collect and write canonical status.json (ADR-0007).
 
@@ -104,7 +105,7 @@ def collect_and_save(
     outbox: list[dict[str, Any]] = []
     update_plan: dict[str, bool] = {}
     with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
-        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan)
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan, force_renew)
         save_status_cache(status_payload, cache_file)
     deliver(outbox, cache_file)  # fora do lock: D-Bus lento nao segura o status.json
     if update_plan:
@@ -138,6 +139,7 @@ def _collect(
     cyc: refresh.RefreshCycle,
     outbox: list[dict[str, Any]],
     update_plan: dict[str, bool] | None = None,
+    force_renew: bool = False,
 ) -> dict[str, Any]:
     config = load_config(config_path)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
@@ -160,7 +162,11 @@ def _collect(
         account_statuses: list[dict[str, Any]] = []
 
         agent_has_valid_account = False
-        active_acc_id = detect_active_account_id(agent_id, accounts, credential_override(agent_id, config))
+        try:
+            active_acc_id = detect_active_account_id(agent_id, accounts, credential_override(agent_id, config))
+        except Exception as e:  # sem deteccao nao ha Conta Ativa conhecida; a renovacao tem a propria guarda fail-closed
+            sys.stderr.write(f"Aviso: Conta Ativa {agent_id} nao detectada: {type(e).__name__}\n")
+            active_acc_id = None
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
@@ -188,7 +194,10 @@ def _collect(
                     sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
             if not is_active:  # nunca a Conta Ativa no Sistema: quem a renova e a propria CLI
-                renew.renew_inactive(cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config))
+                renew.renew_inactive(
+                    cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config),
+                    force=force_renew, config_path=config_path,
+                )
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
             weekly_window = None

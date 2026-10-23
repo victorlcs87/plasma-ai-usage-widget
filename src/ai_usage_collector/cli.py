@@ -59,6 +59,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Executa a coleta (respeitando pausas do provedor) e atualiza o arquivo de status",
     )
     parser.add_argument(
+        "--force-renew",
+        action="store_true",
+        help="Com --refresh: renova as Contas inativas vencidas mesmo dentro do Intervalo de Atualização (\"Atualizar agora\")",
+    )
+    parser.add_argument(
         "--status",
         action="store_true",
         help="Exibe o payload canônico de status atual em JSON na saída padrão",
@@ -588,6 +593,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                 cache_path=cache_path,
                 providers=providers or None,
                 intervals=intervals,
+                force_renew=args.force_renew,
             )
 
         if should_output_status:

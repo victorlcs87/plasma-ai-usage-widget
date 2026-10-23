@@ -210,6 +210,8 @@ class RefreshCycle:
         self._pending: list[dict[str, Any]] = []
         self._account_key: str | None = None
         self.renewals = _load_renewals(state_path)
+        self.system_creds: dict[str, Any] = {}  # credencial de sistema por provedor, lida uma vez por ciclo
+        self.renew_started: float | None = None  # inicio (monotonic) da primeira renovacao do ciclo
 
     def renewal_due(self, provider: str, account_id: str, interval: int) -> bool:
         """True se a Conta ainda nao foi renovada neste Intervalo de Atualizacao."""

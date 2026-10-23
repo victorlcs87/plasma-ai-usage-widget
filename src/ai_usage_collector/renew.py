@@ -14,6 +14,7 @@ import os
 import re
 import select
 import shutil
+import signal
 import subprocess
 import sys
 import tempfile
@@ -26,22 +27,61 @@ from pathlib import Path
 from typing import Any, Callable
 
 from ai_usage_collector import refresh
-from ai_usage_collector.capture import get_system_credential_file
+from ai_usage_collector.capture import (
+    _CREDENTIAL_FILENAMES,
+    _extract_credential_signature,
+    _read_json_dict,
+    _system_identity,
+    get_active_credentials,
+    get_profiles_base_dir,
+    get_system_credential_file,
+)
+from ai_usage_collector.discovery import parse_timestamp
+from ai_usage_collector.identity import _jwt_claims, credential_identity
 
 TIMEOUT_SECONDS = 20
+BUDGET_SECONDS = 45  # orcamento total de renovacao por ciclo (as renovacoes sao seriais dentro do lock)
+EXPIRY_MARGIN_SECONDS = 300
+MAX_READ_BYTES = 1_000_000
+MAX_BINARY_BYTES = 1 << 30
+_clock = time.monotonic  # testes substituem
+
+# O filho (claude/codex) recebe so o necessario: nunca ANTHROPIC_API_KEY, CLAUDE_CODE_OAUTH_TOKEN,
+# OPENAI_API_KEY, CODEX_API_KEY nem qualquer outro segredo do ambiente do Coletor.
+_ENV_KEEP = ("PATH", "HOME", "LANG", "TMPDIR")
+_ENV_PREFIXES = ("LC_", "XDG_")
+
+
+def _child_env(env_name: str, profile: Path) -> dict[str, str]:
+    env = {k: v for k, v in os.environ.items() if k in _ENV_KEEP or k.startswith(_ENV_PREFIXES)}
+    env[env_name] = str(profile)
+    return env
+
+
+def _kill_group(proc: subprocess.Popen) -> None:
+    """Mata o grupo do filho (start_new_session): netos da CLI nao ficam orfaos."""
+    try:
+        os.killpg(proc.pid, signal.SIGKILL)
+    except OSError:
+        proc.kill()
 
 
 def _run(binary: str, args: list[str], env_name: str, profile: Path) -> None:
     exe = shutil.which(binary)
     if not exe:
         raise FileNotFoundError(binary)
-    env = {**os.environ, env_name: str(profile)}
     # Lista de argumentos, sem shell; saida descartada (pode conter dados da Conta)
-    proc = subprocess.run(
-        [exe, *args], env=env, timeout=TIMEOUT_SECONDS, check=False,
+    proc = subprocess.Popen(
+        [exe, *args], env=_child_env(env_name, profile), start_new_session=True,
         stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
     )
-    if proc.returncode != 0:
+    try:
+        code = proc.wait(timeout=TIMEOUT_SECONDS)
+    except BaseException:
+        _kill_group(proc)
+        proc.wait()
+        raise
+    if code != 0:
         raise RuntimeError("exit")
 
 
@@ -57,7 +97,7 @@ def _codex_refresh(profile: Path) -> None:
     if not exe:
         raise FileNotFoundError("codex")
     proc = subprocess.Popen(
-        [exe, "app-server", "--listen", "stdio://"], env={**os.environ, "CODEX_HOME": str(profile)},
+        [exe, "app-server", "--listen", "stdio://"], env=_child_env("CODEX_HOME", profile), start_new_session=True,
         stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True,
     )
     try:
@@ -77,6 +117,8 @@ def _codex_refresh(profile: Path) -> None:
             if not chunk:
                 raise RuntimeError("exit")
             buf += chunk
+            if len(buf) > MAX_READ_BYTES:
+                raise RenewError("failed")
             *lines, buf = buf.split(b"\n")
             for line in lines:
                 try:
@@ -93,7 +135,7 @@ def _codex_refresh(profile: Path) -> None:
             proc.stdin.close()  # o app-server sai sozinho; da tempo de terminar a escrita do auth.json
             proc.wait(timeout=2)
         except Exception:
-            proc.kill()
+            _kill_group(proc)
             proc.wait()
         proc.stdout.close()
 
@@ -126,6 +168,11 @@ def _agy_binary() -> Path:
     path = Path(exe).expanduser().resolve()
     if not path.is_file():
         raise RenewError("binary_missing")
+    try:
+        if path.stat().st_size > MAX_BINARY_BYTES:
+            raise RenewError("binary_unreadable")
+    except OSError:
+        raise RenewError("binary_unreadable") from None
     return path
 
 
@@ -170,7 +217,7 @@ def _post_refresh(client_id: str, secret: str, refresh_token: str) -> dict[str, 
         "Content-Type": "application/x-www-form-urlencoded", "Accept": "application/json"})
     try:
         with refresh.NO_REDIRECT_OPENER.open(req, timeout=HTTP_TIMEOUT_SECONDS) as resp:
-            data = json.loads(resp.read())
+            data = json.loads(resp.read(MAX_READ_BYTES))
     except urllib.error.HTTPError as exc:
         try:
             err = json.loads(exc.read(100_000)).get("error")
@@ -193,13 +240,26 @@ def _post_refresh(client_id: str, secret: str, refresh_token: str) -> dict[str, 
 
 def _write_private_atomic(path: Path, data: dict[str, Any]) -> None:
     """Temporario 0600 no mesmo diretorio + os.replace. Nao segue symlink: o alvo e sempre o arquivo do perfil."""
+    for old in path.parent.glob(".oauth_*.tmp"):  # sobras de uma queda no meio da gravacao
+        try:
+            if time.time() - old.stat().st_mtime > 3600:
+                old.unlink()
+        except OSError:
+            pass
     fd, tmp = tempfile.mkstemp(dir=path.parent, prefix=".oauth_", suffix=".tmp")  # mkstemp ja cria 0600
     try:
         with os.fdopen(fd, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=2, ensure_ascii=False)
             f.write("\n")
+            f.flush()
+            os.fsync(f.fileno())
         os.chmod(tmp, 0o600)
         os.replace(tmp, path)
+        dir_fd = os.open(path.parent, os.O_RDONLY)
+        try:
+            os.fsync(dir_fd)
+        finally:
+            os.close(dir_fd)
     except Exception:
         Path(tmp).unlink(missing_ok=True)
         raise
@@ -218,7 +278,10 @@ def _gemini_refresh(profile: Path) -> None:
         raise RenewError("revoked")
     client_id = _client_id_from(creds)
     candidates = _secret_candidates(_agy_binary(), client_id)
+    started = _clock()
     for secret in candidates:
+        if _clock() - started > TIMEOUT_SECONDS:  # teto total do Gemini (orcamento do ciclo)
+            raise RenewError("timeout")
         try:
             data = _post_refresh(client_id, secret, refresh_token)
             break
@@ -248,22 +311,106 @@ RENEWERS: dict[str, Callable[[Path], None]] = {
 _PROFILE_KEYS = {"claude": "claude_dir", "codex": "codex_dir", "gemini": "gemini_dir"}
 
 
+def _expiry_ts(provider: str, cred_file: Path) -> float | None:
+    """Validade (epoch s) do access token do Perfil, lida sem rede; None se desconhecida."""
+    creds = _read_json_dict(cred_file)
+    if not creds:
+        return None
+    if provider == "claude":
+        oauth = creds.get("claudeAiOauth")
+        return parse_timestamp(oauth.get("expiresAt")) if isinstance(oauth, dict) else None
+    if provider == "codex":
+        tokens = creds.get("tokens") if isinstance(creds.get("tokens"), dict) else creds
+        exp = _jwt_claims(tokens.get("access_token")).get("exp")  # so o payload; a assinatura nao importa aqui
+        return float(exp) if isinstance(exp, (int, float)) and not isinstance(exp, bool) and exp > 0 else None
+    ts = parse_timestamp(creds.get("expiry_date") or creds.get("expiry"))
+    if ts is None:
+        ttl = creds.get("expires_in")
+        if isinstance(ttl, (int, float)) and not isinstance(ttl, bool) and ttl > 0:
+            try:
+                ts = cred_file.stat().st_mtime + ttl
+            except OSError:
+                return None
+    return ts
+
+
+def needs_renewal(provider: str, cred_file: Path, now_ts: float, interval: int) -> bool:
+    """True se o access token venceu ou vence antes do proximo Intervalo de Atualizacao (+ margem)."""
+    exp = _expiry_ts(provider, cred_file)
+    return exp is None or exp <= now_ts + interval + EXPIRY_MARGIN_SECONDS
+
+
+def _skip_reason(
+    cyc: refresh.RefreshCycle, provider: str, profile: Path, cred_file: Path, override: Path | None,
+    config_path: str | Path | None,
+) -> str | None:
+    """Codigo de 'pulado' se renovar esta pasta pudesse tocar a Conta Ativa ou algo fora dos Perfis Isolados.
+
+    Fail-closed: qualquer duvida (leitura falhou, identidade desconhecida) pula. So codigos, nunca segredos.
+    """
+    try:
+        base = get_profiles_base_dir(config_path).resolve()
+        if profile == base or not profile.is_relative_to(base):
+            return "outside_profiles"
+        if cred_file.is_symlink():
+            return "symlink"
+        fixed = {Path(f"~/{d}").expanduser().resolve() for d in (".claude", ".codex", ".gemini")}
+        sys_file = get_system_credential_file(provider, override)
+        if profile in fixed or sys_file.resolve().parent == profile or cred_file.resolve() == sys_file.resolve():
+            return "system_dir"
+        sys_creds = cyc.system_creds.get(provider, False)
+        if sys_creds is False:
+            sys_creds = cyc.system_creds[provider] = get_active_credentials(provider, override)
+        if sys_creds is None:
+            # Sem credencial legivel: so segue se tambem nao ha arquivo de sistema (senao e leitura falha)
+            from ai_usage_collector.capture import _ANTIGRAVITY_TOKEN, _gemini_base  # noqa: PLC0415
+
+            extra = [_gemini_base() / _ANTIGRAVITY_TOKEN] if provider == "gemini" and not override else []
+            # ponytail: chaveiro do Gemini (secret-tool) nao e verificavel aqui; se falhar e nao houver arquivo, segue
+            return "detection_failed" if any(os.path.lexists(f) for f in [sys_file, *extra]) else None
+        mine = _extract_credential_signature(provider, _read_json_dict(cred_file))
+        theirs = _extract_credential_signature(provider, sys_creds)
+        for key in ("refresh_token", "access_token"):
+            if mine.get(key) and mine[key] == theirs.get(key):
+                return "same_credential"
+        ident_sys = _system_identity(provider, sys_creds, sys_file)
+        ident_mine = credential_identity(provider, cred_file)
+        if ident_sys is None or ident_mine is None:
+            return "identity_unknown"
+        if ident_sys.key == ident_mine.key:
+            return "same_identity"
+    except Exception:
+        return "detection_failed"
+    return None
+
+
 def renew_inactive(
     cyc: refresh.RefreshCycle, provider: str, account_id: str, account: dict[str, Any],
-    interval: int, override: Path | None = None,
+    interval: int, override: Path | None = None, force: bool = False,
+    config_path: str | Path | None = None,
 ) -> str | None:
-    """Renova o Perfil Isolado da Conta se devido; devolve a classe do erro (None = ok ou nada a fazer)."""
+    """Renova o Perfil Isolado da Conta se devido; devolve a classe do erro (None = ok ou nada a fazer).
+
+    `force` ("Atualizar agora") passa por cima do limite de uma tentativa por Intervalo, mas nunca das
+    regras de seguranca, da validade do token nem do orcamento do ciclo.
+    """
     renewer = RENEWERS.get(provider)
     raw_dir = account.get(_PROFILE_KEYS.get(provider, ""))
-    if not renewer or not raw_dir or not cyc.renewal_due(provider, account_id, interval):
+    if not renewer or not raw_dir or not (force or cyc.renewal_due(provider, account_id, interval)):
         return None
+    who = repr(f"{provider}:{account_id}")
     profile = Path(raw_dir).expanduser().resolve()
-    try:
-        system_dir = get_system_credential_file(provider, override).resolve().parent
-    except Exception:
-        system_dir = None
-    if system_dir == profile:
-        return None  # e a pasta do sistema: nunca tocar
+    cred_file = profile / _CREDENTIAL_FILENAMES[provider]
+    if reason := _skip_reason(cyc, provider, profile, cred_file, override, config_path):
+        sys.stderr.write(f"Aviso: renovacao da Conta {who} pulada ({reason})\n")
+        return None
+    if not needs_renewal(provider, cred_file, cyc.now.timestamp(), interval):
+        return None
+    elapsed = 0.0 if cyc.renew_started is None else _clock() - cyc.renew_started
+    if elapsed > BUDGET_SECONDS - TIMEOUT_SECONDS:  # adiada ao proximo ciclo; nao e falha nem consome o Intervalo
+        return None
+    if cyc.renew_started is None:
+        cyc.renew_started = _clock()
     error = None
     try:
         renewer(profile)
@@ -277,5 +424,5 @@ def renew_inactive(
         error = "failed"
     cyc.record_renewal(provider, account_id, error)
     if error:
-        sys.stderr.write(f"Aviso: renovacao da Conta {provider}:{account_id} falhou ({error})\n")
+        sys.stderr.write(f"Aviso: renovacao da Conta {who} falhou ({error})\n")
     return error
