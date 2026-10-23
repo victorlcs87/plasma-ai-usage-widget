@@ -99,6 +99,9 @@ def test_main_checks_status_cheaply_with_packaged_script_and_metadata_version():
     assert 'Qt.resolvedUrl("../code/collector-installer.py")' in main and "Plasmoid.metaData.version" in main
     assert "Plasmoid.configuration.collectorPath" in main and "< 30000" in main
     assert (UI_DIR.parent / "code" / "collector-installer.py").is_file()
+    chk = main.split("function checkCollector() {")[1].split("}")[0]
+    assert 'collectorInstall.state === "running" && !root.collectorInstall.verifying' in chk
+    assert chk.index("verifying") < chk.index("connectSource")  # barra antes de disparar o status
     assert "checkCollector" not in main.split("id: providerRefreshScheduler")[1].split("// Execução da CLI")[0]  # nunca no laço de 15 s
 
 
