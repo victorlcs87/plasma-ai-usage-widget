@@ -126,6 +126,10 @@ Item {
     property bool updateCheck: true
     property bool isSavingUpdates: false
     property bool updateCheckBefore: true  // valor anterior, restaurado se o coletor falhar
+    // Renovação das Contas Gemini inativas (opt-in, padrão desligada; config.json do coletor, lida do status.json)
+    property bool renewGemini: false
+    property bool isSavingRenew: false
+    property bool renewGeminiBefore: false  // valor anterior, restaurado se o coletor falhar
     // Ocultar sem o processo da CLI (config.json do coletor, lido do status.json): off (padrão) | widget | provider
     property string hideMode: "off"
     property bool isSavingHide: false
@@ -309,6 +313,8 @@ Item {
                     }
                     var up = configRoot.statusData.updates;
                     if (up && typeof up.enabled === "boolean" && !configRoot.isSavingUpdates) configRoot.updateCheck = up.enabled;
+                    var rn = configRoot.statusData.renew;
+                    if (rn && typeof rn.gemini === "boolean" && !configRoot.isSavingRenew) configRoot.renewGemini = rn.gemini;
                     var vis = configRoot.statusData.visibility;
                     if (vis && !configRoot.isSavingHide && !configRoot.hideDirty) {
                         configRoot.hideMode = (vis.hide_when_not_running === "widget" || vis.hide_when_not_running === "provider") ? vis.hide_when_not_running : "off";
@@ -429,6 +435,36 @@ Item {
             } else {
                 configRoot.updateCheck = configRoot.updateCheckBefore;
                 updateCheckBox.checked = configRoot.updateCheckBefore;
+                configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
+            }
+            disconnectSource(sourceName);
+        }
+    }
+
+    function saveRenewSetting(enabled) {
+        configRoot.renewGeminiBefore = !enabled;
+        configRoot.isSavingRenew = true;
+        configRoot.statusMessage = "";
+        configRoot.errorMessage = "";
+        renewDataSource.connectSource(configRoot.buildCollectorCommand(
+            Collector.shellQuote("--set-renew-config") + " " + Collector.shellQuote("--renew-gemini") + " " + Collector.shellQuote(enabled ? "on" : "off")));
+    }
+
+    Plasma5Support.DataSource {
+        id: renewDataSource
+        engine: "executable"
+        connectedSources: []
+
+        onNewData: (sourceName, data) => {
+            configRoot.isSavingRenew = false;
+            var stdout = (data["stdout"] || "").trim();
+            var stderr = (data["stderr"] || "").trim();
+            if (data["exit code"] === 0) {
+                configRoot.statusMessage = stdout.split("\n")[0];
+                configRoot.loadStatus();
+            } else {
+                configRoot.renewGemini = configRoot.renewGeminiBefore;
+                renewGeminiCheckBox.checked = configRoot.renewGeminiBefore;
                 configRoot.errorMessage = stderr || stdout || I18n.tr("Unknown error");
             }
             disconnectSource(sourceName);
@@ -1059,6 +1095,27 @@ Item {
                             Accessible.description: I18n.tr("Queries the widget's GitHub Releases and the npm registry for Claude Code, Codex and Gemini CLI; nothing is downloaded or installed")
                             QQC2.ToolTip.text: Accessible.description
                             QQC2.ToolTip.visible: hovered || activeFocus
+                        }
+
+                        // Renovação de Contas Gemini inativas: opt-in (usa o app OAuth da Antigravity; ver README e ADR 0013)
+                        WrapCheckBox {
+                            id: renewGeminiCheckBox
+                            objectName: "renewGeminiCheckBox"
+                            text: I18n.tr("Renew inactive Gemini accounts automatically")
+                            checked: configRoot.renewGemini
+                            enabled: !configRoot.isBusy && !configRoot.isSavingRenew
+                            onToggled: { configRoot.renewGemini = checked; configRoot.saveRenewSetting(checked); }
+                            Accessible.description: I18n.tr("Off by default. Uses the Antigravity OAuth app, reading its secret from the installed agy binary, which may go against Google's terms. Only inactive accounts are renewed.")
+                            QQC2.ToolTip.text: Accessible.description
+                            QQC2.ToolTip.visible: hovered || activeFocus
+                        }
+
+                        QQC2.Label {
+                            Layout.fillWidth: true
+                            wrapMode: Text.WordWrap
+                            color: configRoot.secondaryText
+                            textFormat: Text.PlainText
+                            text: I18n.tr("Risk: renewal uses the Antigravity OAuth app and reads its secret from the installed agy binary, which may go against Google's terms. Only inactive accounts are renewed. Off by default; when off, an expired Gemini account only asks you to log in again.")
                         }
 
                         // Último recurso para achar o coletor (PATH, ~/.local/bin e pipx vêm antes)

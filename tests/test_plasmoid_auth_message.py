@@ -11,6 +11,7 @@ CASES = [
     ({"error": "binary_missing"}, "automatic renewal failed (the Antigravity binary was not found)"),
     ({"error": "timeout"}, "automatic renewal failed (timed out)"),
     ({"error": "network"}, "automatic renewal failed (network error)"),
+    ({"error": "disabled"}, "Automatic renewal is off for Gemini accounts"),
     ({"error": "failed"}, "automatic renewal failed. Log in"),
     ({"error": "no_valid_secret"}, "automatic renewal failed. Log in"),  # codigo interno novo cai no generico
 ]
