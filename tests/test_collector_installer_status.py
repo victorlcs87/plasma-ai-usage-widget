@@ -142,7 +142,7 @@ def test_entradas_invalidas_viram_json(env, capsys):
     assert run(capsys)["message"]  # sem --required
     assert run(capsys, "--required", "abc")["message"]
     assert installer.main(["x"]) == 0 and json.loads(capsys.readouterr().out)["message"]
-    assert installer.main(["x", "install"]) == 0 and json.loads(capsys.readouterr().out)["message"]
+    assert installer.main(["x", "desconhecido"]) == 0 and json.loads(capsys.readouterr().out)["message"]
 
 
 def test_script_roda_como_processo_com_python_do_sistema(tmp_path):
