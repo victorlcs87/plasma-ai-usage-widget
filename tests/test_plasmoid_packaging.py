@@ -568,7 +568,7 @@ def test_release_workflow_security_hardening():
     assert "pull_request_target" not in content
     # actions fixadas em SHA completo de commit
     uses = re.findall(r"^\s+uses:\s*(\S+)", content, re.M)
-    assert len(uses) == 3
+    assert len(uses) == 8
     for ref in uses:
         assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", ref), ref
     # permissão de escrita só no job; workflow sem permissões
@@ -578,3 +578,54 @@ def test_release_workflow_security_hardening():
     assert re.search(r"^    permissions:\n      contents: write", job, re.M)
     assert "TAG_REF: ${{ github.ref_name }}" in content and '"$TAG_REF"' in content
     assert "[0-9]+\\.[0-9]+\\.[0-9]+" in content
+    # PyPI: OIDC só no job de publicação, tag válida, sem segredo do PyPI
+    build, publish = _job("pypi-build"), _job("pypi-publish")
+    for j in (build, publish):
+        assert re.search(r"^    if: github\.ref_type == 'tag' && startsWith\(github\.ref_name, 'v'\)$", j, re.M)
+    assert re.search(r"^    needs: pypi-build$", publish, re.M)
+    assert re.search(r"^    environment: pypi$", publish, re.M)
+    assert re.search(r"^    permissions:\n      id-token: write\n      contents: read\n", publish, re.M)
+    assert re.search(r"^    permissions:\n      contents: read\n", build, re.M)
+    assert content.count("id-token") == 1
+    assert "skip-existing" not in content and "repository-url" not in content
+    assert not re.search(r"pypi[_-]?(api[_-]?)?token|PYPI_|password:", content, re.I)
+    assert content.count("secrets.") == 1
+    assert "check-release-versions.py" in build and "twine check" in build
+    assert "dist/*.whl" in _job("release")
+
+
+def _job(name: str) -> str:
+    content = RELEASE_WORKFLOW.read_text(encoding="utf-8")
+    m = re.search(rf"^  {name}:\n(.*?)(?=^  \S|\Z)", content, re.M | re.S)
+    assert m, f"job {name} ausente"
+    return m.group(1)
+
+
+@pytest.mark.parametrize(
+    "tag,pkg,meta,ok",
+    [
+        ("v1.2.3", "1.2.3", "1.2.3", True),
+        ("1.2.3", "1.2.3", "1.2.3", True),
+        ("v1.2.3-rc1", "1.2.3-rc1", "1.2.3-rc1", True),
+        ("v1.2.4", "1.2.3", "1.2.3", False),
+        ("v1.2.3", "1.2.4", "1.2.3", False),
+        ("v1.2.3", "1.2.3", "1.2.4", False),
+        ("v1.2.3-rc1", "1.2.3", "1.2.3", False),
+        ("vv1.2.3", "1.2.3", "1.2.3", False),
+    ],
+)
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="script usa tomllib (CI roda 3.12)")
+def test_check_release_versions(tmp_path, tag, pkg, meta, ok):
+    (tmp_path / "plasmoid").mkdir()
+    (tmp_path / "pyproject.toml").write_text(f'[project]\nname = "x"\nversion = "{pkg}"\n', encoding="utf-8")
+    (tmp_path / "plasmoid" / "metadata.json").write_text(json.dumps({"KPlugin": {"Version": meta}}), encoding="utf-8")
+    script = REPO_ROOT / "scripts" / "check-release-versions.py"
+    result = subprocess.run([sys.executable, str(script), tag, str(tmp_path)], capture_output=True, text=True)
+    assert (result.returncode == 0) is ok
+
+
+@pytest.mark.skipif(sys.version_info < (3, 11), reason="script usa tomllib (CI roda 3.12)")
+def test_check_release_versions_passes_on_real_repo():
+    meta = json.loads(METADATA_PATH.read_text(encoding="utf-8"))["KPlugin"]["Version"]
+    script = REPO_ROOT / "scripts" / "check-release-versions.py"
+    assert subprocess.run([sys.executable, str(script), f"v{meta}"]).returncode == 0
