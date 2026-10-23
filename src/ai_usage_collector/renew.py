@@ -36,6 +36,7 @@ from ai_usage_collector.capture import (
     get_profiles_base_dir,
     get_system_credential_file,
 )
+from ai_usage_collector.config import load_config
 from ai_usage_collector.discovery import parse_timestamp
 from ai_usage_collector.identity import _jwt_claims, credential_identity
 
@@ -384,6 +385,12 @@ def _skip_reason(
     return None
 
 
+def renew_gemini_enabled(config: Any) -> bool:
+    """Opt-in: so um `renew.gemini` booleano True liga (padrao desligada; usa o app OAuth da Antigravity)."""
+    raw = config.get("renew") if isinstance(config, dict) else None
+    return isinstance(raw, dict) and raw.get("gemini") is True
+
+
 def renew_inactive(
     cyc: refresh.RefreshCycle, provider: str, account_id: str, account: dict[str, Any],
     interval: int, override: Path | None = None, force: bool = False,
@@ -398,6 +405,8 @@ def renew_inactive(
     raw_dir = account.get(_PROFILE_KEYS.get(provider, ""))
     if not renewer or not raw_dir or not (force or cyc.renewal_due(provider, account_id, interval)):
         return None
+    if provider == "gemini" and not renew_gemini_enabled(load_config(config_path)):
+        return None  # desligada: nem 'which agy', nem leitura do binario, nem rede
     who = repr(f"{provider}:{account_id}")
     profile = Path(raw_dir).expanduser().resolve()
     cred_file = profile / _CREDENTIAL_FILENAMES[provider]

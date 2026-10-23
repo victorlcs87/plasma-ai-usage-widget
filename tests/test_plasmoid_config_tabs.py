@@ -55,7 +55,7 @@ def test_inventory_cfg_properties_match_main_xml_and_each_has_one_tab():
 
 def test_every_collector_command_is_still_quoted():
     for flag in ("--add-account", "--rename-account", "--remove-account", "--capture-current", "--interactive-login",
-                 "--set-alert-config", "--set-notify-config", "--set-visibility-config", "--set-update-config"):
+                 "--set-alert-config", "--set-notify-config", "--set-visibility-config", "--set-update-config", "--set-renew-config"):
         assert f'shellQuote("{flag}")' in CFG, flag
     assert 'runOrphanAction("--reimport-orphan"' in CFG and 'runOrphanAction("--delete-orphan"' in CFG
     assert "shellQuote(flag)" in CFG
@@ -206,6 +206,22 @@ def test_apply_and_account_actions_call_the_same_commands(tmp_path):
                    "'--delete-orphan' 'claude' 'orf1' '--confirm'", "'--rename-account' 'claude' 'p2'", "'--remove-account' 'claude' 'p2'"):
         assert needle in joined, needle
     assert all(c.startswith("bash -c 'c=${1/#\\~/$HOME}; shift; if command -v ai-usage-collector") for c in cmds if not c.startswith("cat "))  # cat = leitura do status (stub, não executa)
+
+
+@needs_qml
+def test_renew_gemini_control_is_off_by_default_binds_the_property_and_applies_via_cli(tmp_path):
+    drive = """
+    var box = named("renewGeminiCheckBox")
+    obs('off', [box !== undefined, box.checked, box.Accessible.description.indexOf("Off by default") === 0, box.text])
+    obs('warn', all(cfg).filter(function (k) { return typeof k.text === 'string' && k.text.indexOf("Risk: renewal") === 0 && k.visible }).length)
+    cfg.renewGemini = true; tc.wait(50); obs('on', box.checked)
+    cfg.saveRenewSetting(true); cfg.saveRenewSetting(false)
+    """
+    out = config(tmp_path, drive=drive)
+    assert out["off"] == [True, False, True, "Renew inactive Gemini accounts automatically"] and out["warn"] == 1
+    assert out["on"] is True
+    joined = "\n".join(out["cmds"])
+    assert "'--set-renew-config' '--renew-gemini' 'on'" in joined and "'--set-renew-config' '--renew-gemini' 'off'" in joined
 
 
 @needs_qml

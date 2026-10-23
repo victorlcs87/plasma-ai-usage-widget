@@ -12,7 +12,9 @@ O Coletor renova a Conta **inativa** antes de consultar o uso, uma Conta por vez
 
 - **Claude**: `claude auth status` com `CLAUDE_CONFIG_DIR` do perfil.
 - **Codex**: `codex app-server` com `CODEX_HOME` do perfil e a chamada `account/read` com `refreshToken: true`. Nao gasta tokens de modelo. `codex login status`, `doctor` e `debug models` nao renovam (teste de 22/10/2026).
-- **Gemini**: POST de refresh em `oauth2.googleapis.com/token`. O `client_id` vem do `aud` do `id_token` da propria copia. O `client_secret` e lido **em tempo de execucao** do binario `agy` instalado: por `mmap`, ate 8 candidatos `GOCSPX-`, tentados ate o Google responder HTTP 200. Nunca e embutido no repositorio.
+- **Gemini** (**opt-in, desligada por padrao**, decisao de 23/10/2026 apos o security-review): POST de refresh em `oauth2.googleapis.com/token`. O `client_id` vem do `aud` do `id_token` da propria copia. O `client_secret` e lido **em tempo de execucao** do binario `agy` instalado: por `mmap`, ate 8 candidatos `GOCSPX-`, tentados ate o Google responder HTTP 200. Nunca e embutido no repositorio.
+
+Opt-in do Gemini: a opcao `renew.gemini` do `config.json` comeca desligada. Liga-se em Configuracao > Geral ou com `--set-renew-config --renew-gemini on` (`off` desliga). Desligada, o Coletor nao faz `which agy`, nao le o binario e nao chama o endpoint de token do Google; a Conta inativa vencida mostra `renewal.error = "disabled"` e o Plasmoid pede para reativa-la (modo so avisar). Claude e Codex nao dependem da opcao.
 
 Regras:
 
@@ -30,7 +32,7 @@ Mudancas relacionadas, na mesma spec:
 
 ## Riscos aceitos
 
-- **Gemini, termos e fragilidade.** `client_id` e `client_secret` sao do app OAuth da Antigravity (`aud` `1071006060591-...`), nao do Gemini CLI oficial (`681255809395-...`). Usa-los pode contrariar os termos do Google. Depende de o `agy` estar instalado e manter o formato do binario. Ler do binario, em vez de embutir, evita redistribuir segredo de app de terceiro.
+- **Gemini, termos e fragilidade (motivo do opt-in).** `client_id` e `client_secret` sao do app OAuth da Antigravity (`aud` `1071006060591-...`), nao do Gemini CLI oficial (`681255809395-...`). Usa-los pode contrariar os termos do Google. Depende de o `agy` estar instalado e manter o formato do binario. Ler do binario, em vez de embutir, evita redistribuir segredo de app de terceiro.
 - **Rotacao do refresh_token.** Renovar pode invalidar copias anteriores do mesmo login. O Codex rotaciona (observado em 22/10/2026). Por isso a renovacao so opera no Perfil Isolado, nunca em copias de teste do mesmo perfil.
 - **Endpoints internos.** Os de consumo de Claude, Codex e Gemini nao sao documentados e podem mudar.
 - **Conta Ativa fora do escopo.** Renova-la ficou para a issue #63.

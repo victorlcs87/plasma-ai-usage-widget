@@ -126,7 +126,7 @@ def env(tmp_path, monkeypatch):
 
 
 def configure(env, tmp_path, accounts_by_provider):
-    save_config({"version": 1, "agents": {p: {"accounts": accs} for p, accs in accounts_by_provider.items()}}, env["config"])
+    save_config({"version": 1, "renew": {"gemini": True}, "agents": {p: {"accounts": accs} for p, accs in accounts_by_provider.items()}}, env["config"])
 
 
 def acc_of(status, provider, idx=0):

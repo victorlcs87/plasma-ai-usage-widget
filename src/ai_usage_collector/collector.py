@@ -252,7 +252,9 @@ def _collect(
                 usage_details=usage_details,
             )
             last_renewal = None if is_active else cyc.renewals.get(f"{agent_id}:{acc_id}")
-            if last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
+            if agent_id == "gemini" and not is_active and not renew.renew_gemini_enabled(config):
+                acc_status["renewal"] = {"error": "disabled", "at": refresh._iso(now_dt.timestamp())}  # so avisar
+            elif last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
                 acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}
             outcome = cyc.take_outcome()
             identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
@@ -289,6 +291,8 @@ def _collect(
     except OSError as e:  # Perfis Orfaos sao opcionais; nunca impedem o status
         sys.stderr.write(f"Aviso: Perfis Orfaos nao listados: {e}\n")
         status_payload["orphan_profiles"] = []
+
+    status_payload["renew"] = {"gemini": renew.renew_gemini_enabled(config)}  # a tela de configuracao le daqui
 
     try:
         apply_token_history(status_payload, config, cache_file, now_dt)
@@ -338,6 +342,7 @@ def reapply_alert_levels(config_path: str | Path | None = None, cache_path: str 
             status["notifications"] = notify_settings(config)  # a tela de configuracao le daqui
             updates.apply_updates(status, config, cache_file)  # idem; sem rede
             status["visibility"] = visibility_settings(config)
+            status["renew"] = {"gemini": renew.renew_gemini_enabled(config)}
             save_status_cache(status, cache_file)
 
 

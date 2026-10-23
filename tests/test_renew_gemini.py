@@ -245,3 +245,61 @@ def test_symlinked_credential_is_not_written_through(env, tmp_path, agy):
     _run(env, TokenHttp({BAD: OK, GOOD: OK}, gemini=[API_OK["gemini"]]))
     assert real.read_text() == before
     assert not list(link.parent.glob(".oauth_*"))
+
+
+# --- opt-in (ticket 65): desligada por padrao, nunca toca o binario nem a rede ---
+
+def _off(env, tmp_path, monkeypatch, agy, **cfg):
+    prof = _profile(tmp_path)
+    configure(env, tmp_path, {"gemini": [prof]})
+    saved = json.loads(env["config"].read_text())
+    saved.pop("renew", None)
+    saved.update(cfg)
+    env["config"].write_text(json.dumps(saved))
+    touched = []
+    monkeypatch.setattr(renew, "_agy_binary", lambda: touched.append("agy") or agy.path)
+    monkeypatch.setattr(renew.shutil, "which", lambda *_a, **_k: touched.append("which"))
+    monkeypatch.setattr(renew, "_secret_candidates", lambda *_a, **_k: touched.append("read") or [])
+    return prof, touched
+
+
+@pytest.mark.parametrize("cfg", [{}, {"renew": {"gemini": False}}, {"renew": {"gemini": "yes"}}, {"renew": "on"}])
+def test_gemini_renewal_off_never_touches_binary_nor_network(env, tmp_path, agy, monkeypatch, cfg):
+    prof, touched = _off(env, tmp_path, monkeypatch, agy, **cfg)
+    http = TokenHttp({GOOD: OK}, gemini=[API_OK["gemini"]])
+
+    status = env["run"]("--provider", "gemini", "--force-renew", http=http)
+
+    assert touched == [] and http.token_calls == []
+    assert _creds(prof)["access_token"] == OLD_ACCESS
+    assert acc_of(status, "gemini")["renewal"]["error"] == "disabled"
+    assert status["renew"] == {"gemini": False}
+
+
+def test_full_collection_exposes_renew_flag_when_on(env, tmp_path, agy):
+    configure(env, tmp_path, {"gemini": [_profile(tmp_path)]})
+    status = _run(env, TokenHttp({BAD: oauth_error(401, "invalid_client"), GOOD: OK}, gemini=[API_OK["gemini"]]))
+    assert status["renew"] == {"gemini": True}
+
+
+def test_gemini_renewal_on_renews(env, tmp_path, agy):
+    prof = _profile(tmp_path)
+    configure(env, tmp_path, {"gemini": [prof]})  # o helper liga a opcao
+    http = TokenHttp({BAD: oauth_error(401, "invalid_client"), GOOD: OK}, gemini=[API_OK["gemini"]])
+
+    _run(env, http)
+
+    assert _creds(prof)["access_token"] == NEW_ACCESS
+
+
+def test_renew_gemini_default_off_and_cli_persists(tmp_path):
+    from ai_usage_collector.cli import main as cli_main
+
+    cfg = tmp_path / "c.json"
+    args = ["--config-path", str(cfg), "--cache-path", str(tmp_path / "s.json")]
+    assert renew.renew_gemini_enabled({}) is False
+    assert cli_main([*args, "--set-renew-config", "--renew-gemini", "on"]) == 0
+    assert renew.renew_gemini_enabled(json.loads(cfg.read_text())) is True
+    assert cli_main([*args, "--set-renew-config", "--renew-gemini", "off"]) == 0
+    assert renew.renew_gemini_enabled(json.loads(cfg.read_text())) is False
+    assert cli_main([*args, "--set-renew-config"]) == 1

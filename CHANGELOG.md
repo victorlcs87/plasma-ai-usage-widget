@@ -8,7 +8,8 @@
 - Intervalo de Atualização padrão e mínimo de 1 h (os provedores respondiam HTTP 429).
 
 ### Melhorias
-- Renovação automática das Contas inativas pelas próprias CLIs (Claude, Codex) e, no Gemini, pelo refresh token com o segredo lido do `agy` instalado; a Conta Ativa nunca é tocada (ADR-0013).
+- Renovação automática das Contas inativas pelas próprias CLIs (Claude, Codex); a Conta Ativa nunca é tocada (ADR-0013).
+- Renovação das Contas Gemini inativas é opt-in, desligada por padrão (usa o app OAuth da Antigravity e lê o segredo do `agy`; pode contrariar os termos do Google): `--set-renew-config --renew-gemini on|off` e controle na aba Geral. Desligada, o `agy` nunca é lido e a Conta vencida só pede novo login.
 - Mensagens por estado quando o login vence: renovação pendente, revogado, CLI ou `agy` ausente, tempo esgotado, rede.
 - Claude: o extrator aceita o array `limits` além de `five_hour`/`seven_day`.
 - Painel: cada item mostra o Logo do Provedor e só o Arco de Horário (Janela Nativa), ocupando a espessura do painel; a escala só reduz. Clicar no item abre o popup com os dois arcos desse provedor no topo; o hover não destaca (ADR-0011).

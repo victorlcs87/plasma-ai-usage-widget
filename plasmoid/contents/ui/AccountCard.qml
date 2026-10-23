@@ -161,6 +161,7 @@ Rectangle {
         if (!code && renewal && renewal.at) return I18n.tr("%1: renewal ran, but the provider still refuses the token. Log in at the provider with this account to reactivate it.", name);
         if (!code) return I18n.tr("%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account.", name);
         switch (code) {
+        case "disabled": return I18n.tr("%1: token expired. Automatic renewal is off for Gemini accounts; log in at the provider with this account to reactivate it.", name);
         case "revoked": return I18n.tr("%1: login revoked at the provider. Log in at the provider with this account to reactivate it.", name);
         case "cli_missing": return I18n.tr("%1: automatic renewal failed (the provider CLI was not found). Log in at the provider with this account to reactivate it.", name);
         case "binary_missing": return I18n.tr("%1: automatic renewal failed (the Antigravity binary was not found). Log in at the provider with this account to reactivate it.", name);

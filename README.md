@@ -43,7 +43,7 @@ coletor** (Configuração > Geral; `collectorPath` em `main.xml`, vazio por padr
 
 - **Exportar o histórico:** `ai-usage-collector --export-history csv|json` imprime o Histórico de Tokens diário (até 400 dias, por provedor, Conta e modelo) na saída padrão. Identidades sem Conta cadastrada saem mascaradas.
 - **Perfis Órfãos** (Perfis Isolados sem Conta): `--list-orphans` lista em JSON, `--reimport-orphan PROVEDOR PERFIL` reimporta como Conta (funde se a identidade já existir) e `--delete-orphan PROVEDOR PERFIL --confirm` exclui do disco. Nada é apagado sem `--confirm`.
-- **Opções `--set-*`** (as mesmas que a tela de configuração aplica): `--set-provider-config PROVEDOR` (`--credential-path`, e no Claude `--api-base-url`, `--api-key-stdin`, `--clear-api-key`), `--set-alert-config` (`--alert-mode pace|threshold`, `--alert-warning`, `--alert-critical`), `--set-notify-config` (`--notify-warning`, `--notify-critical`, `--notify-early`, `--notify-reset`, `--notify-mute`), `--set-update-config` (`--update-check on|off`) e `--set-visibility-config` (`--hide-when-not-running off|widget|provider`).
+- **Opções `--set-*`** (as mesmas que a tela de configuração aplica): `--set-provider-config PROVEDOR` (`--credential-path`, e no Claude `--api-base-url`, `--api-key-stdin`, `--clear-api-key`), `--set-alert-config` (`--alert-mode pace|threshold`, `--alert-warning`, `--alert-critical`), `--set-notify-config` (`--notify-warning`, `--notify-critical`, `--notify-early`, `--notify-reset`, `--notify-mute`), `--set-update-config` (`--update-check on|off`), `--set-renew-config` (`--renew-gemini on|off`, padrão off) e `--set-visibility-config` (`--hide-when-not-running off|widget|provider`).
 
 ## Renovação automática das Contas inativas
 
@@ -51,9 +51,9 @@ A cada Intervalo de Atualização o coletor renova, antes de consultar o uso, as
 
 - **Claude:** `claude auth status` com o perfil da Conta.
 - **Codex:** `codex app-server` (`account/read` com renovação do token), sem gastar tokens de modelo.
-- **Gemini:** renovação do token no Google. O segredo do app OAuth é lido do binário `agy` (Antigravity) instalado, nunca vem no repositório.
+- **Gemini (opt-in, desligada por padrão):** renovação do token no Google. Usa o app OAuth da Antigravity e lê o segredo do binário `agy` instalado (nunca vem no repositório), o que pode contrariar os termos do Google. Ligue em Configuração > Geral ("Renovar Contas Gemini inativas automaticamente") ou com `ai-usage-collector --set-renew-config --renew-gemini on` (`off` desliga). Desligada, o coletor nunca lê o `agy` nem chama o endpoint de token do Google, e a Conta Gemini vencida só avisa para você entrar de novo no provedor.
 
-Requisitos: Plasma aberto, `claude` e `codex` no `PATH` e `agy` instalado para o Gemini. Limites: o refresh token vale cerca de 30 dias; a Conta Ativa depende do uso da própria CLI. Tokens e saída das CLIs não vão para log nem para o `status.json`; só a classe do erro.
+Requisitos: Plasma aberto, `claude` e `codex` no `PATH` e `agy` instalado e a opção ligada para o Gemini. Limites: o refresh token vale cerca de 30 dias; a Conta Ativa depende do uso da própria CLI. Tokens e saída das CLIs não vão para log nem para o `status.json`; só a classe do erro.
 
 O card da Conta explica o estado: renovação pendente (nova tentativa na próxima consulta), login revogado, CLI ou `agy` não encontrado, tempo esgotado, rede indisponível ou falha genérica. Nos casos sem solução automática, faça login no provedor com a Conta. Riscos e decisões: `docs/adr/0013-renovacao-de-conta-inativa.md`.
 
