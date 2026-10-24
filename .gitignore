@@ -9,3 +9,8 @@ plasmoid/contents/locale/
 .claude/
 .scratch/
 .claude/
+
+# Local credentials and environment overrides
+.env
+.env.*
+!.env.example

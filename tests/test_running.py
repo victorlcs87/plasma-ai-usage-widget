@@ -332,3 +332,9 @@ def test_plasmoid_wiring_and_recovery_path():
     assert "Accessible.name: compactRoot.idle" in compact
     assert "find the hidden widget again" in config
     assert '"--set-visibility-config"' in config and '"--hide-when-not-running"' in config
+
+
+@pytest.mark.parametrize("binary", ["agy", "antigravity"])
+def test_antigravity_process_blocks_active_gemini_renewal(env, binary):
+    env.spawn(501, binary)
+    assert running.detect_running()["gemini"] is True

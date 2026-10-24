@@ -32,7 +32,7 @@ AGENT_NATIVE_WINDOWS: dict[str, str] = {
 #     undeterminable), top-level "running_checked_at" (ISO) and "visibility" {hide_when_not_running}: new
 #     optional keys that old readers ignore: no version bump
 #     Spec 08 / ticket 61: optional per-account "renewal" {error: str|null, at: ISO} = classified result of the last
-#     automatic renewal attempt of an inactive Account (error code only, never CLI output or tokens): no version bump
+#     renewal attempt (automatic for an inactive Account, or explicitly requested) (error code only, never CLI output or tokens): no version bump
 CONTRACT_VERSION = 5
 SUPPORTED_CONTRACT_VERSIONS = (1, 2, 3, 4, 5)
 

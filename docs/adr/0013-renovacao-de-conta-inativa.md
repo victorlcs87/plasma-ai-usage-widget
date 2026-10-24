@@ -18,7 +18,7 @@ Opt-in do Gemini: a opcao `renew.gemini` do `config.json` comeca desligada. Liga
 
 Regras:
 
-- Nunca renovar a Conta Ativa no Sistema (a propria CLI a renova; ver issue #63).
+- Nunca renovar automaticamente a Conta Ativa no Sistema. A exceção manual abaixo atende à issue #63.
 - No maximo uma tentativa por Conta por Intervalo de Atualizacao (minimo agora de 1 h, ADR-0007 ja atualizado). O estado fica em `refresh_state.json`.
 - Escrita so no Perfil Isolado. No Gemini a escrita e atomica com permissao 0600 e nunca segue symlink.
 - Nenhum segredo em log, `status.json` ou argumento de processo. Falha vira so uma classe (`cli_missing`, `timeout`, `revoked`, `network`, `binary_missing`...), exposta em `renewal` no contrato.
@@ -40,3 +40,11 @@ Mudancas relacionadas, na mesma spec:
 ## Consequencias
 
 Contas inativas seguem validas enquanto o refresh token viver (cerca de 30 dias) e o Plasma estiver aberto. Sem a CLI no PATH (ou sem o `agy`, no Gemini), a Conta volta a "login vencido" com a causa explicada.
+
+## Complemento — renovação manual por Conta (24/10/2026)
+
+O botão Renovar sessão e `--renew-account PROVEDOR ID` autorizam uma tentativa para uma Conta, seguida da consulta de uso. A coleta preserva as demais Contas no cache e não altera a Conta Ativa no Sistema.
+
+Na Conta Ativa, a tentativa exige que o processo do provedor esteja comprovadamente parado. É serializada com captura/alternância por `config_lock`, confere a identidade atual antes e depois e sincroniza a credencial renovada para o Perfil Isolado. Claude e Codex usam seus mecanismos de CLI; Gemini usa o mesmo mecanismo OAuth já existente e persiste no armazenamento de origem (arquivo plano, Antigravity aninhado ou chaveiro). Não há token em argumentos, saída ou status.
+
+A tentativa manual do Gemini não liga a opção de renovação automática. As regras automáticas de confinamento ao Perfil Isolado continuam valendo. Sessão revogada ainda requer login interativo; processo em execução ou identidade inconclusiva resulta em orientação, sem tentar renovar.

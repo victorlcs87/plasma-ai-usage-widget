@@ -249,3 +249,36 @@ def test_codex_hang_times_out(env, tmp_path, fake_codex, monkeypatch):
     assert state["renewals"]["codex:c"]["error"] == "timeout"
 
 
+
+
+def test_claude_in_user_local_bin_is_renewed_with_desktop_path(env, tmp_path, fake_claude, monkeypatch):
+    """Plasma omits ~/.local/bin even when the native Claude CLI is installed there."""
+    local_bin = Path.home() / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    (fake_claude.dir / "claude").rename(local_bin / "claude")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    profile = make_expired_profile(tmp_path, "claude", "desktop")
+    expire(profile)
+    configure(env, tmp_path, {"claude": [profile]})
+
+    status = env["run"]("--provider", "claude", http=FakeHttp(claude=[API_OK["claude"]]))
+
+    assert fake_claude.calls() == [f"{profile['claude_dir']}|auth status"]
+    state = json.loads((env["cache"].parent / "refresh_state.json").read_text())
+    assert state["renewals"]["claude:desktop"]["error"] is None
+    assert acc_of(status, "claude")["native_window"]["usage_percentage"] == 42.0
+
+
+def test_codex_in_user_local_bin_is_renewed_with_desktop_path(env, tmp_path, fake_codex, monkeypatch):
+    local_bin = Path.home() / ".local" / "bin"
+    local_bin.mkdir(parents=True)
+    (tmp_path / "bin" / "codex").rename(local_bin / "codex")
+    monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    profile = make_expired_profile(tmp_path, "codex", "desktop")
+    configure(env, tmp_path, {"codex": [profile]})
+
+    env["run"]("--provider", "codex", http=FakeHttp(codex=[API_OK["codex"]]))
+
+    assert fake_codex.calls() == [f"{profile['codex_dir']}|app-server --listen stdio://"]
+    state = json.loads((env["cache"].parent / "refresh_state.json").read_text())
+    assert state["renewals"]["codex:desktop"]["error"] is None

@@ -23,6 +23,8 @@ Rectangle {
     property bool animate: true               // false com o widget oculto (Passivo): nenhuma animação
     property bool reducedMotion: false
     property bool copiedFeedback: false
+    property bool isRenewing: false
+    property string renewalError: ""
     property bool isSwitching: false
     property string switchError: ""
     property bool detailsOpen: false
@@ -127,6 +129,50 @@ Rectangle {
         }
     }
 
+    function renewSession() {
+        if (cardRoot.isRenewing || cardRoot.plasmoidItem?.isRefreshing) return;
+        var provider = String(cardRoot.accountData?.provider || "").toLowerCase();
+        var account = String(cardRoot.accountData?.id || "");
+        if (["claude", "codex", "gemini"].indexOf(provider) === -1 || !account) return;
+        cardRoot.isRenewing = true;
+        cardRoot.renewalError = "";
+        if (cardRoot.plasmoidItem) cardRoot.plasmoidItem.isRefreshing = true;
+        renewalWatchdog.restart();
+        var args = Collector.shellQuote("--renew-account") + " " + Collector.shellQuote(provider)
+            + " " + Collector.shellQuote(account) + " " + Collector.shellQuote("--status");
+        if (cardRoot.plasmoidItem && typeof cardRoot.plasmoidItem.providerInterval === "function") {
+            args += " " + Collector.shellQuote("--refresh-interval") + " "
+                + Collector.shellQuote(provider + "=" + cardRoot.plasmoidItem.providerInterval(provider));
+        }
+        cardRoot.runCollector(args, cardRoot.onRenewed);
+    }
+
+    function onRenewed(data) {
+        renewalWatchdog.stop();
+        cardRoot.isRenewing = false;
+        if (cardRoot.plasmoidItem) cardRoot.plasmoidItem.isRefreshing = false;
+        if (data["exit code"] === 0) {
+            try {
+                var payload = JSON.parse((data["stdout"] || "").trim());
+                if (cardRoot.plasmoidItem) cardRoot.plasmoidItem.statusData = payload;
+            } catch (e) {
+                if (cardRoot.plasmoidItem && typeof cardRoot.plasmoidItem.loadStatus === "function") cardRoot.plasmoidItem.loadStatus();
+            }
+        } else {
+            cardRoot.renewalError = I18n.tr("Could not renew the session. Try again or sign in through the provider CLI.");
+        }
+    }
+
+    Timer {
+        id: renewalWatchdog
+        interval: 120000
+        onTriggered: {
+            cardRoot.isRenewing = false;
+            if (cardRoot.plasmoidItem) cardRoot.plasmoidItem.isRefreshing = false;
+            cardRoot.renewalError = I18n.tr("Session renewal timed out. Try again.");
+        }
+    }
+
     function limitChangeText(changes) {
         var now = Date.now();
         changes = (changes || []).filter(function (c) {
@@ -157,7 +203,9 @@ Rectangle {
     function authErrorText(renewal) {
         var name = cardRoot.accountName;
         var code = renewal ? renewal.error : null;
-        if (cardRoot.isActive) return I18n.tr("%1: login expired at the provider. Log in at the provider with this account.", name);  // a ativa não é renovada pelo coletor
+        if (code === "cli_running") return I18n.tr("%1: close the provider CLI, then click Renew session to refresh this account safely.", name);
+        if (code === "detection_failed") return I18n.tr("%1: could not safely identify the active session. Close the provider CLI and try Renew session again.", name);
+        if (cardRoot.isActive && !renewal) return I18n.tr("%1: login expired at the provider. Log in at the provider with this account.", name);  // a ativa não é renovada pelo coletor
         if (!code && renewal && renewal.at) return I18n.tr("%1: renewal ran, but the provider still refuses the token. Log in at the provider with this account to reactivate it.", name);
         if (!code) return I18n.tr("%1: token expired; automatic renewal will be retried at the next check. To reactivate it now, log in at the provider with this account.", name);
         switch (code) {
@@ -337,6 +385,26 @@ Rectangle {
                     wrapMode: Text.WordWrap
                     font.pointSize: Kirigami.Theme.smallFont.pointSize
                     color: cardRoot.accountData?.fetch_error ? Presets.ui.fg : Presets.ui.muted
+                }
+
+                NotchButton {
+                    objectName: "renewSessionButton"
+                    visible: cardRoot.healthStatus === "session_expired" || cardRoot.accountData?.fetch_error?.kind === "auth"
+                    enabled: !cardRoot.isRenewing && !cardRoot.isSwitching && !cardRoot.plasmoidItem?.isRefreshing
+                    text: cardRoot.isRenewing ? I18n.tr("Renewing session...") : I18n.tr("Renew session")
+                    icon.name: "view-refresh"
+                    accessibleName: I18n.tr("Renew session for %1", cardRoot.accountName)
+                    hint: I18n.tr("Renew this account's session and fetch its usage. An active account requires the provider CLI to be closed.")
+                    onClicked: cardRoot.renewSession()
+                }
+
+                QQC2.Label {
+                    Layout.fillWidth: true
+                    visible: cardRoot.renewalError.length > 0
+                    text: cardRoot.renewalError
+                    textFormat: Text.PlainText
+                    wrapMode: Text.WordWrap
+                    color: Presets.ui.fg
                 }
 
                 QQC2.Label {

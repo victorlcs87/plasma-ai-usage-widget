@@ -7,6 +7,12 @@ on:
     tags:
       - 'v*'
   workflow_dispatch:
+    inputs:
+      publish_github:
+        description: Publish the GitHub release (disable to publish PyPI first, then upload local artifacts manually)
+        type: boolean
+        required: false
+        default: true
 
 # Sem permissão por padrão; o job pede só o que precisa.
 permissions: {}
@@ -16,7 +22,7 @@ jobs:
     name: Build and Release
     runs-on: ubuntu-latest
     # workflow_dispatch só publica a partir de main ou de uma tag, nunca de branch arbitrário.
-    if: github.ref == 'refs/heads/main' || github.ref_type == 'tag'
+    if: (github.ref == 'refs/heads/main' || github.ref_type == 'tag') && (github.event_name != 'workflow_dispatch' || inputs.publish_github)
     permissions:
       contents: write
     steps:
