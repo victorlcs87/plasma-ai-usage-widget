@@ -1116,6 +1116,40 @@ def _store_into_profile(
     enforce_profile_security_permissions(profile_file.parent)
 
 
+def sync_active_claude_profile(
+    accounts: list[dict[str, Any]], override: Path | None = None,
+    config_path: str | Path | None = None,
+) -> str | None:
+    """Sincroniza somente uma Conta Claude com identidade inequívoca antes da coleta.
+
+    O estado de identidade do Claude fica separado da credencial. Por isso exigimos
+    identidade conhecida nos dois lados e um único perfil correspondente.
+    """
+    system_file = get_system_credential_file("claude", override)
+    system_creds = get_active_credentials("claude", override)
+    system_identity = credential_identity("claude", system_file)
+    if not system_creds or not system_identity:
+        return None
+    oauth = system_creds.get("claudeAiOauth")
+    if not isinstance(oauth, dict) or not (oauth.get("accessToken") or oauth.get("refreshToken")):
+        return None
+    profiles_base = get_profiles_base_dir(config_path)
+    matches = []
+    for account in accounts:
+        profile = account_credential_file("claude", account)
+        if (profile is None or profile == system_file.resolve()
+                or not profile.is_relative_to(profiles_base) or not profile.parent.is_dir()):
+            continue
+        identity = credential_identity("claude", profile)
+        if identity and identity.key == system_identity.key:
+            matches.append((account, profile))
+    if len(matches) != 1:
+        return None
+    account, profile = matches[0]
+    _store_into_profile("claude", system_creds, system_file, profile)
+    return str(account.get("id"))
+
+
 PROFILE_BACKUPS_KEPT = 5
 
 

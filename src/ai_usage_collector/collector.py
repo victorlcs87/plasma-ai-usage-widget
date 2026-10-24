@@ -16,6 +16,7 @@ from ai_usage_collector.capture import (
     get_active_credentials,
     get_system_credential_file,
     switch_system_account,
+    sync_active_claude_profile,
     sync_gemini_from_antigravity,
 )
 from ai_usage_collector.config import (
@@ -179,6 +180,15 @@ def _collect(
             sys.stderr.write(f"Aviso: Conta Ativa {agent_id} nao detectada: {type(e).__name__}\n")
             active_acc_id = None
 
+        if agent_id == "claude":
+            try:
+                with config_lock(config_path):
+                    synced_id = sync_active_claude_profile(accounts, credential_override(agent_id, config), config_path)
+                if synced_id is not None:
+                    active_acc_id = synced_id
+            except (OSError, ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Aviso: Perfil Claude nao sincronizado: {type(e).__name__}\n")
+
         for acc in accounts:
             acc_id = acc.get("id", "default")
             manual_renew = renew_account == (agent_id, str(acc_id))
@@ -280,6 +290,8 @@ def _collect(
                 acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
                 identity_key=identity.key if identity else None,
             )
+            if agent_id == "claude":
+                refresh.ensure_confirmed_windows(acc_status, previous_accounts.get(str(acc_id)), identity.key if identity else None)
             if (
                 agent_id == "gemini" and "no_data" not in acc_status
                 and all(acc_status[w].get("usage_percentage") is None for w in ("native_window", "weekly_window"))

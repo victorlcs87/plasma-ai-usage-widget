@@ -411,6 +411,43 @@ def apply_outcome(
     return entry
 
 
+def ensure_confirmed_windows(
+    entry: dict[str, Any], previous: dict[str, Any] | None, identity_key: str | None,
+) -> None:
+    """Claude: histórico local nunca confirma um percentual de cota da API."""
+    fingerprint = _hash(identity_key) if identity_key else None
+    used_cache = False
+    has_fresh_window = any(
+        isinstance(entry.get(window), dict)
+        and entry[window].get("source") == "api"
+        and entry[window].get("usage_percentage") is not None
+        for window in _WINDOW_RESET_FIELDS
+    )
+    for window, reset_field in _WINDOW_RESET_FIELDS.items():
+        current = entry.get(window)
+        if not isinstance(current, dict):
+            continue
+        if current.get("source") == "api" and current.get("usage_percentage") is not None:
+            continue
+        old = (previous or {}).get(window)
+        if (not has_fresh_window and fingerprint and previous and previous.get("credential_fingerprint") == fingerprint
+                and previous.get("fetched_at") and isinstance(old, dict)
+                and old.get("source") == "api" and old.get("usage_percentage") is not None):
+            entry[window] = copy.deepcopy(old)
+            entry["fetched_at"] = previous["fetched_at"]
+            used_cache = True
+            continue
+        current.update({"usage_percentage": None, "used_capacity": None,
+                        "available_capacity": None, reset_field: None,
+                        "seconds_remaining": None})
+    if used_cache:
+        entry["stale"] = True
+    if all(entry.get(w, {}).get("usage_percentage") is None for w in _WINDOW_RESET_FIELDS):
+        entry["no_data"] = True
+    else:
+        entry.pop("no_data", None)
+
+
 def summarize_agent(agent: dict[str, Any]) -> None:
     """Campos opcionais por provedor a partir das Contas consultadas neste ciclo."""
     accs = [a for a in agent.get("accounts", []) if a.get("next_check_at")]
