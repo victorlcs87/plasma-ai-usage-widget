@@ -939,7 +939,7 @@ def test_combined_real_fixtures_highlight_reflects_gemini_models(tmp_path):
     assert nw["release_time"] == "2026-10-23T02:32:02+00:00"
     assert nw["source"] == "api" and nw["api_fields"] == ["release"]  # duracao do modelo nao vem da API
     assert nw["window_seconds"] is None and nw["type"] == "custom"  # duracao do bucket do modelo e desconhecida
-    assert ww["usage_percentage"] == 0.0 and ww["source"] == "api"
+    assert ww["usage_percentage"] is None
     assert res["health"]["status"] == "valid"
 
 
@@ -965,14 +965,14 @@ def test_combined_83_percent_remaining_shows_17_used(tmp_path):
     assert res["native_window"]["available_capacity"] == 83
 
 
-def test_combined_summary_more_urgent_than_models_keeps_summary(tmp_path):
+def test_combined_third_party_summary_cannot_override_gemini_models(tmp_path):
     summary = {"groups": [{"displayName": "Claude and GPT models", "buckets": [
         {"bucketId": "3p-5h", "window": "5h", "remainingFraction": 0.1, "resetTime": "2026-10-23T04:48:52Z"},
         {"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.5, "resetTime": "2026-10-29T23:48:52Z"}]}]}
     res = _status_combined(_gemini_account(tmp_path), summary, _real("gemini_quota_by_model_real.json"))
-    assert res["native_window"]["usage_percentage"] == 90.0
-    assert res["native_window"]["release_time"] == "2026-10-23T04:48:52+00:00"
-    assert res["weekly_window"]["usage_percentage"] == 50.0
+    assert res["native_window"]["usage_percentage"] == 22.4
+    assert res["native_window"]["release_time"] == "2026-10-23T02:32:02+00:00"
+    assert res["weekly_window"]["usage_percentage"] is None
 
 
 def test_combined_models_only_when_summary_fails(tmp_path):
@@ -986,8 +986,8 @@ def test_combined_models_only_when_summary_fails(tmp_path):
 
 def test_combined_summary_only_when_models_fail(tmp_path):
     res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), None)
-    assert res["native_window"]["usage_percentage"] == 0.0
-    assert res["weekly_window"]["usage_percentage"] == 0.0
+    assert res["native_window"]["usage_percentage"] is None
+    assert res["weekly_window"]["usage_percentage"] is None
     assert "usage_details" not in res
 
 
@@ -1001,7 +1001,7 @@ def test_combined_both_fail_is_no_data_not_zero(tmp_path):
 def test_combined_model_without_reset_never_becomes_window(tmp_path):
     models = {"buckets": [{"modelId": "gemini-x", "remainingFraction": 0.1}]}
     res = _status_combined(_gemini_account(tmp_path), _real("gemini_quota_summary_real.json"), models)
-    assert res["native_window"]["usage_percentage"] == 0.0
+    assert res["native_window"]["usage_percentage"] is None
     assert res["usage_details"]["quota_by_model"][0]["usage_percentage"] == 90.0
 
 
@@ -1033,3 +1033,30 @@ def test_model_bucket_over_5h_summary_has_unknown_duration(tmp_path):
         _gemini_account(tmp_path),
         _real("gemini_quota_summary_real.json"), _real("gemini_quota_by_model_real.json"))
     assert res["native_window"]["window_seconds"] is None
+
+
+def test_gemini_never_uses_third_party_group_for_windows(tmp_path):
+    summary = {"groups": [{"displayName": "Claude and GPT Models", "buckets": [
+        {"bucketId": "3p-weekly", "window": "weekly", "remainingFraction": 0.0,
+         "resetTime": "2026-10-23T22:26:00Z"}]}]}
+    models = {"buckets": [{"modelId": "gemini-2.5-pro", "remainingFraction": 0.9874,
+                            "resetTime": "2026-10-23T04:48:00Z"}]}
+    res = _status_combined(_gemini_account(tmp_path), summary, models)
+    assert res["native_window"]["usage_percentage"] == 1.3
+    assert res["weekly_window"]["usage_percentage"] is None
+
+
+def test_gemini_summary_wins_over_unrelated_model_quota(tmp_path):
+    summary = {"groups": [{"displayName": "Gemini Models", "buckets": [
+        {"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 0.9874,
+         "resetTime": "2026-10-23T04:48:00Z"},
+        {"bucketId": "gemini-weekly", "window": "weekly", "remainingFraction": 0.994,
+         "resetTime": "2026-10-29T21:38:00Z"}]}]}
+    models = {"buckets": [{"modelId": "claude-sonnet", "remainingFraction": 0,
+                            "resetTime": "2026-10-23T22:26:00Z"},
+                           {"modelId": "gemini-2.5-pro", "remainingFraction": 0.5,
+                            "resetTime": "2026-10-23T04:00:00Z"}]}
+    res = _status_combined(_gemini_account(tmp_path), summary, models)
+    assert res["native_window"]["usage_percentage"] == 1.3
+    assert res["native_window"]["window_seconds"] == 18000
+    assert res["weekly_window"]["usage_percentage"] == 0.6

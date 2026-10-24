@@ -411,14 +411,15 @@ def parse_gemini_quota_buckets(
             group_buckets = group.get("buckets")
             if not isinstance(group_buckets, list):
                 continue
+            is_gemini_group = "gemini" in str(group.get("displayName", "")).lower()
             for b in group_buckets:
                 if not isinstance(b, dict):
                     continue
                 bid = str(b.get("bucketId") or b.get("name") or b.get("id") or "").lower()
                 win = str(b.get("window") or "").lower()
-                if bid == "gemini-5h" or (not bucket_5h and win == "5h"):
+                if bid == "gemini-5h" or (not bucket_5h and not bid and is_gemini_group and win == "5h"):
                     bucket_5h = b
-                elif bid == "gemini-weekly" or (not bucket_weekly and win in ("weekly", "7d")):
+                elif bid == "gemini-weekly" or (not bucket_weekly and not bid and is_gemini_group and win in ("weekly", "7d")):
                     bucket_weekly = b
 
     # 3. Lists in known wrapper keys
@@ -431,6 +432,8 @@ def parse_gemini_quota_buckets(
     for lst in candidate_lists:
         for item in lst:
             if not isinstance(item, dict):
+                continue
+            if str(item.get("bucketId") or item.get("name") or item.get("id") or "").lower().startswith("3p-"):
                 continue
             name = str(item.get("bucketId") or item.get("name") or item.get("id") or item.get("window") or "").lower()
             if not bucket_5h and ("gemini-5h" in name or name == "5h" or "5h" in name):
@@ -691,15 +694,15 @@ def extract_gemini_status(
 
         bucket_5h, bucket_weekly = parse_gemini_quota_buckets(api_data or {})
         model_quotas = parse_gemini_model_quotas(api_data) + parse_gemini_model_quotas(models_data)
-        # Janela de Destaque: a mais urgente entre as conhecidas. A cota por modelo so entra na janela
-        # nativa quando for mais usada que o bucket 5h do resumo (senao o 100% livre do grupo
-        # Claude/GPT esconderia os modelos Gemini). Sem liberacao conhecida nao ha janela.
-        # ponytail: urgencia = maior uso; o nivel de alerta (ritmo) e calculado depois, so por janela
+        # Per-model Gemini quota is a fallback when the Gemini group is absent.
         urgent_model = max(
             (
                 m for m in parse_gemini_model_quotas(models_data)
                 # reset vencido: o bucket ja virou; o dado e defasado e nao pode virar a janela (fica so nos detalhes)
-                if m["usage_percentage"] is not None and m["reset_time"] and (parse_timestamp(m["reset_time"]) or 0) > now_sec
+                if m["model"].lower().startswith("gemini-")
+                and m["usage_percentage"] is not None
+                and m["reset_time"]
+                and (parse_timestamp(m["reset_time"]) or 0) > now_sec
             ),
             key=lambda m: m["usage_percentage"],
             default=None,
@@ -732,7 +735,7 @@ def extract_gemini_status(
                 seconds_remaining = None
                 release_time = None
 
-        if urgent_model and (not has_5h or urgent_model["usage_percentage"] > usage_percentage):
+        if urgent_model and not has_5h:
             usage_percentage = urgent_model["usage_percentage"]
             rem_m = 1.0 - usage_percentage / 100.0
             available_capacity = max(0, round(total_capacity * rem_m))

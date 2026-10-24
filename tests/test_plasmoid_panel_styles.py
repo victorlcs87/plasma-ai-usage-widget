@@ -113,7 +113,7 @@ def test_styles_keep_contract_level_color_and_non_color_cues():
     assert "levelColor" in item and "setLineDash" in bars and "elapsed" in bars.lower()
     assert item.count("Accessible.ignored: true") == 2 and "ProviderLogo {" in item and "Accessible.ignored: true" in (UI_DIR / "ProviderLogo.qml").read_text(encoding="utf-8") and "Loader {" in item  # leitor de tela sem duplicar; só um gráfico
     assert "PanelStyle.barWidth" in bars and "barsWidth" in item  # largura da barra em um lugar só
-    assert "setLineDash" in ring and "SessionMark" in ring and "SessionMark" in item
+    assert "setLineDash" not in ring and "SessionMark" in ring and "SessionMark" in item
     assert "reducedMotion" in item and "Kirigami.Units.longDuration === 0" in compact
     assert "textFormat: Text.PlainText" in item and "Accessible.name" in compact and "Accessible.description" in compact
     assert 'Keys.onSpacePressed' in compact and 'Keys.onReturnPressed' in compact and "idle" in compact

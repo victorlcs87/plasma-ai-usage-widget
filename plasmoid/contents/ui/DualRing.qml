@@ -49,19 +49,16 @@ Item {
         function arc(ctx, cx, cy, r, lw, pct, elapsed, color, level) {
             var start = -Math.PI / 2;
             ctx.lineWidth = lw;
-            ctx.lineCap = level === "critical" || level === "warning" ? "butt" : "round";
+            ctx.lineCap = "round";
             ctx.strokeStyle = "rgba(255,255,255,0.16)";
             ctx.beginPath();
             ctx.arc(cx, cy, r, 0, 2 * Math.PI);
             ctx.stroke();
             if (pct > 0) {
-                // Forma além da cor: warning = traços longos, critical = traços curtos
-                ctx.setLineDash(level === "critical" ? [lw * 0.9, lw * 0.9] : level === "warning" ? [lw * 3, lw * 1.2] : []);
                 ctx.strokeStyle = color;
                 ctx.beginPath();
                 ctx.arc(cx, cy, r, start, start + 2 * Math.PI * Math.min(1, pct / 100));
                 ctx.stroke();
-                ctx.setLineDash([]);
             }
             if (pct === 0 && (level === "critical" || level === "warning")) {  // 0% (ex.: restante esgotado): ponto no topo mantém a forma do nível
                 ctx.fillStyle = color;
