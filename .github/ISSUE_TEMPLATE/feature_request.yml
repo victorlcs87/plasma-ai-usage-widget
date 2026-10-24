@@ -1,0 +1,26 @@
+name: Feature request / Sugerir melhoria
+description: Explain a problem and a useful change.
+title: "[Feature]: "
+body:
+  - type: markdown
+    attributes:
+      value: English and português brasileiro are welcome. Please check existing issues first.
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem / Problema
+      description: What are you trying to do, and what gets in the way?
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior / Comportamento proposto
+      description: Describe how the improvement would help, with an example if possible.
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives / Alternativas
+      description: Have you tried a workaround or another approach?

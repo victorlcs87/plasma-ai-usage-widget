@@ -1,166 +1,110 @@
-# Plasma AI Usage Collector
+# Plasma AI Usage Widget
 
-Coletor de métricas de uso e cotas de agentes de IA (Claude, Codex e Gemini) para o widget nativo KDE Plasma 6.
+**Claude, Codex and Gemini usage limits, right in your KDE Plasma 6 desktop.**
 
-## Instalação
+See your quota, reset times and active accounts without opening three separate tools.
 
-O widget (QML) só mostra dados que o **Coletor** (pacote Python `plasma-ai-usage-collector`, sem dependências) grava. **O Coletor é obrigatório**: sem ele o widget não exibe nada. Há três caminhos; escolha um.
+[![Latest release](https://img.shields.io/github/v/release/victorlcs87/plasma-ai-usage-widget)](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest)
+[![PyPI](https://img.shields.io/pypi/v/plasma-ai-usage-collector)](https://pypi.org/project/plasma-ai-usage-collector/)
+[![KDE Plasma 6](https://img.shields.io/badge/KDE-Plasma_6-1d99f3)](https://kde.org/plasma-desktop/)
+[![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
 
-### a) Loja KDE e botão "Install collector" (recomendado)
+[Download](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest) · [Install](#install) · [Report a bug](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=bug_report.yml) · [Português brasileiro](README.pt-BR.md)
 
-1. Instale o widget pela loja (Adicionar widgets > Obter novos widgets, busque "AI Usage").
-2. Abra o popup. Sem Coletor, aparece um card com o botão **Install collector** (ou **Update collector**, se o Coletor for mais antigo que o widget).
-3. Clique e confirme. A confirmação mostra o pacote, a versão e o destino.
+![Compact panel widget showing separate usage indicators for Claude, Codex and Gemini](docs/images/panel.png)
 
-O que o botão faz:
+<p align="center">
+  <img src="docs/images/overview.png" alt="Expanded widget with current and weekly quotas, reset countdowns, alerts and token history for three AI providers" width="440">
+</p>
 
-- Baixa do PyPI o pacote `plasma-ai-usage-collector` na **versão exata do widget** (`==X.Y.Z`), nunca "a mais recente".
-- Cria o venv do widget em `~/.local/share/plasma-ai-usage/venv` e instala nele.
-- Cria os atalhos `ai-usage-collector` e `ai-usage-session-state` em `~/.local/bin`.
-- Não usa `sudo` e não mexe no Python do sistema.
-- Só roda com a sua confirmação. Nunca é automático: nem ao adicionar o widget, nem ao abrir o popup, nem por timer.
-- Nunca mexe num Coletor que você já tenha (pipx ou de desenvolvimento): se `~/.local/bin/ai-usage-collector` existir e não for do widget, a instalação para sem alterar nada. Coletor mais novo que o widget só gera um aviso.
-- Sem `python3` com `venv` e `ensurepip`, não instala nada: o card diz o que instalar (ex.: `python3-venv` no Debian/Ubuntu).
-- Ao terminar, verifica a versão instalada e atualiza os dados.
+*Screenshots render the project's QML components with synthetic demo data. No real account details are shown.*
 
-Em caso de falha o card mostra a causa (sem Python, rede, versão ausente no PyPI, permissão, conflito em `~/.local/bin`, verificação) e o botão vira "Try again".
+## Features
 
-### b) pipx
+- **Three providers in one view:** Claude Code, OpenAI Codex and Gemini / Antigravity usage.
+- **Current and weekly quotas:** used or remaining percentages, reset countdowns or dates, with missing data shown explicitly.
+- **Multiple accounts:** capture, switch and rename accounts with isolated credential profiles.
+- **Early warning:** consumption pace or fixed-threshold alerts, with optional desktop notifications.
+- **Your panel, your layout:** rings, percentages, bars, a floating notch and optional session indicators for Claude Code and Codex.
+- **Token history:** charts and CSV or JSON export where local usage data is available.
+- **English and Brazilian Portuguese**, with support for more translations.
+- **Lightweight collector:** no runtime Python package dependencies; optional Waybar JSON output.
+
+## Install
+
+Requirements: **KDE Plasma 6**, **Python 3.10+ with `venv` and `ensurepip`**, and a login for the provider you want to monitor. Quota availability depends on the provider, account and authentication method. An API key alone may not expose subscription limits.
+
+### 1. Install the widget
+
+Download `org.kde.plasma.aiusage.plasmoid` from the [latest release](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest). In Plasma, open **Add Widgets → Get New Widgets → Install Widget From Local File**, select the package, then add **AI Usage Monitor** to your panel or desktop. Menu names can vary with the Plasma version and language.
+
+Or install the downloaded file from a terminal:
 
 ```bash
-pipx install plasma-ai-usage-collector
+kpackagetool6 --type Plasma/Applet --install ./org.kde.plasma.aiusage.plasmoid
 ```
 
-Sem pipx, use um venv próprio e não instale no Python global:
+For an existing installation, replace `--install` with `--upgrade`.
+
+### 2. Install the collector
+
+Open the widget, click **Install collector** and confirm. It installs the matching version from PyPI into its own virtual environment, without `sudo` or changes to system Python. The collector is required to display usage.
+
+Prefer managing it yourself? Use pipx to install the **same version as the widget**. For release `v1.2.1`:
 
 ```bash
-python3 -m venv ~/.local/share/plasma-ai-usage/venv
-~/.local/share/plasma-ai-usage/venv/bin/pip install plasma-ai-usage-collector==X.Y.Z   # a versão do Plasmoid
-ln -s ~/.local/share/plasma-ai-usage/venv/bin/ai-usage-collector ~/.local/bin/
+pipx install plasma-ai-usage-collector==1.2.1
 ```
 
-Para atualizar depois, use o botão "Update collector" do widget ou repita o `pip install ...==X.Y.Z` com a versão do Plasmoid (não use `--upgrade` sem versão: o widget exige a versão exata).
+### 3. Add your accounts
 
-Depois instale só o widget pela loja. O widget acha o Coletor (ver "Onde o widget procura o coletor"). Mantenha as duas versões iguais.
-
-### c) A partir do código
+Sign in through your provider's CLI, then use the widget's account settings to capture the current account. Or capture it from a terminal:
 
 ```bash
-python3 -m venv .venv && .venv/bin/pip install -e .
+ai-usage-collector --capture-current claude
+ai-usage-collector --capture-current codex
+ai-usage-collector --capture-current gemini
+ai-usage-collector --refresh
+```
+
+Run only the capture commands for providers you use. See [Gemini / Antigravity credential discovery](docs/usage.pt-BR.md#credencial-do-gemini) for its supported local credential sources.
+
+## Read the rings
+
+In the expanded view, the **inner ring** shows the current window and the **outer ring** shows the weekly limit. Window durations depend on provider data; they are not identical for every provider. The compact panel normally shows the current window.
+
+Arcs show **used quota** by default; switch to **Remaining** to see the balance. A white marker indicates elapsed time when the duration is known. Alert colors reflect the configured pace or threshold mode. A dash means there is no reliable reading, rather than zero usage.
+
+## Privacy and connections
+
+The widget and collector run on your machine. There is **no project backend, telemetry or analytics**. Credentials are stored locally; quota checks contact the relevant provider's endpoints.
+
+Optional update checks contact GitHub and the npm registry. Installing the collector contacts PyPI after confirmation. Account capture, switching and renewal use local credentials. Automatic renewal of inactive Gemini accounts is **off by default**; see the [details and limitations](docs/usage.pt-BR.md#renovação-automática-das-contas-inativas).
+
+Provider endpoints can change or rate-limit requests. A missing window, expired session or failed refresh is shown as unavailable or stale data. Quota information is not available for every plan.
+
+## Documentation and development
+
+- [Technical guide in Portuguese](docs/usage.pt-BR.md): configuration, notifications, account renewal, history and translations.
+- [Waybar setup](docs/usage.pt-BR.md#waybar): feed Waybar from the collector's local cache with `ai-usage-collector --waybar`.
+- [Changelog](CHANGELOG.md) and [design decisions](docs/adr/).
+
+To work on the project:
+
+```bash
+git clone https://github.com/victorlcs87/plasma-ai-usage-widget.git
+cd plasma-ai-usage-widget
+python3 -m venv .venv
+.venv/bin/pip install -e . pytest build setuptools wheel
 scripts/install-plasmoid.sh
 ```
 
-Aponte o widget para `.venv/bin/ai-usage-collector` em Configuração > Geral > **Caminho do coletor**. `scripts/package-release.sh` gera o `.plasmoid` e a wheel em `dist/`.
+Set the collector path in the widget settings to the checkout's `.venv/bin/ai-usage-collector`. Read [CONTRIBUTING.md](CONTRIBUTING.md) for tests, translations and pull requests.
 
-## Waybar
+## Help improve the project
 
-`ai-usage-collector --waybar` imprime uma linha JSON (`text`, `tooltip`, `class`, `alt` e, quando há nível, `percentage`) a partir do cache, sem consultar provedores nem a rede, sempre com exit code 0. Mantenha o cache atualizado com `ai-usage-collector --refresh` (ou pelo Plasmoid).
+[Report a bug](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=bug_report.yml), [suggest a feature](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=feature_request.yml), improve a translation or share the project with other Plasma users. Issues in English and Portuguese are welcome. Remove account details and credentials from anything you upload.
 
-A classe é o pior nível de alerta entre as Contas Ativas no Sistema (contas inativas não contam): `normal`, `warning` ou `critical`. Sem nível confiável a classe é neutra: `stale` (dados desatualizados, erro ou pausa por HTTP 429) ou `unknown` (sem cache, cache inválido ou nenhuma conta ativa; texto `—`). Nunca é mostrado um 0% inventado. Rótulos de conta são escapados para o Pango markup do Waybar.
+## License
 
-```jsonc
-// ~/.config/waybar/config.jsonc
-"custom/ai-usage": {
-    "exec": "ai-usage-collector --waybar",
-    "return-type": "json",
-    "interval": 30,
-    "tooltip": true
-}
-```
-
-```css
-/* ~/.config/waybar/style.css */
-#custom-ai-usage.warning { color: #f9e2af; }
-#custom-ai-usage.critical { color: #f38ba8; }
-#custom-ai-usage.stale, #custom-ai-usage.unknown { opacity: 0.6; }
-```
-
-Notas: `text` pode mostrar o % de uma janela com leitura local enquanto a classe fica `unknown` (leitura local não recebe nível); `percentage` considera só janelas com nível. Percentuais fora de 0..100 são limitados e NaN/Infinity são ignorados. A saída é JSON ASCII (acentos escapados como `\uXXXX`, válido para o Waybar), o tooltip mostra no máximo 20 linhas, e `--waybar` ignora as demais opções (só `--cache-path` vale).
-
-## Painel e popup
-
-No painel cada item mostra o logo do provedor e o arco da Janela Nativa. Clique no item para abrir o popup com os dois arcos (nativa e semanal) daquele provedor no topo; passar o mouse abre o popup sem destacar ninguém.
-
-## Onde o widget procura o coletor
-
-O plasmoide chama `ai-usage-collector` pelo shell, nesta ordem: o `PATH`, `~/.local/bin/ai-usage-collector`, o venv do
-pipx (`~/.local/share/pipx/venvs/plasma-ai-usage-collector/bin/`) e, só por último, o caminho da opção **Caminho do
-coletor** (Configuração > Geral; `collectorPath` em `main.xml`, vazio por padrão; aceita `~/`). Se nada for achado, cai em
-`python3 -m ai_usage_collector`. Para um venv de desenvolvimento, preencha o campo com
-`~/caminho/do/repo/.venv/bin/ai-usage-collector`; nenhum caminho pessoal vai no código.
-
-## Histórico de Tokens, órfãos e configuração pela CLI
-
-- **Exportar o histórico:** `ai-usage-collector --export-history csv|json` imprime o Histórico de Tokens diário (até 400 dias, por provedor, Conta e modelo) na saída padrão. Identidades sem Conta cadastrada saem mascaradas.
-- **Perfis Órfãos** (Perfis Isolados sem Conta): `--list-orphans` lista em JSON, `--reimport-orphan PROVEDOR PERFIL` reimporta como Conta (funde se a identidade já existir) e `--delete-orphan PROVEDOR PERFIL --confirm` exclui do disco. Nada é apagado sem `--confirm`.
-- **Opções `--set-*`** (as mesmas que a tela de configuração aplica): `--set-provider-config PROVEDOR` (`--credential-path`, e no Claude `--api-base-url`, `--api-key-stdin`, `--clear-api-key`), `--set-alert-config` (`--alert-mode pace|threshold`, `--alert-warning`, `--alert-critical`), `--set-notify-config` (`--notify-warning`, `--notify-critical`, `--notify-early`, `--notify-reset`, `--notify-mute`), `--set-update-config` (`--update-check on|off`), `--set-renew-config` (`--renew-gemini on|off`, padrão off) e `--set-visibility-config` (`--hide-when-not-running off|widget|provider`).
-
-## Renovação automática das Contas inativas
-
-A cada Intervalo de Atualização o coletor renova, antes de consultar o uso, as Contas **inativas** com login vencido. Só mexe no Perfil Isolado da Conta (`profiles/`); a Conta Ativa no Sistema nunca é renovada pelo coletor. No máximo uma tentativa por Conta por intervalo.
-
-- **Claude:** `claude auth status` com o perfil da Conta.
-- **Codex:** `codex app-server` (`account/read` com renovação do token), sem gastar tokens de modelo.
-- **Gemini (opt-in, desligada por padrão):** renovação do token no Google. Usa o app OAuth da Antigravity e lê o segredo do binário `agy` instalado (nunca vem no repositório), o que pode contrariar os termos do Google. Ligue em Configuração > Geral ("Renovar Contas Gemini inativas automaticamente") ou com `ai-usage-collector --set-renew-config --renew-gemini on` (`off` desliga). Desligada, o coletor nunca lê o `agy` nem chama o endpoint de token do Google, e a Conta Gemini vencida só avisa para você entrar de novo no provedor.
-
-Requisitos: Plasma aberto, `claude` e `codex` no `PATH` e `agy` instalado e a opção ligada para o Gemini. Limites: o refresh token vale cerca de 30 dias; a Conta Ativa depende do uso da própria CLI. Tokens e saída das CLIs não vão para log nem para o `status.json`; só a classe do erro.
-
-O card da Conta explica o estado: renovação pendente (nova tentativa na próxima consulta), login revogado, CLI ou `agy` não encontrado, tempo esgotado, rede indisponível ou falha genérica. Nos casos sem solução automática, faça login no provedor com a Conta. Riscos e decisões: `docs/adr/0013-renovacao-de-conta-inativa.md`.
-
-## Credencial do Gemini
-
-A captura (`--capture-current gemini`) procura a sessão ativa nesta ordem: chaveiro (`secret-tool`, serviço `gemini`, usuário `antigravity`), `~/.gemini/oauth_creds.json` e `~/.gemini/antigravity-cli/antigravity-oauth-token` (CLI Antigravity, formato aninhado em `token`). `GEMINI_CONFIG_DIR` troca `~/.gemini`. Esses arquivos e o chaveiro são só lidos na captura; a cópia fica isolada em `profiles/` com permissão 0600.
-
-## Notificações de limite (opt-in)
-
-O coletor avisa quando uma janela passa dos limiares, esgotará antes da liberação ou, se ativado, foi liberada. Configure em Configuração > Notificações ou com `--set-notify-config`. O envio usa o binário **`notify-send`** (libnotify) numa sessão gráfica com serviço de notificações; **não** fala D-Bus diretamente. Sem o `notify-send` (ou sem barramento de sessão) o aviso falha em silêncio: o coletor segue normalmente, registra uma única mensagem em stderr, tenta de novo no próximo ciclo sem repetir a mensagem e a marca some quando um envio funciona (`notify_failed` ao lado do `status.json`).
-
-## Estado da Sessão (Claude Code e Codex, opt-in)
-
-`ai-usage-collector --install-hooks` registra hooks no `settings.json` do Claude Code (`CLAUDE_CONFIG_DIR`
-absoluto ou `~/.claude`); `--uninstall-hooks` remove só os do widget (pode reindentar o arquivo). Perfil
-isolado: rode com o `CLAUDE_CONFIG_DIR` de cada perfil. Para o Codex, o estado "ocupada" vem dos logs de sessão sem instalar nada;
-`ai-usage-collector --install-hooks codex` (opcional) grava uma linha `notify` no `config.toml` (`CODEX_HOME`), nunca sobrescreve um `notify` seu, encerra
-o estado ocupado ao fim de cada turno e é o que habilita o som e o Notch no Codex (sem ele o Codex só mostra o estado). Ative "Mostrar o estado da sessão" na configuração
-do plasmoide. O caminho leve de consulta (`ai-usage-session-state`) exige reinstalar o pacote
-(`pip install -e .`); ele lê `session-accounts.json`, atualizado a cada refresh. Detalhes e limitações no
-ADR-0009.
-
-## Cores: acento e alerta
-
-Os acentos "red" e "orange" do Notch podem coincidir com a cor de alerta (crítico/atenção). O nível nunca depende só da cor: ele
-aparece também pela forma (normal ●, atenção ▲, crítico ■, sem nível ○) e pela palavra.
-
-## Traduções (i18n)
-
-O Plasmoid segue o idioma do sistema: inglês (texto-fonte, convenção KDE) e português do Brasil, ambos completos.
-
-- **Mecanismo único:** `plasmoid/contents/ui/I18n.js` (`tr`, `trc`, `trp`), que chama `i18n`/`i18nc`/`i18np` do KDE e,
-  sem eles (harness `qml6`, testes), devolve o texto em inglês com os `%N` substituídos. Os modelos JS recebem `I18n.tr`
-  como parâmetro `tr`. Só literais de string entram como msgid; nome de conta, mensagem do coletor etc. vão como
-  argumento `%N`, nunca como msgid. Use frases inteiras com `%N` (nada de montar frase por pedaços) e `trp` para plurais.
-- **Catálogos:** `po/plasma_applet_org.kde.plasma.aiusage.pot` (domínio = `plasma_applet_` + `KPlugin.Id` do
-  `metadata.json`), `po/pt_BR.po` e `po/en.po` (`en.po` é gerado: msgstr = msgid).
-- **Regenerar o `.pot` e sincronizar os `.po`** (só Python, determinístico): `python3 tools/i18n.py extract && python3 tools/i18n.py update`.
-  `python3 tools/i18n.py check` acusa msgid não literal e texto visível fora de i18n.
-- **Novo idioma:** crie `po/<codigo>.po` copiando o `.pot` (ex.: `cp po/*.pot po/es.po`), rode `update`, traduza todas as
-  entradas (sem `fuzzy`, sem vazias, mesmos `%N`) e, se o idioma tiver regra de plural diferente, ajuste `PLURALS` em `tools/i18n.py`.
-  O teste `tests/test_i18n.py` valida o novo arquivo sozinho (adicione o código em `LANGS`).
-- **`.mo`:** `scripts/install-plasmoid.sh` compila `po/*.po` (`tools/i18n.py compile`) para
-  `contents/locale/<idioma>/LC_MESSAGES/plasma_applet_org.kde.plasma.aiusage.mo` numa cópia temporária e instala essa cópia;
-  os `.mo` não são versionados.
-- **Limites conhecidos:** `health.message` (diagnóstico do coletor, em português) é mostrado como veio; o erro de consulta
-  (`fetch_error`) é traduzido pelo `kind`. Data/hora usam o formato fixo `dd/MM HH:mm` e as unidades abreviadas da contagem
-  regressiva (`d h m s`) não variam por idioma.
-
-## Smoke no runtime real do Plasma
-
-`scripts/plasmoidviewer-smoke.sh [diretório-de-PNGs]` instala o plasmoide num HOME temporário, gera um `status.json` de
-fixture (`tools/smoke_status.py`), roda o `plasmoidviewer` sob `xvfb-run` em pt_BR e en_US, horizontal e vertical, clica na
-pílula (`xdotool`) e salva PNGs (`import`). Sai com código != 0 se o log tiver erro de QML do plasmoide (recursive
-rearrange, TypeError, ReferenceError, Unable to assign, is not defined, Binding loop). Não usa a sessão nem dados reais.
-Requer `plasmoidviewer` (plasma-sdk), `xvfb-run`, `xdotool` e ImageMagick; `tests/test_plasmoidviewer_smoke.py` o roda se existirem.
-
-## Licença e marcas
-
-GPL-3.0-or-later (ver `LICENSE`). Claude e Anthropic são marcas da Anthropic PBC; OpenAI e Codex, da OpenAI, Inc.; Gemini e Google, da Google LLC. Este projeto é independente e não tem afiliação nem endosso dessas empresas; os logos só identificam o provedor.
+[GPL-3.0-or-later](LICENSE). Independent community project, not affiliated with or endorsed by KDE, Anthropic, OpenAI or Google. Provider logos identify their services; see [logo credits](plasmoid/contents/ui/LOGOS.md).

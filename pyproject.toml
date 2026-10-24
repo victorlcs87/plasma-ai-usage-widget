@@ -5,13 +5,21 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "plasma-ai-usage-collector"
 version = "1.2.1"
-description = "Coletor de métricas de uso e cotas de agentes de IA para KDE Plasma 6"
+description = "Local Claude, Codex and Gemini usage quota collector for KDE Plasma 6 and Waybar"
 readme = "README.md"
 requires-python = ">=3.10"
 license = "GPL-3.0-or-later"
 license-files = ["LICENSE"]
 authors = [{ name = "Victor Lima" }]
 dependencies = []
+keywords = ["kde", "plasma", "claude", "codex", "gemini", "usage", "quota", "waybar"]
+
+[project.urls]
+Homepage = "https://github.com/victorlcs87/plasma-ai-usage-widget"
+Documentation = "https://github.com/victorlcs87/plasma-ai-usage-widget#install"
+Repository = "https://github.com/victorlcs87/plasma-ai-usage-widget"
+Issues = "https://github.com/victorlcs87/plasma-ai-usage-widget/issues"
+Changelog = "https://github.com/victorlcs87/plasma-ai-usage-widget/blob/main/CHANGELOG.md"
 
 [project.scripts]
 ai-usage-collector = "ai_usage_collector.cli:main"
