@@ -39,7 +39,7 @@ from ai_usage_collector.capture import (
 )
 from ai_usage_collector.config import config_lock, load_config
 from ai_usage_collector.discovery import parse_timestamp
-from ai_usage_collector.identity import _jwt_claims, credential_identity
+from ai_usage_collector.identity import _jwt_claims, credential_identity, creds_identity
 
 TIMEOUT_SECONDS = 20
 BUDGET_SECONDS = 45  # orcamento total de renovacao por ciclo (as renovacoes sao seriais dentro do lock)
@@ -504,11 +504,16 @@ def _renew_active_manual(
                 if source_path.is_symlink() or not source_path.is_file():
                     raise RenewError("detection_failed")
             updated = _refresh_gemini_credentials(live)
+            identity = creds_identity("gemini", updated)
+            if not identity or identity.key != expected.key:
+                raise RenewError("detection_failed")
             if source == "keyring (secret-tool)":
+                if override is not None:
+                    raise RenewError("detection_failed")
                 _store_gemini_keyring(updated)
             else:
                 source_path = Path(source)
-                if source_path.is_symlink():
+                if source_path.is_symlink() or not source_path.is_file():
                     raise RenewError("detection_failed")
                 original = _read_json_dict(source_path)
                 if not original:

@@ -130,3 +130,45 @@ def test_missing_profile_credential_is_restored_when_identity_remains(tmp_path, 
     account = collect_and_save(config, tmp_path / "status.json", now=NOW, providers=["claude"])["agents"]["claude"]["accounts"][0]
     assert json.loads(Path(profile["credential_path"]).read_text())["claudeAiOauth"]["accessToken"] == "new"
     assert account["native_window"]["usage_percentage"] == 12
+
+
+def test_collect_rejects_stale_claude_identity_when_tokens_belong_to_another_account(tmp_path, monkeypatch):
+    from tests.test_refresh import make_profile
+    prof_a = make_profile(tmp_path, "claude", "a", token="tok-a", ident="uuid-a")
+    prof_b = make_profile(tmp_path, "claude", "b", token="tok-b", ident="uuid-b")
+    system = tmp_path / "system"
+    system.mkdir()
+    (system / ".claude.json").write_text(json.dumps({"oauthAccount": {"accountUuid": "uuid-a"}}))
+    (system / ".credentials.json").write_text(json.dumps({
+        "claudeAiOauth": {"accessToken": "tok-b", "refreshToken": "ref-b", "expiresAt": 2_000_000_000_000}
+    }))
+    monkeypatch.setenv("CLAUDE_CREDENTIALS_PATH", str(system / ".credentials.json"))
+    monkeypatch.setattr("urllib.request.OpenerDirector.open", lambda _self, req, timeout=None: FakeHttp(claude=[{
+        "five_hour": {"utilization": 5}, "seven_day": {"utilization": 10},
+    }])(req, timeout))
+    config = tmp_path / "config.json"
+    save_config({"agents": {"claude": {"accounts": [prof_a, prof_b]}, "codex": {"accounts": []}, "gemini": {"accounts": []}}}, config)
+    collect_and_save(config, tmp_path / "status.json", now=NOW, providers=["claude"])
+    assert json.loads(Path(prof_a["credential_path"]).read_text())["claudeAiOauth"]["accessToken"] == "tok-a"
+    assert json.loads(Path(prof_b["credential_path"]).read_text())["claudeAiOauth"]["accessToken"] == "tok-b"
+
+
+def test_collect_rejects_stale_claude_identity_when_tokens_belong_to_account_without_identity(tmp_path, monkeypatch):
+    from tests.test_refresh import make_profile
+    prof_a = make_profile(tmp_path, "claude", "a", token="tok-a", ident="uuid-a")
+    prof_b = make_profile(tmp_path, "claude", "b", token="tok-b", ident=None)
+    system = tmp_path / "system"
+    system.mkdir()
+    (system / ".claude.json").write_text(json.dumps({"oauthAccount": {"accountUuid": "uuid-a"}}))
+    (system / ".credentials.json").write_text(json.dumps({
+        "claudeAiOauth": {"accessToken": "tok-b", "refreshToken": "ref-b", "expiresAt": 2_000_000_000_000}
+    }))
+    monkeypatch.setenv("CLAUDE_CREDENTIALS_PATH", str(system / ".credentials.json"))
+    monkeypatch.setattr("urllib.request.OpenerDirector.open", lambda _self, req, timeout=None: FakeHttp(claude=[{
+        "five_hour": {"utilization": 5}, "seven_day": {"utilization": 10},
+    }])(req, timeout))
+    config = tmp_path / "config.json"
+    save_config({"agents": {"claude": {"accounts": [prof_a, prof_b]}, "codex": {"accounts": []}, "gemini": {"accounts": []}}}, config)
+    collect_and_save(config, tmp_path / "status.json", now=NOW, providers=["claude"])
+    assert json.loads(Path(prof_a["credential_path"]).read_text())["claudeAiOauth"]["accessToken"] == "tok-a"
+    assert json.loads(Path(prof_b["credential_path"]).read_text())["claudeAiOauth"]["accessToken"] == "tok-b"

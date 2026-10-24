@@ -1026,6 +1026,33 @@ def account_credential_file(provider: str, account: dict[str, Any]) -> Path | No
     return Path(val).expanduser().resolve() if val else None
 
 
+def find_account_by_token(
+    provider: str,
+    accounts: list[dict[str, Any]],
+    creds: dict[str, Any] | None,
+    cred_file: Path | None = None,
+) -> dict[str, Any] | None:
+    """Conta cujo access_token ou refresh_token coincide exatamente com `creds`.
+
+    Diferente de `find_matching_account`, não faz fallback para identidade da Conta
+    nem assinatura de metadados; só retorna uma Conta se os tokens coincidirem.
+    """
+    prov = provider.lower().strip()
+    target = cred_file.expanduser().resolve() if cred_file else None
+    exclude_system = supports_identity(prov)
+    sig = _extract_credential_signature(prov, creds) if creds else {}
+    if not any(sig.get(k) for k in ("refresh_token", "access_token")):
+        return None
+    for acc in accounts:
+        f = account_credential_file(prov, acc)
+        if f is not None and f.is_file() and not (exclude_system and target and f == target):
+            acc_sig = _extract_credential_signature(prov, _read_json_dict(f))
+            for key in ("refresh_token", "access_token"):
+                if sig.get(key) and sig[key] == acc_sig.get(key):
+                    return acc
+    return None
+
+
 def find_matching_account(
     provider: str,
     accounts: list[dict[str, Any]],
@@ -1135,7 +1162,7 @@ def sync_active_claude_profile(
         return None
     # O estado ~/.claude.json pode estar defasado após uma troca externa. Se os
     # tokens identificam outro Perfil Isolado, não copiar para a identidade antiga.
-    token_match = find_matching_account("claude", accounts, system_creds, system_file)
+    token_match = find_account_by_token("claude", accounts, system_creds, system_file)
     if token_match is not None:
         token_profile = account_credential_file("claude", token_match)
         token_identity = credential_identity("claude", token_profile) if token_profile else None
