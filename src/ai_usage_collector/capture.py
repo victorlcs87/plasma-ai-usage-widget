@@ -1150,6 +1150,36 @@ def sync_active_claude_profile(
     return str(account.get("id"))
 
 
+def sync_active_codex_profile(
+    accounts: list[dict[str, Any]], override: Path | None = None,
+    config_path: str | Path | None = None,
+) -> str | None:
+    """Sincroniza a credencial Codex somente para uma identidade inequívoca."""
+    system_file = get_system_credential_file("codex", override)
+    system_creds = get_active_credentials("codex", override)
+    system_identity = credential_identity("codex", system_file)
+    if not system_creds or not system_identity:
+        return None
+    tokens = system_creds.get("tokens")
+    if not isinstance(tokens, dict) or not (tokens.get("access_token") or tokens.get("refresh_token")):
+        return None
+    profiles_base = get_profiles_base_dir(config_path)
+    matches = []
+    for account in accounts:
+        profile = account_credential_file("codex", account)
+        if (profile is None or profile == system_file.resolve()
+                or not profile.is_relative_to(profiles_base) or not profile.parent.is_dir()):
+            continue
+        identity = credential_identity("codex", profile)
+        if identity and identity.key == system_identity.key:
+            matches.append((account, profile))
+    if len(matches) != 1:
+        return None
+    account, profile = matches[0]
+    _store_into_profile("codex", system_creds, system_file, profile)
+    return str(account.get("id"))
+
+
 PROFILE_BACKUPS_KEPT = 5
 
 

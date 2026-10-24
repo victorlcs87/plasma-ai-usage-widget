@@ -416,7 +416,9 @@ def test_collector_integration_with_codex_native_extractor(tmp_path):
     acc = codex_agent["accounts"][0]
     assert acc["label"] == "Codex (user@openai.com)"
     assert acc["native_window"]["type"] == "3h"
-    assert acc["native_window"]["used_capacity"] == 1
+    assert acc["native_window"]["usage_percentage"] is None
+    assert acc["native_window"]["messages_used"] == 1
+    assert acc["no_data"] is True
     assert acc["free_trial_invites"]["invite_url"] == "https://chatgpt.com/invite/TEST"
 
 

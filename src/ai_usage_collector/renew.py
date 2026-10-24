@@ -538,7 +538,7 @@ def _renew_active_manual(
         if not identity or identity.key != expected.key:
             raise RenewError("detection_failed")
         if not direct_system:
-            if provider == "claude":
+            if provider in ("claude", "codex"):
                 _store_into_profile(provider, updated, system, copy)
             else:
                 _write_private_atomic(copy, updated)

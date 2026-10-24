@@ -17,6 +17,7 @@ from ai_usage_collector.capture import (
     get_system_credential_file,
     switch_system_account,
     sync_active_claude_profile,
+    sync_active_codex_profile,
     sync_gemini_from_antigravity,
 )
 from ai_usage_collector.config import (
@@ -188,6 +189,14 @@ def _collect(
                     active_acc_id = synced_id
             except (OSError, ValueError, RuntimeError) as e:
                 sys.stderr.write(f"Aviso: Perfil Claude nao sincronizado: {type(e).__name__}\n")
+        if agent_id == "codex":
+            try:
+                with config_lock(config_path):
+                    synced_id = sync_active_codex_profile(accounts, credential_override(agent_id, config), config_path)
+                active_acc_id = synced_id
+            except (OSError, ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Aviso: Perfil Codex nao sincronizado: {type(e).__name__}\n")
+                active_acc_id = None
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
@@ -222,11 +231,20 @@ def _collect(
             claude_api = provider_settings(config, "claude") if agent_id == "claude" else None
             official_claude_oauth = agent_id == "claude" and not (claude_api or {}).get("api_base_url")
             active_oauth = (get_active_credentials("claude", credential_override(agent_id, config)) or {}).get("claudeAiOauth") if official_claude_oauth and is_active else None
+            active_codex = get_active_credentials("codex", credential_override(agent_id, config)) if agent_id == "codex" and is_active else None
+            codex_token = (active_codex or {}).get("tokens") if isinstance(active_codex, dict) else None
             if is_active and manual_renew:
                 renew.renew_active_manual(cyc, agent_id, str(acc_id), acc, credential_override(agent_id, config), config_path)
             elif official_claude_oauth and is_active and not renew_account and cred_path and (
                 not isinstance(active_oauth, dict) or not active_oauth.get("accessToken")
                 or ((expiry := renew._expiry_ts("claude", Path(cred_path))) is not None
+                    and expiry <= now_dt.timestamp())
+            ):
+                renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                        credential_override(agent_id, config), config_path)
+            elif agent_id == "codex" and is_active and not renew_account and cred_path and (
+                not isinstance(codex_token, dict) or not codex_token.get("access_token")
+                or ((expiry := renew._expiry_ts("codex", Path(cred_path))) is not None
                     and expiry <= now_dt.timestamp())
             ):
                 renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
@@ -260,6 +278,13 @@ def _collect(
                 usage_details = claude_data.get("usage_details")
             elif agent_id == "codex":
                 codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
+                first_outcome = cyc.take_outcome()
+                if (is_active and not manual_renew and not renew_account
+                        and first_outcome and first_outcome["kind"] == "auth"
+                        and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                                    credential_override(agent_id, config), config_path)):
+                    health = discover_account(agent_id, cred_path, account_data=acc)
+                    codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
                 health = codex_data.get("health", health)
                 native_window = codex_data.get("native_window")
                 weekly_window = codex_data.get("weekly_window")
@@ -309,7 +334,7 @@ def _collect(
                 acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
                 identity_key=identity.key if identity else None,
             )
-            if agent_id == "claude":
+            if agent_id in ("claude", "codex"):
                 refresh.ensure_confirmed_windows(acc_status, previous_accounts.get(str(acc_id)), identity.key if identity else None)
             if (
                 agent_id == "gemini" and "no_data" not in acc_status
