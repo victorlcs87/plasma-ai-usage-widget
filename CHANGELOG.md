@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.2.1
+
+### Correções
+- Gemini: seleciona apenas cotas do grupo Gemini; limites Claude/GPT não substituem os percentuais ou resets.
+- Gemini: prioriza o resumo oficial e usa cotas individuais Gemini como alternativa; semanal ausente permanece sem dados.
+- Widget: anéis de consumo contínuos, mantendo as cores de alerta.
+
 ## 1.2.0
 
 ### Correções
