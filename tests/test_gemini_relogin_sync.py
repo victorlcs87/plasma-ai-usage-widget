@@ -62,6 +62,7 @@ def test_collect_never_copies_unmatched_gemini_identity(tmp_path, monkeypatch, s
 
 def test_collect_syncs_matching_keyring_payload(tmp_path, monkeypatch):
     account = make_profile(tmp_path, "gemini", "one", ident="one@example.test")
+    account["source"] = "captured"
     config = tmp_path / "config.json"
     save_config({"agents": {"claude": {"accounts": []}, "codex": {"accounts": []}, "gemini": {"accounts": [account]}}, "renew": {"gemini": False}}, config)
     profile = Path(load_config(config)["agents"]["gemini"]["accounts"][0]["credential_path"])
@@ -69,6 +70,10 @@ def test_collect_syncs_matching_keyring_payload(tmp_path, monkeypatch):
         {"email": "one@example.test", "token": {"access_token": "keyring-new", "refresh_token": "keyring-r", "expiry_date": 2_000_000_000_000}},
         "keyring (secret-tool)",
     ))
+    monkeypatch.setattr(
+        "ai_usage_collector.collector.sync_gemini_from_antigravity",
+        lambda _path: pytest.fail("Antigravity must not replace the active keyring credential"),
+    )
     monkeypatch.setattr("urllib.request.urlopen", FakeHttp(gemini=[QUOTA]))
 
     entry = collect_and_save(config, tmp_path / "status.json", now=NOW, providers=["gemini"])["agents"]["gemini"]["accounts"][0]

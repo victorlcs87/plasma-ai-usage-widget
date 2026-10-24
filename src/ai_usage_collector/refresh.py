@@ -438,14 +438,15 @@ def ensure_confirmed_windows(
             used_cache = True
             continue
         current.update({"usage_percentage": None, "used_capacity": None,
-                        "available_capacity": None, reset_field: None,
-                        "seconds_remaining": None})
+                        "available_capacity": None})
+        # Um reset lido da API continua confirmado mesmo sem percentual.
+        if current.get("source") != "api" or "release" not in current.get("api_fields", []):
+            current[reset_field] = None
+            current["seconds_remaining"] = None
     if used_cache:
         entry["stale"] = True
     if all(entry.get(w, {}).get("usage_percentage") is None for w in _WINDOW_RESET_FIELDS):
         entry["no_data"] = True
-    else:
-        entry.pop("no_data", None)
 
 
 def summarize_agent(agent: dict[str, Any]) -> None:

@@ -26,6 +26,10 @@ _Avoid_: lixo, perfil perdido
 A Conta cuja Identidade corresponde a credencial atualmente aplicada nos caminhos padrao do sistema e usada por qualquer terminal ou IDE que invoque o agente. O caminho padrao do sistema nunca e, por si so, uma Conta.
 _Avoid_: conta padrao, sessao global, login primario, default
 
+**Sincronizacao da Conta Ativa**:
+Atualizacao do Perfil Isolado da Conta cuja Identidade corresponde a credencial em uso no sistema apos novo login ou rotacao de tokens, preservando a identidade e as credenciais anteriores conforme as regras de seguranca da Conta.
+_Avoid_: recaptura, nova Conta, troca de Conta
+
 **Alternancia de Conta (Switch)**:
 Operacao atomica que devolve a credencial do sistema ao Perfil Isolado de sua Conta (ou a captura como Conta nova, se desconhecida) e aplica a credencial da Conta escolhida no sistema, sem reautenticacao no navegador.
 _Avoid_: troca de usuario, re-login, swap
@@ -55,6 +59,10 @@ _Avoid_: janela generica, timer universal, janela de 3h
 **Medidor da Janela Semanal**:
 Indicador da porcentagem de uso acumulado no ciclo semanal do provedor e do tempo ate sua renovacao.
 _Avoid_: cota semanal em mensagens, capacidade semanal
+
+**Sem Dados de Cota**:
+Estado de uma janela cujo percentual de uso nao pode ser confirmado pelo provedor apos a tentativa de recuperacao aplicavel; difere de 0% de uso confirmado e nao apaga o Historico de Tokens local.
+_Avoid_: uso zero, conta ociosa, falha do Historico de Tokens
 
 **Tempo de Liberacao**:
 O momento exato (horario e contagem regressiva) em que a capacidade consumida em uma janela e restaurada pelo provedor.

@@ -230,7 +230,10 @@ def test_collect_marks_captured_account_valid(home, tmp_path):
 
 
 def test_collect_survives_sync_oserror(home, tmp_path, capsys):
-    status = _collect(home, tmp_path, sync=OSError("disco cheio"))
+    # A cópia da Antigravity só é aplicada a Contas inativas.
+    with patch("ai_usage_collector.collector.detect_active_account_id", return_value=None), \
+            patch("ai_usage_collector.collector.sync_active_gemini_profile", return_value=None):
+        status = _collect(home, tmp_path, sync=OSError("disco cheio"))
     assert len(status["agents"]["gemini"]["accounts"]) == 1
     assert "nao sincronizado" in capsys.readouterr().err
 

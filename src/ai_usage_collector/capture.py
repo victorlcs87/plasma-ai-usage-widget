@@ -1133,6 +1133,14 @@ def sync_active_claude_profile(
     oauth = system_creds.get("claudeAiOauth")
     if not isinstance(oauth, dict) or not (oauth.get("accessToken") or oauth.get("refreshToken")):
         return None
+    # O estado ~/.claude.json pode estar defasado após uma troca externa. Se os
+    # tokens identificam outro Perfil Isolado, não copiar para a identidade antiga.
+    token_match = find_matching_account("claude", accounts, system_creds, system_file)
+    if token_match is not None:
+        token_profile = account_credential_file("claude", token_match)
+        token_identity = credential_identity("claude", token_profile) if token_profile else None
+        if token_identity is None or token_identity.key != system_identity.key:
+            return None
     profiles_base = get_profiles_base_dir(config_path)
     matches = []
     for account in accounts:

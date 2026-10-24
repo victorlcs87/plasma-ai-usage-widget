@@ -182,6 +182,7 @@ def _collect(
             sys.stderr.write(f"Aviso: Conta Ativa {agent_id} nao detectada: {type(e).__name__}\n")
             active_acc_id = None
 
+        synced_id = None
         if agent_id == "claude":
             try:
                 with config_lock(config_path):
@@ -194,10 +195,10 @@ def _collect(
             try:
                 with config_lock(config_path):
                     synced_id = sync_active_codex_profile(accounts, credential_override(agent_id, config), config_path)
-                active_acc_id = synced_id
+                if synced_id is not None:
+                    active_acc_id = synced_id
             except (OSError, ValueError, RuntimeError) as e:
                 sys.stderr.write(f"Aviso: Perfil Codex nao sincronizado: {type(e).__name__}\n")
-                active_acc_id = None
         if agent_id == "gemini":
             try:
                 with config_lock(config_path):
@@ -231,7 +232,7 @@ def _collect(
             manual_invite = acc.get("manual_invite_url")
             manual_invite_count = acc.get("manual_invite_count")
 
-            if agent_id == "gemini" and source == "captured" and cred_path:
+            if agent_id == "gemini" and source == "captured" and cred_path and not is_active:
                 try:
                     sync_gemini_from_antigravity(Path(cred_path))  # copia isolada acompanha o token vivo
                 except Exception as e:
@@ -245,21 +246,21 @@ def _collect(
             gemini_auto = agent_id == "gemini" and is_active and not renew_account and renew.renew_gemini_enabled(config)
             if is_active and manual_renew:
                 renew.renew_active_manual(cyc, agent_id, str(acc_id), acc, credential_override(agent_id, config), config_path)
-            elif official_claude_oauth and is_active and not renew_account and cred_path and (
+            elif official_claude_oauth and is_active and synced_id == str(acc_id) and not renew_account and cred_path and (
                 not isinstance(active_oauth, dict) or not active_oauth.get("accessToken")
                 or ((expiry := renew._expiry_ts("claude", Path(cred_path))) is not None
                     and expiry <= now_dt.timestamp())
             ):
                 renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
                                         credential_override(agent_id, config), config_path)
-            elif agent_id == "codex" and is_active and not renew_account and cred_path and (
+            elif agent_id == "codex" and is_active and synced_id == str(acc_id) and not renew_account and cred_path and (
                 not isinstance(codex_token, dict) or not codex_token.get("access_token")
                 or ((expiry := renew._expiry_ts("codex", Path(cred_path))) is not None
                     and expiry <= now_dt.timestamp())
             ):
                 renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
                                         credential_override(agent_id, config), config_path)
-            elif gemini_auto and cred_path and (
+            elif gemini_auto and synced_id == str(acc_id) and cred_path and (
                 not (get_active_credentials("gemini", credential_override(agent_id, config)) or {}).get("access_token")
                 or ((expiry := renew._expiry_ts("gemini", Path(cred_path))) is not None
                     and expiry <= now_dt.timestamp())
@@ -281,7 +282,7 @@ def _collect(
             if agent_id == "claude":
                 claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=claude_api)
                 first_outcome = cyc.take_outcome()
-                if (official_claude_oauth and is_active and not manual_renew and not renew_account
+                if (official_claude_oauth and is_active and synced_id == str(acc_id) and not manual_renew and not renew_account
                         and first_outcome and first_outcome["kind"] == "auth"
                         and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
                                                     credential_override(agent_id, config), config_path)):
@@ -296,7 +297,7 @@ def _collect(
             elif agent_id == "codex":
                 codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
                 first_outcome = cyc.take_outcome()
-                if (is_active and not manual_renew and not renew_account
+                if (is_active and synced_id == str(acc_id) and not manual_renew and not renew_account
                         and first_outcome and first_outcome["kind"] == "auth"
                         and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
                                                     credential_override(agent_id, config), config_path)):
@@ -310,7 +311,7 @@ def _collect(
             elif agent_id == "gemini":
                 gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
                 first_outcome = cyc.take_outcome()
-                if (gemini_auto and first_outcome and first_outcome["kind"] == "auth"
+                if (gemini_auto and synced_id == str(acc_id) and first_outcome and first_outcome["kind"] == "auth"
                         and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
                                                     credential_override(agent_id, config), config_path)):
                     health = discover_account(agent_id, cred_path, account_data=acc)
