@@ -94,6 +94,7 @@ def collect_and_save(
     providers: list[str] | None = None,
     intervals: dict[str, int] | None = None,
     force_renew: bool = False,
+    renew_account: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     """Collect and write canonical status.json (ADR-0007).
 
@@ -105,7 +106,7 @@ def collect_and_save(
     outbox: list[dict[str, Any]] = []
     update_plan: dict[str, bool] = {}
     with refresh.cycle(cache_file.with_name(refresh.STATE_FILENAME), now_dt) as cyc:
-        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan, force_renew)
+        status_payload = _collect(config_path, cache_file, now_dt, providers, intervals or {}, cyc, outbox, update_plan, force_renew, renew_account)
         save_status_cache(status_payload, cache_file)
     deliver(outbox, cache_file)  # fora do lock: D-Bus lento nao segura o status.json
     if update_plan:
@@ -140,15 +141,25 @@ def _collect(
     outbox: list[dict[str, Any]],
     update_plan: dict[str, bool] | None = None,
     force_renew: bool = False,
+    renew_account: tuple[str, str] | None = None,
 ) -> dict[str, Any]:
     config = load_config(config_path)
     status_payload = build_empty_status_contract(now_iso=now_dt.isoformat())
     previous_status = load_status_cache(cache_file)
     previous_agents = (previous_status or {}).get("agents") or {}
 
+    if renew_account:
+        provider, account_id = renew_account
+        if provider not in SUPPORTED_PROVIDERS or not any(str(a.get("id")) == account_id for a in get_accounts_for_agent(config, provider)):
+            raise ValueError("Conta ou provedor não encontrado para renovar.")
+        providers = [provider]
     agents_to_collect = ["claude", "codex", "gemini"]
 
     for agent_id in agents_to_collect:
+        if renew_account and agent_id != renew_account[0]:
+            if isinstance(previous_agents.get(agent_id), dict):
+                status_payload["agents"][agent_id] = previous_agents[agent_id]
+            continue
         if providers and agent_id not in providers and isinstance(previous_agents.get(agent_id), dict):
             status_payload["agents"][agent_id] = previous_agents[agent_id]
             continue
@@ -170,6 +181,11 @@ def _collect(
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
+            manual_renew = renew_account == (agent_id, str(acc_id))
+            if renew_account and not manual_renew and str(acc_id) in previous_accounts:
+                account_statuses.append(previous_accounts[str(acc_id)])
+                agent_has_valid_account |= previous_accounts[str(acc_id)].get("health", {}).get("status") == "valid"
+                continue
             is_active = (str(acc_id) == str(active_acc_id)) if active_acc_id is not None else False
             acc_name = acc.get("name")
             acc_label = acc.get("label")
@@ -193,10 +209,12 @@ def _collect(
                 except Exception as e:
                     sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
-            if not is_active:  # nunca a Conta Ativa no Sistema: quem a renova e a propria CLI
+            if is_active and manual_renew:
+                renew.renew_active_manual(cyc, agent_id, str(acc_id), acc, credential_override(agent_id, config), config_path)
+            elif not is_active and (not renew_account or manual_renew):
                 renew.renew_inactive(
                     cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config),
-                    force=force_renew, config_path=config_path,
+                    force=force_renew, config_path=config_path, manual=manual_renew,
                 )
             health = discover_account(agent_id, cred_path, account_data=acc)
             native_window = None
@@ -251,8 +269,8 @@ def _collect(
                 is_active=is_active,
                 usage_details=usage_details,
             )
-            last_renewal = None if is_active else cyc.renewals.get(f"{agent_id}:{acc_id}")
-            if agent_id == "gemini" and not is_active and not renew.renew_gemini_enabled(config):
+            last_renewal = None if is_active and not manual_renew else cyc.renewals.get(f"{agent_id}:{acc_id}")
+            if agent_id == "gemini" and not is_active and not manual_renew and not renew.renew_gemini_enabled(config):
                 acc_status["renewal"] = {"error": "disabled", "at": refresh._iso(now_dt.timestamp())}  # so avisar
             elif last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
                 acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}

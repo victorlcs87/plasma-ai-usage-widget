@@ -36,7 +36,7 @@ from ai_usage_collector.capture import (
     get_profiles_base_dir,
     get_system_credential_file,
 )
-from ai_usage_collector.config import load_config
+from ai_usage_collector.config import config_lock, load_config
 from ai_usage_collector.discovery import parse_timestamp
 from ai_usage_collector.identity import _jwt_claims, credential_identity
 
@@ -67,8 +67,16 @@ def _kill_group(proc: subprocess.Popen) -> None:
         proc.kill()
 
 
-def _run(binary: str, args: list[str], env_name: str, profile: Path) -> None:
+def _find_cli(binary: str) -> str | None:
+    """Prefer PATH; Plasma may omit the user's native CLI installation directory."""
     exe = shutil.which(binary)
+    if exe:
+        return exe
+    return shutil.which(str(Path.home() / ".local" / "bin" / binary))
+
+
+def _run(binary: str, args: list[str], env_name: str, profile: Path) -> None:
+    exe = _find_cli(binary)
     if not exe:
         raise FileNotFoundError(binary)
     # Lista de argumentos, sem shell; saida descartada (pode conter dados da Conta)
@@ -94,7 +102,7 @@ def _codex_refresh(profile: Path) -> None:
     `codex app-server` renova (reescreve auth.json, sem gastar tokens de modelo). O app-server
     sai ao fechar o stdin, entao o processo fica aberto ate a resposta (id 2) ou o timeout.
     """
-    exe = shutil.which("codex")
+    exe = _find_cli("codex")
     if not exe:
         raise FileNotFoundError("codex")
     proc = subprocess.Popen(
@@ -274,6 +282,11 @@ def _gemini_refresh(profile: Path) -> None:
         creds = json.loads(cred.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise RenewError("failed") from None
+    _write_private_atomic(cred, _refresh_gemini_credentials(creds))
+
+
+def _refresh_gemini_credentials(creds: dict[str, Any]) -> dict[str, Any]:
+    creds = dict(creds)
     refresh_token = creds.get("refresh_token") if isinstance(creds, dict) else None
     if not isinstance(refresh_token, str) or not refresh_token:
         raise RenewError("revoked")
@@ -300,7 +313,7 @@ def _gemini_refresh(profile: Path) -> None:
     for key in ("id_token", "refresh_token", "token_type"):  # refresh_token so se o Google rotacionar
         if isinstance(data.get(key), str) and data[key]:
             creds[key] = data[key]
-    _write_private_atomic(cred, creds)
+    return creds
 
 
 # Gancho por provedor
@@ -394,7 +407,7 @@ def renew_gemini_enabled(config: Any) -> bool:
 def renew_inactive(
     cyc: refresh.RefreshCycle, provider: str, account_id: str, account: dict[str, Any],
     interval: int, override: Path | None = None, force: bool = False,
-    config_path: str | Path | None = None,
+    config_path: str | Path | None = None, manual: bool = False,
 ) -> str | None:
     """Renova o Perfil Isolado da Conta se devido; devolve a classe do erro (None = ok ou nada a fazer).
 
@@ -403,17 +416,27 @@ def renew_inactive(
     """
     renewer = RENEWERS.get(provider)
     raw_dir = account.get(_PROFILE_KEYS.get(provider, ""))
-    if not renewer or not raw_dir or not (force or cyc.renewal_due(provider, account_id, interval)):
+    if manual and not raw_dir:
+        raw_file = account.get("credential_path") or account.get("credentials_path")
+        if raw_file and Path(raw_file).name == _CREDENTIAL_FILENAMES.get(provider):
+            raw_dir = str(Path(raw_file).expanduser().parent)
+    if not renewer or not raw_dir:
+        if manual:
+            cyc.record_renewal(provider, account_id, "cli_missing" if not renewer else "detection_failed")
         return None
-    if provider == "gemini" and not renew_gemini_enabled(load_config(config_path)):
+    if not (manual or force or cyc.renewal_due(provider, account_id, interval)):
+        return None
+    if provider == "gemini" and not manual and not renew_gemini_enabled(load_config(config_path)):
         return None  # desligada: nem 'which agy', nem leitura do binario, nem rede
     who = repr(f"{provider}:{account_id}")
     profile = Path(raw_dir).expanduser().resolve()
     cred_file = profile / _CREDENTIAL_FILENAMES[provider]
     if reason := _skip_reason(cyc, provider, profile, cred_file, override, config_path):
         sys.stderr.write(f"Aviso: renovacao da Conta {who} pulada ({reason})\n")
+        if manual:
+            cyc.record_renewal(provider, account_id, "detection_failed")
         return None
-    if not needs_renewal(provider, cred_file, cyc.now.timestamp(), interval):
+    if not manual and not needs_renewal(provider, cred_file, cyc.now.timestamp(), interval):
         return None
     elapsed = 0.0 if cyc.renew_started is None else _clock() - cyc.renew_started
     if elapsed > BUDGET_SECONDS - TIMEOUT_SECONDS:  # adiada ao proximo ciclo; nao e falha nem consome o Intervalo
@@ -435,3 +458,102 @@ def renew_inactive(
     if error:
         sys.stderr.write(f"Aviso: renovacao da Conta {who} falhou ({error})\n")
     return error
+
+
+
+def _renew_active_manual(
+    cyc: refresh.RefreshCycle, provider: str, account_id: str, account: dict[str, Any],
+    override: Path | None = None, config_path: str | Path | None = None,
+) -> None:
+    """Explicit renewal of the system account, only while its CLI is definitely stopped.
+
+    Refresh through the provider's own CLI (Gemini uses the existing OAuth route),
+    then synchronize the renewed credential into its isolated copy. No account switch.
+    """
+    from ai_usage_collector.running import detect_running
+    from ai_usage_collector.capture import get_active_gemini_credentials, _store_gemini_keyring
+
+    error = None
+    try:
+        running = detect_running().get(provider)
+        if running is not False:
+            raise RenewError("cli_running" if running else "detection_failed")
+        raw_path = account.get("credential_path") or account.get("credentials_path")
+        if not raw_path:
+            raise RenewError("detection_failed")
+        copy = Path(raw_path).expanduser()
+        base = get_profiles_base_dir(config_path).resolve()
+        system = get_system_credential_file(provider, override)
+        direct_system = copy.absolute() == system.absolute()
+        if copy.is_symlink() or (not direct_system and not copy.resolve().is_relative_to(base)):
+            raise RenewError("detection_failed")
+        creds = get_active_credentials(provider, override)
+        current = _system_identity(provider, creds, system) if creds else None
+        expected = credential_identity(provider, copy)
+        if not current or not expected or current.key != expected.key:
+            raise RenewError("detection_failed")
+        if provider == "gemini":
+            live, source = get_active_gemini_credentials(override)
+            if not live:
+                raise RenewError("revoked")
+            if isinstance(live.get("token"), dict):
+                live = {**{k: v for k, v in live.items() if k != "token"}, **live["token"]}
+            if source != "keyring (secret-tool)":
+                source_path = Path(source)
+                if source_path.is_symlink() or not source_path.is_file():
+                    raise RenewError("detection_failed")
+            updated = _refresh_gemini_credentials(live)
+            if source == "keyring (secret-tool)":
+                _store_gemini_keyring(updated)
+            else:
+                source_path = Path(source)
+                if source_path.is_symlink():
+                    raise RenewError("detection_failed")
+                original = _read_json_dict(source_path)
+                if not original:
+                    raise RenewError("detection_failed")
+                if isinstance(original.get("token"), dict):
+                    token_keys = {"access_token", "refresh_token", "token_type", "expires_in", "expiry", "id_token", "scope"}
+                    nested = {**original["token"], **{k: v for k, v in updated.items() if k in token_keys}}
+                    nested.pop("expiry_date", None)
+                    updated_file = {**original, "token": nested}
+                    if "id_token" in original:
+                        updated_file["id_token"] = updated.get("id_token", original["id_token"])
+                else:
+                    updated_file = updated
+                _write_private_atomic(source_path, updated_file)
+        else:
+            if system.is_symlink() or system.name != _CREDENTIAL_FILENAMES[provider]:
+                raise RenewError("detection_failed")
+            renewer = RENEWERS.get(provider)
+            if not renewer:
+                raise RenewError("cli_missing")
+            renewer(system.parent)
+            updated = get_active_credentials(provider, override)
+            if not updated:
+                raise RenewError("failed")
+        # Fail closed if the CLI unexpectedly switched identity.
+        identity = _system_identity(provider, updated, system)
+        if not identity or identity.key != expected.key:
+            raise RenewError("detection_failed")
+        if not direct_system:
+            _write_private_atomic(copy, updated)
+        cyc.system_creds[provider] = updated
+    except RenewError as exc:
+        error = exc.code
+    except FileNotFoundError:
+        error = "cli_missing"
+    except subprocess.TimeoutExpired:
+        error = "timeout"
+    except Exception:
+        error = "failed"
+    cyc.record_renewal(provider, account_id, error)
+
+
+def renew_active_manual(
+    cyc: refresh.RefreshCycle, provider: str, account_id: str, account: dict[str, Any],
+    override: Path | None = None, config_path: str | Path | None = None,
+) -> None:
+    # Serialize writes against account switching/capture, then re-check identity inside the lock.
+    with config_lock(config_path):
+        _renew_active_manual(cyc, provider, account_id, account, override, config_path)

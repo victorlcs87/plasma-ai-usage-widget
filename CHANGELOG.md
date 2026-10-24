@@ -1,5 +1,16 @@
 # Changelog
 
+## 1.2.2
+
+### Melhorias
+- Botão Renovar sessão por Conta para Claude, Codex e Gemini: tenta renovar e consulta o uso em seguida, preservando as demais Contas.
+- Renovação manual da Conta Ativa com a CLI do provedor fechada, conferência de identidade e sincronização do Perfil Isolado. CLI em execução ou detecção inconclusiva produz uma orientação, sem alterar credenciais.
+- No Gemini, a tentativa manual não altera a preferência de renovação automática.
+
+### Correções
+- Renovação encontra Claude e Codex em `~/.local/bin` quando o PATH do Plasma não inclui esse diretório.
+- Detecção de execução do Gemini também reconhece Antigravity e `agy`.
+
 ## 1.2.1
 
 ### Correções

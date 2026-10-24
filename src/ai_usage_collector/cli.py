@@ -27,6 +27,7 @@ from ai_usage_collector.config import (
     DEFAULT_CONFIG_PATH,
     SUPPORTED_PROVIDERS,
     load_config,
+    get_accounts_for_agent,
     set_alert_settings,
     set_notify_settings,
     set_renew_settings,
@@ -59,6 +60,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Executa a coleta (respeitando pausas do provedor) e atualiza o arquivo de status",
     )
+    parser.add_argument("--renew-account", nargs=2, metavar=("PROVIDER", "ACCOUNT_ID"),
+                        help="Renova a sessão de uma Conta e consulta seu uso, sem trocar a Conta Ativa")
     parser.add_argument(
         "--force-renew",
         action="store_true",
@@ -402,6 +405,24 @@ def main(argv: Sequence[str] | None = None) -> int:
                     collect_and_save(config_path=config_path, cache_path=cache_path)
                 (sys.stdout if ok else sys.stderr).write((message if ok else f"Erro: {message}") + "\n")
                 return 0 if ok else 1
+
+        if args.renew_account:
+            provider, account_id = args.renew_account
+            config = load_config(config_path)
+            if provider not in SUPPORTED_PROVIDERS or not any(str(a.get("id")) == account_id for a in get_accounts_for_agent(config, provider)):
+                sys.stderr.write("Erro: Conta ou provedor não encontrado para renovar.\n")
+                return 2
+            try:
+                intervals = parse_intervals(args.refresh_interval)
+            except ValueError as exc:
+                sys.stderr.write(f"Erro: {exc}\n")
+                return 2
+            status_data = collect_and_save(config_path=config_path, cache_path=cache_path,
+                                           providers=[provider], intervals=intervals, force_renew=True,
+                                           renew_account=(provider, account_id))
+            if args.status:
+                sys.stdout.write(json.dumps(status_data, indent=2, ensure_ascii=False) + "\n")
+            return 0
 
         if args.switch_account:
             provider, account_id = args.switch_account

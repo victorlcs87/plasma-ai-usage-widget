@@ -109,6 +109,22 @@ Requisitos: Plasma aberto, `claude` e `codex` no `PATH` e `agy` instalado e a op
 
 O card da Conta explica o estado: renovação pendente (nova tentativa na próxima consulta), login revogado, CLI ou `agy` não encontrado, tempo esgotado, rede indisponível ou falha genérica. Nos casos sem solução automática, faça login no provedor com a Conta. Riscos e decisões: `docs/adr/0013-renovacao-de-conta-inativa.md`.
 
+## Renovar sessão de uma Conta
+
+Contas expiradas exibem **Renovar sessão**. O botão faz uma tentativa para a Conta selecionada e consulta o uso em seguida, sem trocar de Conta e preservando as demais leituras em cache. Também funciona pelo terminal:
+
+```bash
+ai-usage-collector --renew-account claude ID_DA_CONTA --status
+ai-usage-collector --renew-account codex ID_DA_CONTA --status
+ai-usage-collector --renew-account gemini ID_DA_CONTA --status
+```
+
+Para renovar a Conta Ativa no Sistema, feche primeiro a CLI do provedor. Se ela estiver em execução ou não for possível confirmar que parou, o widget informa o motivo e mantém as credenciais. A renovação verifica novamente a identidade dentro do mesmo lock usado pela Alternância de Conta. Token revogado ou sem credencial de renovação ainda exige login no provedor.
+
+No Gemini, o clique autoriza uma tentativa pelo mecanismo OAuth da Antigravity, sem ativar a renovação automática. O `agy` instalado é necessário para esse mecanismo. A preferência automática continua desligada por padrão. Uma pausa de requisições do provedor (HTTP 429) continua sendo respeitada ao consultar o uso.
+
+Claude e Codex são procurados primeiro no PATH e depois em `~/.local/bin`, inclusive quando o Plasma não carrega os caminhos do terminal.
+
 ## Credencial do Gemini
 
 A captura (`--capture-current gemini`) procura a sessão ativa nesta ordem: chaveiro (`secret-tool`, serviço `gemini`, usuário `antigravity`), `~/.gemini/oauth_creds.json` e `~/.gemini/antigravity-cli/antigravity-oauth-token` (CLI Antigravity, formato aninhado em `token`). `GEMINI_CONFIG_DIR` troca `~/.gemini`. Esses arquivos e o chaveiro são só lidos na captura; a cópia fica isolada em `profiles/` com permissão 0600.

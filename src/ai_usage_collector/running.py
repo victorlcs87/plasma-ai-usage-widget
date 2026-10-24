@@ -31,7 +31,7 @@ def visibility_settings(config: Any) -> dict[str, str]:
 
 
 _INTERPRETER = re.compile(r"(node(js)?|bun|python|env|sh|bash|dash|zsh)[0-9.]*")
-_ALIASES = {"claude": {"claude", "claude-code"}, "codex": {"codex"}, "gemini": {"gemini", "gemini-cli"}}
+_ALIASES = {"claude": {"claude", "claude-code"}, "codex": {"codex"}, "gemini": {"gemini", "gemini-cli", "agy", "antigravity"}}
 _SEGMENTS = re.compile(r"[/\s\0=:@]+")
 
 
@@ -91,7 +91,7 @@ def detect_running() -> dict[str, bool | None]:
         except OSError:
             comm = ""
         names = _program(cmd.rstrip("\0").split("\0")) | {comm}
-        found |= names & set(_ALIASES)
+        found |= {p for p, aliases in _ALIASES.items() if names & aliases}
         maybe |= _mentions(cmd + " " + comm)
     if seen == 0:
         return unknown
