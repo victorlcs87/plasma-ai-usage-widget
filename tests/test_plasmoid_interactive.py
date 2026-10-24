@@ -336,8 +336,10 @@ def test_simulated_remove_account_from_widget(tmp_path: Path):
     assert len(updated_cache["agents"]["claude"]["accounts"]) == 1
 
 
-def test_clipboard_fallback_shell_safety():
+def test_clipboard_fallback_shell_safety(tmp_path):
     """Verify that invite URL escaping for wl-copy/xclip command is shell-safe."""
+    # Exercise the stdout fallback without writing to the desktop clipboard.
+    (tmp_path / "bash").symlink_to(shutil.which("bash"))
     test_urls = [
         "https://claude.ai/invite/code?ref=user&id=123",
         "https://codex.openai.com/trial#token=xyz!$%",
@@ -352,7 +354,8 @@ def test_clipboard_fallback_shell_safety():
             "elif command -v xclip >/dev/null 2>&1; then printf \"%s\" \"$1\" | xclip -selection clipboard; "
             "else printf \"%s\" \"$1\"; fi' _ " + safe_quoted
         )
-        res = subprocess.run(bash_cmd, shell=True, capture_output=True, text=True, check=True)
+        res = subprocess.run(bash_cmd, shell=True, capture_output=True, text=True, check=True,
+                             env={**os.environ, "PATH": str(tmp_path)})
         assert res.stdout == url, f"URL alterada ou comando expandido indevidamente: {res.stdout!r} != {url!r}"
 
 

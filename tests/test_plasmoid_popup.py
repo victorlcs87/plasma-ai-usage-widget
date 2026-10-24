@@ -299,7 +299,10 @@ def test_remaining_and_date_preferences_change_the_popup(tmp_path):
     base = popup(tmp_path / "a", "pref_used", drive=drive)
     rem = popup(tmp_path / "b", "pref_remaining", drive=drive, cfg={"usageDisplay": "remaining", "resetDisplay": "date"}, size=(460, 700))
     assert base["pct"] == ["82%", "45%"] and rem["pct"] == ["18%", "55%"]
-    assert base["reset"].startswith("120.000 tokens • releases in ") and "releases in" not in rem["reset"] and " • releases " in rem["reset"]
+    token_count = base["reset"].split(" tokens • ")[0]
+    assert "".join(c for c in token_count if c.isdigit()) == "120000"
+    assert " tokens • releases in " in base["reset"]
+    assert "releases in" not in rem["reset"] and " • releases " in rem["reset"]
     assert base["rings"] == [[82, 45]] and rem["rings"] == [[18, 55]]  # o arco mostra o que sobra
     assert base["marks"] == rem["marks"] == ["▲"]                  # o nível não muda com a preferência
 

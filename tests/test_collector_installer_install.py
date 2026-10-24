@@ -21,7 +21,7 @@ import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "plasmoid" / "contents" / "code" / "collector-installer.py"
-VERSION = "1.2.0"
+from ai_usage_collector import __version__ as VERSION
 
 
 @pytest.fixture(scope="session")

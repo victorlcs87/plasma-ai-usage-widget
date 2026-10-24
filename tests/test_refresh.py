@@ -643,7 +643,10 @@ def test_gemini_429_on_second_endpoint_pauses_account(env, tmp_path):
 
 def test_gemini_one_endpoint_failing_keeps_the_other_fresh(env, tmp_path):
     configure(env, tmp_path, {"gemini": [make_profile(tmp_path, "gemini", "a")]})
-    http = FakeHttp(gemini=[GEMINI_SUMMARY], gemini_models=[urllib.error.URLError("sem rede")])
+    summary = {"groups": [{"displayName": "Gemini Models", "buckets": [
+        {"bucketId": "gemini-5h", "window": "5h", "remainingFraction": 1,
+         "resetTime": "2026-10-20T20:00:00Z"}]}]}
+    http = FakeHttp(gemini=[summary], gemini_models=[urllib.error.URLError("sem rede")])
 
     status = env["run"]("--provider", "gemini", http=http)
 
