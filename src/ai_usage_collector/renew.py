@@ -31,6 +31,7 @@ from ai_usage_collector.capture import (
     _CREDENTIAL_FILENAMES,
     _extract_credential_signature,
     _read_json_dict,
+    _store_into_profile,
     _system_identity,
     get_active_credentials,
     get_profiles_base_dir,
@@ -537,7 +538,10 @@ def _renew_active_manual(
         if not identity or identity.key != expected.key:
             raise RenewError("detection_failed")
         if not direct_system:
-            _write_private_atomic(copy, updated)
+            if provider == "claude":
+                _store_into_profile(provider, updated, system, copy)
+            else:
+                _write_private_atomic(copy, updated)
         cyc.system_creds[provider] = updated
     except RenewError as exc:
         error = exc.code
@@ -557,3 +561,19 @@ def renew_active_manual(
     # Serialize writes against account switching/capture, then re-check identity inside the lock.
     with config_lock(config_path):
         _renew_active_manual(cyc, provider, account_id, account, override, config_path)
+
+
+def renew_active_auto(
+    cyc: refresh.RefreshCycle, provider: str, account_id: str, account: dict[str, Any],
+    interval: int, override: Path | None = None, config_path: str | Path | None = None,
+) -> bool:
+    """Tenta uma renovação automática segura; True somente após sucesso."""
+    if not cyc.renewal_due(provider, account_id, interval):
+        return False
+    elapsed = 0.0 if cyc.renew_started is None else _clock() - cyc.renew_started
+    if elapsed > BUDGET_SECONDS - TIMEOUT_SECONDS:
+        return False
+    if cyc.renew_started is None:
+        cyc.renew_started = _clock()
+    renew_active_manual(cyc, provider, account_id, account, override, config_path)
+    return cyc.renewals[f"{provider}:{account_id}"]["error"] is None

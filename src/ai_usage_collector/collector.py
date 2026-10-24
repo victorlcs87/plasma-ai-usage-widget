@@ -219,8 +219,18 @@ def _collect(
                 except Exception as e:
                     sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
+            claude_api = provider_settings(config, "claude") if agent_id == "claude" else None
+            official_claude_oauth = agent_id == "claude" and not (claude_api or {}).get("api_base_url")
+            active_oauth = (get_active_credentials("claude", credential_override(agent_id, config)) or {}).get("claudeAiOauth") if official_claude_oauth and is_active else None
             if is_active and manual_renew:
                 renew.renew_active_manual(cyc, agent_id, str(acc_id), acc, credential_override(agent_id, config), config_path)
+            elif official_claude_oauth and is_active and not renew_account and cred_path and (
+                not isinstance(active_oauth, dict) or not active_oauth.get("accessToken")
+                or ((expiry := renew._expiry_ts("claude", Path(cred_path))) is not None
+                    and expiry <= now_dt.timestamp())
+            ):
+                renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                        credential_override(agent_id, config), config_path)
             elif not is_active and (not renew_account or manual_renew):
                 renew.renew_inactive(
                     cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config),
@@ -231,9 +241,18 @@ def _collect(
             weekly_window = None
             invites = None
             usage_details = None
+            first_outcome = None
 
             if agent_id == "claude":
-                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=provider_settings(config, "claude"))
+                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=claude_api)
+                first_outcome = cyc.take_outcome()
+                if (official_claude_oauth and is_active and not manual_renew and not renew_account
+                        and first_outcome and first_outcome["kind"] == "auth"
+                        and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                                    credential_override(agent_id, config), config_path)):
+                    health = discover_account(agent_id, cred_path, account_data=acc)
+                    claude_data = extract_claude_status(
+                        acc, initial_health=health, now=now_dt, api=claude_api)
                 health = claude_data.get("health", health)
                 native_window = claude_data.get("native_window")
                 weekly_window = claude_data.get("weekly_window")
@@ -279,12 +298,12 @@ def _collect(
                 is_active=is_active,
                 usage_details=usage_details,
             )
-            last_renewal = None if is_active and not manual_renew else cyc.renewals.get(f"{agent_id}:{acc_id}")
+            last_renewal = cyc.renewals.get(f"{agent_id}:{acc_id}")
             if agent_id == "gemini" and not is_active and not manual_renew and not renew.renew_gemini_enabled(config):
                 acc_status["renewal"] = {"error": "disabled", "at": refresh._iso(now_dt.timestamp())}  # so avisar
             elif last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
                 acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}
-            outcome = cyc.take_outcome()
+            outcome = cyc.take_outcome() or first_outcome
             identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
             refresh.apply_outcome(
                 acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
