@@ -1180,6 +1180,37 @@ def sync_active_codex_profile(
     return str(account.get("id"))
 
 
+def sync_active_gemini_profile(
+    accounts: list[dict[str, Any]], override: Path | None = None,
+    config_path: str | Path | None = None,
+) -> str | None:
+    """Copy the live Gemini credential only to one profile with the same email."""
+    system_file = get_system_credential_file("gemini", override)
+    system_creds = get_active_credentials("gemini", override)
+    system_identity = creds_identity("gemini", system_creds)
+    if not system_creds or not system_identity or not (system_creds.get("access_token") or system_creds.get("refresh_token")):
+        return None
+    profiles_base = get_profiles_base_dir(config_path).resolve()
+    matches = []
+    for account in accounts:
+        raw_path = account.get("credential_path") or account.get("credentials_path")
+        if raw_path and Path(raw_path).expanduser().is_symlink():
+            continue
+        profile = account_credential_file("gemini", account)
+        if (profile is None or profile == system_file.resolve()
+                or not profile.is_relative_to(profiles_base) or not profile.parent.is_dir()
+                or profile.is_symlink()):
+            continue
+        identity = credential_identity("gemini", profile)
+        if identity and identity.key == system_identity.key:
+            matches.append((account, profile))
+    if len(matches) != 1:
+        return None
+    account, profile = matches[0]
+    _store_into_profile("gemini", system_creds, system_file, profile)
+    return str(account.get("id"))
+
+
 PROFILE_BACKUPS_KEPT = 5
 
 

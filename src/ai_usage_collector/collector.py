@@ -18,6 +18,7 @@ from ai_usage_collector.capture import (
     switch_system_account,
     sync_active_claude_profile,
     sync_active_codex_profile,
+    sync_active_gemini_profile,
     sync_gemini_from_antigravity,
 )
 from ai_usage_collector.config import (
@@ -197,6 +198,14 @@ def _collect(
             except (OSError, ValueError, RuntimeError) as e:
                 sys.stderr.write(f"Aviso: Perfil Codex nao sincronizado: {type(e).__name__}\n")
                 active_acc_id = None
+        if agent_id == "gemini":
+            try:
+                with config_lock(config_path):
+                    synced_id = sync_active_gemini_profile(accounts, credential_override(agent_id, config), config_path)
+                if synced_id is not None:
+                    active_acc_id = synced_id
+            except (OSError, ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Aviso: Perfil Gemini nao sincronizado: {type(e).__name__}\n")
 
         for acc in accounts:
             acc_id = acc.get("id", "default")
@@ -233,6 +242,7 @@ def _collect(
             active_oauth = (get_active_credentials("claude", credential_override(agent_id, config)) or {}).get("claudeAiOauth") if official_claude_oauth and is_active else None
             active_codex = get_active_credentials("codex", credential_override(agent_id, config)) if agent_id == "codex" and is_active else None
             codex_token = (active_codex or {}).get("tokens") if isinstance(active_codex, dict) else None
+            gemini_auto = agent_id == "gemini" and is_active and not renew_account and renew.renew_gemini_enabled(config)
             if is_active and manual_renew:
                 renew.renew_active_manual(cyc, agent_id, str(acc_id), acc, credential_override(agent_id, config), config_path)
             elif official_claude_oauth and is_active and not renew_account and cred_path and (
@@ -245,6 +255,13 @@ def _collect(
             elif agent_id == "codex" and is_active and not renew_account and cred_path and (
                 not isinstance(codex_token, dict) or not codex_token.get("access_token")
                 or ((expiry := renew._expiry_ts("codex", Path(cred_path))) is not None
+                    and expiry <= now_dt.timestamp())
+            ):
+                renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                        credential_override(agent_id, config), config_path)
+            elif gemini_auto and cred_path and (
+                not (get_active_credentials("gemini", credential_override(agent_id, config)) or {}).get("access_token")
+                or ((expiry := renew._expiry_ts("gemini", Path(cred_path))) is not None
                     and expiry <= now_dt.timestamp())
             ):
                 renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
@@ -292,6 +309,12 @@ def _collect(
                 usage_details = codex_data.get("usage_details")
             elif agent_id == "gemini":
                 gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
+                first_outcome = cyc.take_outcome()
+                if (gemini_auto and first_outcome and first_outcome["kind"] == "auth"
+                        and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                                    credential_override(agent_id, config), config_path)):
+                    health = discover_account(agent_id, cred_path, account_data=acc)
+                    gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
                 health = gemini_data.get("health", health)
                 native_window = gemini_data.get("native_window")
                 weekly_window = gemini_data.get("weekly_window")
@@ -324,7 +347,7 @@ def _collect(
                 usage_details=usage_details,
             )
             last_renewal = cyc.renewals.get(f"{agent_id}:{acc_id}")
-            if agent_id == "gemini" and not is_active and not manual_renew and not renew.renew_gemini_enabled(config):
+            if agent_id == "gemini" and not manual_renew and not renew.renew_gemini_enabled(config):
                 acc_status["renewal"] = {"error": "disabled", "at": refresh._iso(now_dt.timestamp())}  # so avisar
             elif last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
                 acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}
