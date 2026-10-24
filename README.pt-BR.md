@@ -8,6 +8,7 @@ Veja sua cota, os horários de liberação e as contas ativas sem abrir três fe
 [![PyPI](https://img.shields.io/pypi/v/plasma-ai-usage-collector)](https://pypi.org/project/plasma-ai-usage-collector/)
 [![KDE Plasma 6](https://img.shields.io/badge/KDE-Plasma_6-1d99f3)](https://kde.org/plasma-desktop/)
 [![Licença](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![Apoie no Ko-fi](https://img.shields.io/badge/Ko--fi-Apoie_o_projeto-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/victorlcs87)
 
 [Baixar](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest) · [Instalar](#instalação) · [Relatar problema](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=bug_report.yml) · [English](README.md)
 
@@ -89,6 +90,10 @@ As APIs dos provedores podem mudar ou limitar consultas. O widget informa dados 
 - [Histórico de versões](CHANGELOG.md).
 - [Como contribuir](CONTRIBUTING.md) e [decisões de arquitetura](docs/adr/).
 - [Relatar problema](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=bug_report.yml) ou [sugerir melhoria](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=feature_request.yml). Pode escrever em português. Remova credenciais e dados pessoais de logs e capturas.
+
+## Apoie o projeto
+
+Se o widget facilita seu dia, você pode [me pagar um café no Ko-fi](https://ko-fi.com/victorlcs87). Seu apoio voluntário ajuda a manter e melhorar o projeto. O widget continua gratuito e com código aberto.
 
 ## Licença
 

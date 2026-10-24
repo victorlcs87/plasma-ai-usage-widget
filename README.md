@@ -8,6 +8,7 @@ See your quota, reset times and active accounts without opening three separate t
 [![PyPI](https://img.shields.io/pypi/v/plasma-ai-usage-collector)](https://pypi.org/project/plasma-ai-usage-collector/)
 [![KDE Plasma 6](https://img.shields.io/badge/KDE-Plasma_6-1d99f3)](https://kde.org/plasma-desktop/)
 [![License](https://img.shields.io/badge/license-GPL--3.0--or--later-blue)](LICENSE)
+[![Support on Ko-fi](https://img.shields.io/badge/Ko--fi-Support_this_project-ff5e5b?logo=ko-fi&logoColor=white)](https://ko-fi.com/victorlcs87)
 
 [Download](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest) · [Install](#install) · [Report a bug](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=bug_report.yml) · [Português brasileiro](README.pt-BR.md)
 
@@ -104,6 +105,10 @@ Set the collector path in the widget settings to the checkout's `.venv/bin/ai-us
 ## Help improve the project
 
 [Report a bug](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=bug_report.yml), [suggest a feature](https://github.com/victorlcs87/plasma-ai-usage-widget/issues/new?template=feature_request.yml), improve a translation or share the project with other Plasma users. Issues in English and Portuguese are welcome. Remove account details and credentials from anything you upload.
+
+## Support the project
+
+If this widget makes your day easier, you can [buy me a coffee on Ko-fi](https://ko-fi.com/victorlcs87). Voluntary support helps me maintain and improve the project. The widget remains free and open source.
 
 ## License
 
