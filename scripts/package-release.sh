@@ -20,7 +20,8 @@ PLASMOID_FILE="${DIST_DIR}/${PLUGIN_ID}.plasmoid"
 echo "==> Iniciando empacotamento de release..."
 echo "==> Diretório de saída: ${DIST_DIR}"
 
-# Limpeza de artefatos anteriores no diretório de saída
+# Limpeza de artefatos anteriores (inclui resíduos de um build morto por SIGKILL)
+rm -rf "${REPO_ROOT}/build" "${REPO_ROOT}/src/ai_usage_collector/_plasmoid_sha256.py"
 rm -f "${PLASMOID_FILE}"
 rm -f "${DIST_DIR}"/plasma_ai_usage_collector-*.whl
 
@@ -80,7 +81,7 @@ echo "==> Plasmoid gerado com sucesso: ${PLASMOID_FILE}"
 # 2. Embutir o SHA256 do .plasmoid no wheel (módulo não versionado, removido ao sair) e empacotar
 HASH_MODULE="${REPO_ROOT}/src/ai_usage_collector/_plasmoid_sha256.py"
 trap 'rm -rf "${STAGE_DIR}" "${HASH_MODULE}"' EXIT
-PLASMOID_SHA256="$(sha256sum "${PLASMOID_FILE}" | cut -d' ' -f1)"
+PLASMOID_SHA256="$(python3 -c 'import hashlib,sys; print(hashlib.sha256(open(sys.argv[1],"rb").read()).hexdigest())' "${PLASMOID_FILE}")"
 echo "PLASMOID_SHA256 = \"${PLASMOID_SHA256}\"" > "${HASH_MODULE}"
 echo "==> Gerando wheel Python do coletor..."
 if [ -z "${PYTHON_BIN}" ]; then
@@ -102,15 +103,17 @@ fi
 # Limpar artefatos temporários de build se gerados
 rm -rf "${REPO_ROOT}/build" "${REPO_ROOT}/src"/*.egg-info
 
-# Validar existência da wheel gerada
-WHEEL_COUNT=$(find "${DIST_DIR}" -maxdepth 1 -name "plasma_ai_usage_collector-*.whl" | wc -l)
-if [ "${WHEEL_COUNT}" -eq 0 ]; then
-    echo "Erro: Nenhuma wheel plasma_ai_usage_collector-*.whl foi encontrada em ${DIST_DIR}." >&2
+# Validar existência da wheel gerada (o diretório foi limpo no início, então há no máximo uma)
+shopt -s nullglob
+WHEELS=("${DIST_DIR}"/plasma_ai_usage_collector-*.whl)
+shopt -u nullglob
+if [ "${#WHEELS[@]}" -ne 1 ]; then
+    echo "Erro: esperada 1 wheel plasma_ai_usage_collector-*.whl em ${DIST_DIR}, achei ${#WHEELS[@]}." >&2
     exit 1
 fi
 
 # Falha o release se o hash faltar no wheel ou divergir do .plasmoid
-"${PYTHON_BIN}" "${SCRIPT_DIR}/check-release-hash.py" "${PLASMOID_FILE}" "$(ls "${DIST_DIR}"/plasma_ai_usage_collector-*.whl | head -n1)"
+"${PYTHON_BIN}" "${SCRIPT_DIR}/check-release-hash.py" "${PLASMOID_FILE}" "${WHEELS[0]}"
 
 echo "==> Artefatos gerados com sucesso em ${DIST_DIR}:"
 ls -lh "${DIST_DIR}/${PLUGIN_ID}.plasmoid" "${DIST_DIR}"/plasma_ai_usage_collector-*.whl

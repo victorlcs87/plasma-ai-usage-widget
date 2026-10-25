@@ -576,7 +576,7 @@ def test_release_workflow_security_hardening():
     assert "pull_request_target" not in content
     # actions fixadas em SHA completo de commit
     uses = re.findall(r"^\s+uses:\s*(\S+)", content, re.M)
-    assert len(uses) == 8
+    assert len(uses) == 11
     for ref in uses:
         assert re.fullmatch(r"[\w./-]+@[0-9a-f]{40}", ref), ref
     # permissão de escrita só no job; workflow sem permissões
@@ -599,12 +599,15 @@ def test_release_workflow_security_hardening():
     assert not re.search(r"pypi[_-]?(api[_-]?)?token|PYPI_|password:", content, re.I)
     assert content.count("secrets.") == 1
     assert "check-release-versions.py" in build and "twine check" in build
-    assert "package-release.sh" in build and "python -m build" not in build  # wheel do PyPI = o hasheado
+    # construído uma vez no job package; PyPI e GitHub baixam o mesmo artefato (wheel do PyPI = o hasheado)
+    assert "package-release.sh" not in build and "python -m build" not in build
+    assert "download-artifact" in build and "download-artifact" in _job("release")
+    assert re.search(r"^    needs: package$", build, re.M) and re.search(r"^    needs: package$", _job("release"), re.M)
     assert "dist/*.whl" in _job("release")
-    # o job release também valida a versão da tag antes de empacotar
-    rel = _job("release")
-    assert 'check-release-versions.py "$TAG_REF"' in rel and "if: github.ref_type == 'tag'" in rel
-    assert rel.index("check-release-versions.py") < rel.index("package-release.sh")
+    # o job package valida a versão da tag antes de empacotar
+    pkg = _job("package")
+    assert 'check-release-versions.py "$TAG_REF"' in pkg and "if: github.ref_type == 'tag'" in pkg
+    assert pkg.index("check-release-versions.py") < pkg.index("package-release.sh")
     # pypi-build: commit da tag precisa estar na main
     assert "fetch-depth: 0" in build and "fetch origin main" in build
     assert 'merge-base --is-ancestor "$GITHUB_SHA" origin/main' in build

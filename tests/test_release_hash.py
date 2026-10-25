@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import os
 import subprocess
 import sys
 import zipfile
@@ -46,6 +47,25 @@ def test_check_fails_when_hash_missing_from_wheel(tmp_path):
 def test_check_fails_when_hash_diverges_from_zip(tmp_path):
     r = _check(*_release(tmp_path, embedded="0" * 64))
     assert r.returncode == 1 and "diverge" in r.stderr
+
+
+def test_package_script_calls_hash_check():
+    assert "check-release-hash.py" in (REPO_ROOT / "scripts" / "package-release.sh").read_text()
+
+
+def test_plasmoid_is_reproducible(tmp_path):
+    """Empacotar duas vezes gera o mesmo .plasmoid (base do hash embutido, ADR-0014)."""
+    digests = []
+    for n in ("a", "b"):
+        r = subprocess.run(
+            [str(REPO_ROOT / "scripts" / "package-release.sh"), str(tmp_path / n)],
+            capture_output=True,
+            text=True,
+            env={**os.environ, "BUILD_ARGS": "--no-isolation", "PYTHON": sys.executable},
+        )
+        assert r.returncode == 0, r.stderr
+        digests.append(hashlib.sha256((tmp_path / n / "org.kde.plasma.aiusage.plasmoid").read_bytes()).hexdigest())
+    assert digests[0] == digests[1]
 
 
 def test_collector_reads_embedded_hash(monkeypatch, capsys):

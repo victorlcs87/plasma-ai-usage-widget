@@ -62,10 +62,9 @@ Publique à mão, na ordem PyPI, depois GitHub Release.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install build twine
-.venv/bin/python -m build --outdir dist-pypi
-.venv/bin/twine check dist-pypi/*
-.venv/bin/twine upload dist-pypi/*     # usuário __token__ e token de escopo do projeto
-./scripts/package-release.sh           # gera dist/*.plasmoid e dist/*.whl
+./scripts/package-release.sh           # gera dist/*.plasmoid e dist/*.whl (o wheel embute o hash do .plasmoid)
+.venv/bin/twine check dist/*.whl
+.venv/bin/twine upload dist/*.whl      # usuário __token__ e token de escopo do projeto; só o wheel, nunca um build avulso
 gh release create vX.Y.Z dist/*.plasmoid dist/*.whl --title "Release vX.Y.Z" --generate-notes
 ```
 
