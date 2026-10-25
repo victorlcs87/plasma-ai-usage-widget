@@ -294,7 +294,9 @@ def reserve_widget(cache_file: Path, now: datetime) -> None:
 
 
 def forced_outcome(got: tuple[str, str | None] | None) -> dict[str, Any]:
-    """Resposta de uma linha da Busca de Atualizacao forcada: nova (com versao), atual ou indisponivel."""
+    """Resposta de uma linha da Busca de Atualizacao forcada: nova (versao, url?), atual (versao) ou indisponivel.
+
+    (A saida "desligada" e decidida antes, pela configuracao.)"""
     if not got:
         return {"update": "indisponivel"}
     if is_newer(got[0], __version__):
