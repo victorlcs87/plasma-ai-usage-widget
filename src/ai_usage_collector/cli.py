@@ -38,6 +38,7 @@ from ai_usage_collector.config import (
 from ai_usage_collector.pace import alert_settings
 from ai_usage_collector.running import HIDE_MODES, refresh_running
 from pathlib import Path
+from ai_usage_collector.plasmoid_hash import plasmoid_sha256
 from ai_usage_collector.waybar import waybar_line
 from ai_usage_collector.refresh import parse_intervals
 from ai_usage_collector.history import export_history
@@ -54,6 +55,11 @@ def build_parser() -> argparse.ArgumentParser:
         "-v", "--version",
         action="version",
         version=f"%(prog)s {__version__}",
+    )
+    parser.add_argument(
+        "--plasmoid-sha256",
+        action="store_true",
+        help="Imprime o SHA256 do .plasmoid da mesma release (sai com 1 se este Coletor não o embute)",
     )
     parser.add_argument(
         "--refresh",
@@ -287,6 +293,12 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     config_path = args.config_path
     cache_path = args.cache_path
+
+    if args.plasmoid_sha256:
+        digest = plasmoid_sha256()
+        if digest:
+            print(digest)
+        return 0 if digest else 1
 
     if args.waybar:  # fora do try: sempre uma linha JSON valida e exit 0; ignora as demais opcoes
         try:

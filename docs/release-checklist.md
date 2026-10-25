@@ -35,6 +35,7 @@ Ordem obrigatória. O PyPI vem antes da loja KDE, porque o botão do widget inst
 
 - [ ] **Bloqueante:** o nome no PyPI já é seu (aviso do topo) e o commit da tag está na `main` (o `pypi-build` recusa o contrário).
 - [ ] Na `main` atualizada: crie e envie a tag `vX.Y.Z` (a mesma versão do passo 2). Só tags `vX.Y.Z[-sufixo]` disparam o PyPI.
+- [ ] O wheel embute o SHA256 do `.plasmoid` (ADR-0014): `package-release.sh` roda `check-release-hash.py` e falha se faltar ou divergir; confira com `ai-usage-collector --plasmoid-sha256` após instalar o wheel.
 - [ ] Acompanhe em Actions (`Release Automation`): `release` (GitHub Release com `.plasmoid` e `.whl`), `pypi-build` e `pypi-publish`. Os jobs do PyPI rodam em paralelo ao release do GitHub; um pode falhar sem o outro.
 - [ ] Aprove o `pypi-publish` (o environment `pypi` tem revisor obrigatório).
 - [ ] Primeiro release: o Trusted Publisher só se confirma aqui. Se o `pypi-publish` falhar por permissão, revise os campos do passo 1.
@@ -61,10 +62,9 @@ Publique à mão, na ordem PyPI, depois GitHub Release.
 
 ```bash
 python3 -m venv .venv && .venv/bin/pip install build twine
-.venv/bin/python -m build --outdir dist-pypi
-.venv/bin/twine check dist-pypi/*
-.venv/bin/twine upload dist-pypi/*     # usuário __token__ e token de escopo do projeto
-./scripts/package-release.sh           # gera dist/*.plasmoid e dist/*.whl
+./scripts/package-release.sh           # gera dist/*.plasmoid e dist/*.whl (o wheel embute o hash do .plasmoid)
+.venv/bin/twine check dist/*.whl
+.venv/bin/twine upload dist/*.whl      # usuário __token__ e token de escopo do projeto; só o wheel, nunca um build avulso
 gh release create vX.Y.Z dist/*.plasmoid dist/*.whl --title "Release vX.Y.Z" --generate-notes
 ```
 
