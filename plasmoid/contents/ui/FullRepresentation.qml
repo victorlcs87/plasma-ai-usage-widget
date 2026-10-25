@@ -59,7 +59,7 @@ Item {
     property bool collectorConfirming: false
     readonly property string collectorConfirmTitle: collectorState === "desatualizado" ? I18n.tr("Update collector to version %1?", widgetVersion) : I18n.tr("Install collector version %1?", widgetVersion)
     onCollectorStateChanged: collectorConfirming = false
-    onIsOpenChanged: if (!isOpen) collectorConfirming = false
+    onIsOpenChanged: if (!isOpen) { collectorConfirming = false; if (plasmoidItem && plasmoidItem.cancelWidgetUpdate) plasmoidItem.cancelWidgetUpdate(); }
     onCollectorInstallingChanged: if (collectorInstalling) collectorConfirming = false
     function cancelCollectorInstall() { collectorConfirming = false; forceActiveFocus(); }
     function confirmCollectorInstall() {
@@ -125,7 +125,7 @@ Item {
     }
     // Foco no popup ao abrir, para o Escape funcionar (precisa de verificação no Plasma real)
     onVisibleChanged: if (visible) fullRoot.forceActiveFocus()
-    Keys.onEscapePressed: { if (fullRoot.collectorConfirming) fullRoot.cancelCollectorInstall(); else if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup(); }
+    Keys.onEscapePressed: { if (fullRoot.collectorConfirming) fullRoot.cancelCollectorInstall(); else if (fullRoot.plasmoidItem && fullRoot.plasmoidItem.widgetUpdate && fullRoot.plasmoidItem.widgetUpdate.state === "confirmando") fullRoot.plasmoidItem.cancelWidgetUpdate(); else if (fullRoot.plasmoidItem) fullRoot.plasmoidItem.closePopup(); }
     // Rolagem pelo teclado com o foco na raiz (sem botão focado)
     function scrollBy(dy) { flick.contentY = Math.max(0, Math.min(Math.max(0, flick.contentHeight - flick.height), flick.contentY + dy)); }
     Keys.onUpPressed: scrollBy(-Kirigami.Units.gridUnit * 2)
@@ -273,6 +273,9 @@ Item {
                 }
             }
         }
+
+        // Atualização do Widget (ticket 77): botão, confirmação, progresso, erro e recarga; estado no main.qml
+        WidgetUpdate { objectName: "widgetUpdate"; plasmoidItem: fullRoot.plasmoidItem; accent: fullRoot.accent }
 
         // Preferências de exibição (valem para o popup, a dica e o painel): usado/restante e contagem/data
         Flow {

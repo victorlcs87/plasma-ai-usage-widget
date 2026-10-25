@@ -23,7 +23,7 @@ msgstr ""
 msgid "Active on the system"
 msgstr ""
 
-#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:329
+#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:405
 msgid "Exit code %1"
 msgstr ""
 
@@ -327,27 +327,27 @@ msgstr ""
 msgid "Install collector version %1?"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:72
+#: contents/ui/FullRepresentation.qml:72 contents/ui/WidgetUpdate.qml:34
 msgid "Preparing the environment"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:72
+#: contents/ui/FullRepresentation.qml:72 contents/ui/WidgetUpdate.qml:34
 msgid "Downloading the package"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:73
+#: contents/ui/FullRepresentation.qml:73 contents/ui/WidgetUpdate.qml:35
 msgid "Installing the package"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:73
+#: contents/ui/FullRepresentation.qml:73 contents/ui/WidgetUpdate.qml:35
 msgid "Creating the shortcut"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:74
+#: contents/ui/FullRepresentation.qml:74 contents/ui/WidgetUpdate.qml:36
 msgid "Verifying the installation"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:78
+#: contents/ui/FullRepresentation.qml:78 contents/ui/WidgetUpdate.qml:42
 msgid "Python 3 with venv support is not available. Install it and try again."
 msgstr ""
 
@@ -359,11 +359,11 @@ msgstr ""
 msgid "This collector version is not available on PyPI yet."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:81
+#: contents/ui/FullRepresentation.qml:81 contents/ui/WidgetUpdate.qml:45
 msgid "Permission denied while writing to the installation folders."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:82
+#: contents/ui/FullRepresentation.qml:82 contents/ui/WidgetUpdate.qml:46
 msgid "Another file already exists in ~/.local/bin and was not overwritten."
 msgstr ""
 
@@ -401,139 +401,139 @@ msgstr ""
 msgid "Manage accounts and settings"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:284
+#: contents/ui/FullRepresentation.qml:287
 msgid "Used"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:284
+#: contents/ui/FullRepresentation.qml:287
 msgid "Show how much of the quota has been used"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:285
+#: contents/ui/FullRepresentation.qml:288
 msgid "Remaining"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:285
+#: contents/ui/FullRepresentation.qml:288
 msgid "Show how much of the quota is left"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:286
+#: contents/ui/FullRepresentation.qml:289
 msgid "Countdown"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:286
+#: contents/ui/FullRepresentation.qml:289
 msgid "Show the time until release"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:287
+#: contents/ui/FullRepresentation.qml:290
 msgid "Date"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:287
+#: contents/ui/FullRepresentation.qml:290
 msgid "Show the release date and time"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:337
+#: contents/ui/FullRepresentation.qml:340
 msgid "View release"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:338
+#: contents/ui/FullRepresentation.qml:341
 msgid "View release: %1"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:339
+#: contents/ui/FullRepresentation.qml:342
 msgid "Open the release page in the browser"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:384 contents/ui/FullRepresentation.qml:420 contents/ui/FullRepresentation.qml:530
+#: contents/ui/FullRepresentation.qml:387 contents/ui/FullRepresentation.qml:423 contents/ui/FullRepresentation.qml:533 contents/ui/WidgetUpdate.qml:195
 msgid "Details: %1"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:436 contents/ui/FullRepresentation.qml:448
+#: contents/ui/FullRepresentation.qml:439 contents/ui/FullRepresentation.qml:451
 msgid "Installing the collector…"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:437
+#: contents/ui/FullRepresentation.qml:440 contents/ui/WidgetUpdate.qml:59
 msgid "Try again"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:438
+#: contents/ui/FullRepresentation.qml:441
 msgid "Update collector"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:438
+#: contents/ui/FullRepresentation.qml:441
 msgid "Install collector"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:439
+#: contents/ui/FullRepresentation.qml:442
 msgid "Asks for confirmation first; nothing is installed until you confirm."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:484
+#: contents/ui/FullRepresentation.qml:487
 msgid "Package %1 version %2 will be downloaded from PyPI."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:485
+#: contents/ui/FullRepresentation.qml:488
 msgid "It will be installed in %1, with a shortcut in %2."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:486
+#: contents/ui/FullRepresentation.qml:489
 msgid "No sudo is used and the system Python is not changed."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:497 contents/ui/configGeneral.qml:2219 contents/ui/configGeneral.qml:2277 contents/ui/configGeneral.qml:2349
+#: contents/ui/FullRepresentation.qml:500 contents/ui/WidgetUpdate.qml:133 contents/ui/configGeneral.qml:2219 contents/ui/configGeneral.qml:2277 contents/ui/configGeneral.qml:2349
 msgid "Cancel"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:498
+#: contents/ui/FullRepresentation.qml:501
 msgid "Closes this question without installing anything."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:503
+#: contents/ui/FullRepresentation.qml:506
 msgid "Install"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:504
+#: contents/ui/FullRepresentation.qml:507
 msgid "Downloads and installs the collector now."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:531
+#: contents/ui/FullRepresentation.qml:534 contents/ui/WidgetUpdate.qml:196
 msgid "Stopped during: %1"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:545
+#: contents/ui/FullRepresentation.qml:548
 msgid "Installation log (last lines)"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:636 contents/ui/NotchModel.js:238
+#: contents/ui/FullRepresentation.qml:639 contents/ui/NotchModel.js:238
 msgid "Native window"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:645 contents/ui/NotchModel.js:239
+#: contents/ui/FullRepresentation.qml:648 contents/ui/NotchModel.js:239
 msgid "Weekly"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:668 contents/ui/NotchModel.js:100 contents/ui/TokenHistory.qml:77
+#: contents/ui/FullRepresentation.qml:671 contents/ui/NotchModel.js:100 contents/ui/TokenHistory.qml:77
 msgid "%1, %2"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:696
+#: contents/ui/FullRepresentation.qml:699
 msgid "no accounts"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:698 contents/ui/NotchModel.js:167
+#: contents/ui/FullRepresentation.qml:701 contents/ui/NotchModel.js:167
 msgid "no account active on the system"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:745
+#: contents/ui/FullRepresentation.qml:748
 msgid "No provider visible in the popup. Choose providers in Settings."
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:746
+#: contents/ui/FullRepresentation.qml:749
 msgid "No accounts found"
 msgstr ""
 
-#: contents/ui/FullRepresentation.qml:747 contents/ui/configGeneral.qml:2003
+#: contents/ui/FullRepresentation.qml:750 contents/ui/configGeneral.qml:2003
 msgid "Run 'ai-usage-collector --refresh' to detect local credentials or add accounts in ~/.config/plasma-ai-usage/config.json"
 msgstr ""
 
@@ -803,6 +803,142 @@ msgstr ""
 
 #: contents/ui/UsageDetails.qml:58
 msgid "Quota by model (%1)"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:36
+msgid "Reading the widget checksum"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:37
+msgid "Downloading the widget"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:37
+msgid "Verifying the widget download"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:38
+msgid "Installing the widget"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:43
+msgid "Could not download the update. Check your internet connection and try again."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:44
+msgid "This version is not available yet. Try again later."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:47
+msgid "The download did not pass the integrity check. Nothing was changed."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:48
+msgid "This collector cannot verify the widget download, so the update was not applied. Update manually from the release page."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:49
+msgid "kpackagetool6 could not install the widget package. The collector was updated; update the widget manually from the release page."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:50
+msgid "The update failed."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:54
+msgid "You already have the latest version."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:55
+msgid "Could not check for updates right now. Try again later."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:56
+msgid "Update checks are turned off in the settings."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:57
+msgid "Checking for updates…"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:58 contents/ui/WidgetUpdate.qml:158
+msgid "Updating the widget…"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:60
+msgid "Update to v%1"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:60
+msgid "Check for updates"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:74
+msgid "Asks for confirmation first; nothing is changed until you confirm."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:75
+msgid "Looks for a newer release on GitHub. Nothing is installed."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:111
+msgid "Update the widget from v%1 to v%2?"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:120
+msgid "The collector and the widget package will be downloaded from GitHub Releases and the widget package is checked against a checksum."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:121
+msgid "No sudo is used. The widget keeps running the old version until you reload it."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:134
+msgid "Closes this question without changing anything."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:140
+msgid "Update"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:141
+msgid "Downloads and installs the update now."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:216
+msgid "Updated to v%1. Reload the widget to start using it."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:226
+msgid "Reload the widget"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:227
+msgid "Asks for confirmation first; the Plasma shell is not restarted until you confirm."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:236
+msgid "Reload the widget?"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:242
+msgid "This restarts the Plasma shell: panels and widgets disappear for a few seconds and come back. Nothing is lost."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:254
+msgid "Not now"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:255
+msgid "Closes this question; the old version keeps running until you reload."
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:261
+msgid "Reload now"
+msgstr ""
+
+#: contents/ui/WidgetUpdate.qml:262
+msgid "Restarts the Plasma shell now."
 msgstr ""
 
 #: contents/ui/WindowRow.qml:45
@@ -1641,14 +1777,14 @@ msgstr ""
 msgid "Status cache not found. See the collector notice."
 msgstr ""
 
-#: contents/ui/main.qml:330
+#: contents/ui/main.qml:406
 msgid "Error running the collector: %1"
 msgstr ""
 
-#: contents/ui/main.qml:353
+#: contents/ui/main.qml:429
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr ""
 
-#: contents/ui/main.qml:468
+#: contents/ui/main.qml:544
 msgid "Error reading status JSON: %1"
 msgstr ""
