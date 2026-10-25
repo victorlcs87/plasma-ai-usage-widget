@@ -170,7 +170,7 @@ def test_main_state_wiring_is_click_only_and_guarded():
     for name in ("widgetCheckSource", "widgetUpdateSource", "widgetReloadSource"):
         assert main.count(name + ".connectSource") == 1
     start = main.split("function startWidgetUpdate()")[1].split("function reloadWidget")[0]
-    assert 'state !== "confirmando") return' in start and "Collector.buildUpdateCommand(script, root.widgetUpdateVersion)" in start
+    assert 'state !== "confirmando" ||' in start and "Collector.buildUpdateCommand(script, root.widgetUpdateVersion)" in start
     ask = main.split("function askWidgetUpdate()")[1].split("function cancelWidgetUpdate")[0]
     assert "widgetUpdateBusy" in ask and 'collectorInstall.state === "running"' in ask
     assert 'state === "concluido"' in main.split("function reloadWidget()")[1].split("}")[0]
@@ -216,3 +216,42 @@ def test_pt_br_translates_the_new_strings():
                 "Update the widget from v%1 to v%2?", "The update failed.", "Downloading the widget"):
         m = re.search(r'msgid "%s"\nmsgstr "(.+)"' % re.escape(msg), po)
         assert m and m.group(1) != msg, msg
+
+
+def test_js_state_machine_partial_complete_missing_exit_code_and_error_cause(tmp_path):
+    step = json.dumps('{"step":"plasmoid_download","status":"start","message":""}\n')
+    okl = json.dumps('{"result":"ok","cause":null,"message":"","log":[]}')
+    errl = json.dumps('{"result":"error","cause":"rede","message":"%s","log":["l1"]}' % ("m" * 600))
+    out = js(tmp_path, """(function () {
+      var cur = {state: 'atualizando', result: 'nova', version: '9.0.0', step: '', to: '9.0.0'};
+      return {
+        partial: CJ.widgetUpdateOnData(cur, %(step)s, undefined),
+        ok: CJ.widgetUpdateOnData(cur, %(ok)s, 0),
+        okNoLine: CJ.widgetUpdateOnData(cur, '', 0),
+        err: CJ.widgetUpdateOnData(cur, %(err)s, 1),
+        stuck: [CJ.widgetUpdateStuck(cur), CJ.widgetUpdateStuck({state: 'buscando', result: ''}), CJ.widgetUpdateStuck({state: 'idle'}),
+                CJ.widgetUpdateStuck({state: 'concluido'}), CJ.widgetUpdateStuck({state: 'erro'})]}})()""" % {"step": step, "ok": okl, "err": errl})
+    assert out["partial"] == {"done": False, "next": {"state": "atualizando", "result": "nova", "version": "9.0.0", "step": "plasmoid_download", "to": "9.0.0"}}
+    assert out["ok"]["done"] and out["ok"]["next"]["state"] == "concluido" and out["ok"]["next"]["to"] == "9.0.0"  # ok -> concluido, to preservado
+    assert out["okNoLine"]["next"]["state"] == "erro" and out["okNoLine"]["next"]["cause"] == "falha"  # exit 0 sem linha de resultado não é sucesso
+    e = out["err"]["next"]
+    assert out["err"]["done"] and e["state"] == "erro" and e["cause"] == "rede" and e["log"] == ["l1"] and len(e["message"]) == 500
+    s0, s1, *rest = out["stuck"]
+    assert s0["state"] == "erro" and s0["cause"] == "falha" and s1["cause"] == "falha" and rest == [None] * 3
+
+
+def test_js_message_is_capped_for_install_and_update(tmp_path):
+    out = js(tmp_path, """({i: CJ.parseInstall('{"result":"ok","message":"%s"}', 0).message.length, u: CJ.parseUpdate('{"result":"error","cause":"x","message":"%s"}', 1).message.length})""" % ("a" * 900, "a" * 900))
+    assert out == {"i": 500, "u": 500}
+
+
+def test_main_guards_both_sides_watchdog_and_reload_disconnect():
+    main = (UI_DIR / "main.qml").read_text()
+    assert 'widgetUpdateBusy) return' in main.split("function installCollector()")[1].split("var script")[0]
+    assert 'collectorInstall.state === "running"' in main.split("function startWidgetUpdate()")[1].split("var script")[0]
+    assert '"concluido") return' in main.split("function checkWidgetUpdate()")[1].split("setWidgetUpdate")[0]
+    assert "dismissWidgetUpdate" not in main
+    assert "disconnectSource(sourceName)" in main.split("id: widgetReloadSource")[1].split("}")[0]
+    dog = main.split("Watchdog")[1].split("Plasma5Support")[0]
+    assert "30000" in dog and "600000" in dog and "running: root.widgetUpdateBusy" in dog and "widgetUpdateStuck" in dog
+    assert main.count("connectedSources = []") >= 2

@@ -99,10 +99,10 @@ function currentStep(stdout) {
 function parseInstall(stdout, exitCode) {
     var p = _installLines(stdout), r = p.result, failed = "";
     for (var i = 0; i < p.steps.length; i++) if (p.steps[i].status === "error") failed = p.steps[i].step;
-    if (exitCode === 0 && r && r.result === "ok") return { ok: true, cause: "", message: String(r.message || ""), log: [], failedStep: "" };
+    if (exitCode === 0 && r && r.result === "ok") return { ok: true, cause: "", message: String(r.message || "").slice(0, 500), log: [], failedStep: "" };
     var cause = exitCode === 127 ? "python_indisponivel" : (r && INSTALL_CAUSES.indexOf(r.cause) >= 0 ? r.cause : "falha");
     var log = (r && Array.isArray(r.log) ? r.log : []).slice(-30).map(function (l) { return String(l).slice(0, 300); });
-    return { ok: false, cause: cause, message: r ? String(r.message || "") : "", log: log, failedStep: failed };
+    return { ok: false, cause: cause, message: r ? String(r.message || "").slice(0, 500) : "", log: log, failedStep: failed };
 }
 
 // ---- Atualização do Widget (ticket 77, ADR-0014): Coletor + .plasmoid, só depois da confirmação do usuário ----
@@ -112,6 +112,28 @@ function buildUpdateCommand(scriptFile, version) {
     return "python3 " + shellQuote(scriptFile) + " update --version " + shellQuote(version);
 }
 var parseUpdate = parseInstall;
+
+// Máquina de estados da atualização (pura, testada sem o plasmashell). cur = estado atual do widgetUpdate.
+// Mescla `extra` sobre o novo estado; result e version persistem, step zera.
+function nextWidgetUpdate(cur, state, extra) {
+    var o = { state: state, result: cur.result || "", version: cur.version || "", step: "" };
+    for (var k in extra) o[k] = extra[k];
+    return o;
+}
+// Dados do DataSource da atualização -> {done, next}. Parcial (sem "exit code") só avança o passo e mantém `to`;
+// completo vira concluido (to preservado) ou erro com a causa classificada.
+function widgetUpdateOnData(cur, stdout, exitCode) {
+    var out = String(stdout || "");
+    if (exitCode === undefined) return { done: false, next: nextWidgetUpdate(cur, "atualizando", { to: cur.to, step: currentStep(out) }) };
+    var r = parseUpdate(out, exitCode);
+    if (r.ok) return { done: true, next: nextWidgetUpdate(cur, "concluido", { to: cur.to }) };
+    return { done: true, next: nextWidgetUpdate(cur, "erro", { cause: r.cause, message: r.message, log: r.log, failedStep: r.failedStep }) };
+}
+// Watchdog: busca ou atualização presa vira erro "falha"; fora desses estados não há nada preso (null)
+function widgetUpdateStuck(cur) {
+    if (cur.state !== "buscando" && cur.state !== "atualizando") return null;
+    return nextWidgetUpdate(cur, "erro", { cause: "falha", message: "", log: [], failedStep: "" });
+}
 
 // "v1.2.5" / "1.2.5" -> "1.2.5"; qualquer outra coisa -> "" (a versão vai ao shell)
 function cleanVersion(v) {

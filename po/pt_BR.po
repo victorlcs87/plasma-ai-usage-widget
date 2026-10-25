@@ -23,7 +23,7 @@ msgstr "%1, conta %2"
 msgid "Active on the system"
 msgstr "Ativa no sistema"
 
-#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:405
+#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:412
 msgid "Exit code %1"
 msgstr "Código de saída %1"
 
@@ -1777,14 +1777,14 @@ msgstr "Cache de status não encontrado. Execute o coletor."
 msgid "Status cache not found. See the collector notice."
 msgstr "Cache de status não encontrado. Veja o aviso do coletor."
 
-#: contents/ui/main.qml:406
+#: contents/ui/main.qml:413
 msgid "Error running the collector: %1"
 msgstr "Erro ao executar coletor: %1"
 
-#: contents/ui/main.qml:429
+#: contents/ui/main.qml:436
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr "O coletor não respondeu em 120 s; nova tentativa no próximo ciclo."
 
-#: contents/ui/main.qml:544
+#: contents/ui/main.qml:551
 msgid "Error reading status JSON: %1"
 msgstr "Erro ao ler JSON de status: %1"
