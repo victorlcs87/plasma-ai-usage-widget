@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.2.4
+
+### Melhorias
+- O wheel do Coletor passa a embutir o SHA256 do `.plasmoid` da mesma release (`ai-usage-collector --plasmoid-sha256`), base da futura atualização do widget pelo Plasmoid (ADR-0014).
+- O `.plasmoid` é empacotado de forma reprodutível e construído uma única vez; os jobs do GitHub Release e do PyPI reaproveitam o mesmo artefato, e o release falha se o hash faltar ou divergir.
+
+### Mudanças
+- O PyPI deixa de receber o sdist (só o wheel puro Python, que carrega o hash).
+
 ## 1.2.3
 
 ### Melhorias
