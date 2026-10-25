@@ -9,7 +9,10 @@ from __future__ import annotations
 import importlib.util
 import json
 import signal
+import zipfile
+import hashlib
 import subprocess
+import time
 import urllib.request
 
 import pytest
@@ -78,6 +81,7 @@ def test_hash_divergente_nao_toca_no_plasmoid(tmp_path, wheelhouse):
     assert code != 0 and final(lines)["cause"] == "verificacao"
     assert lines[-2]["step"] == "plasmoid_verify" and lines[-2]["status"] == "error"
     assert ub.kpkg_calls() == []
+    assert ub.no_leftovers()
 
 
 def test_falha_do_coletor_nao_toca_no_plasmoid(ub):
@@ -181,3 +185,91 @@ def test_redirect_so_para_hosts_da_lista(url, ok):
     else:
         with pytest.raises(mod._Fail):
             h.redirect_request(req, None, 302, "Found", {}, url)
+
+
+def _hang_kpkg(ub, marker):
+    """kpackagetool6 falso que avisa que começou e trava (com um neto segurando o pipe)."""
+    fake = ub.bin / "kpackagetool6"
+    fake.write_text(f"#!/bin/sh\n: > {marker}\n/usr/bin/sleep 60 &\n/usr/bin/sleep 60\n")
+    fake.chmod(0o755)
+
+
+def test_kpackagetool_travado_vira_timeout_e_mantem_o_coletor(ub, tmp_path):
+    _hang_kpkg(ub, tmp_path / "started")
+    t0 = time.monotonic()
+    code, lines, _ = ub.update(PLASMA_AI_INSTALLER_KPKG_TIMEOUT="1")
+    f = final(lines)
+    assert code != 0 and f["cause"] == "kpackagetool" and "tempo" in f["message"]
+    assert lines[-2]["step"] == "plasmoid_install" and lines[-2]["status"] == "error"
+    assert time.monotonic() - t0 < 50
+    assert ub.link.is_symlink() and ub.venv.exists()
+
+
+def test_sigterm_no_kpackagetool_mantem_o_coletor(ub, tmp_path):
+    marker = tmp_path / "started"
+    _hang_kpkg(ub, marker)
+    p = ub.popen("update", "--version", VERSION)
+    for _ in range(600):
+        if marker.exists():
+            break
+        time.sleep(0.1)
+    assert marker.exists()
+    p.terminate()
+    out, _ = p.communicate(timeout=30)
+    f = json.loads(out.splitlines()[-1])
+    assert p.returncode != 0 and (f["result"], f["cause"]) == ("error", "falha")
+    assert ub.link.is_symlink() and ub.venv.exists()
+
+
+def test_download_lento_estoura_o_prazo_total(ub):
+    code, lines, _ = ub.update(PLASMA_AI_INSTALLER_DOWNLOAD_DEADLINE="0")
+    assert code != 0 and final(lines)["cause"] == "rede" and "tempo" in final(lines)["message"]
+    assert lines[-2]["step"] == "plasmoid_download" and ub.kpkg_calls() == []
+
+
+def test_plasmoid_acima_do_limite_vira_rede(tmp_path, wheelhouse):
+    grande = tmp_path / "grande"
+    grande.mkdir()
+    with open(grande / PLASMOID, "wb") as f:
+        f.truncate(20 * 1024 * 1024 + 1)
+    ub = UpdateSandbox(tmp_path, wheelhouse, grande)
+    code, lines, _ = ub.update()
+    assert code != 0 and final(lines)["cause"] == "rede" and "máximo" in final(lines)["message"]
+    assert lines[-2]["step"] == "plasmoid_download" and ub.kpkg_calls() == [] and ub.no_leftovers()
+
+
+def test_plasmoid_local_ausente_vira_falha_clara(tmp_path, wheelhouse):
+    vazio = tmp_path / "vazio"
+    vazio.mkdir()
+    ub = UpdateSandbox(tmp_path, wheelhouse, vazio)
+    code, lines, _ = ub.update()
+    assert code != 0 and final(lines)["cause"] == "falha" and "Erro de sistema" in final(lines)["message"]
+    assert lines[-2]["step"] == "plasmoid_download" and ub.kpkg_calls() == []
+
+
+def _fake_hash_wheelhouse(tmp_path):
+    """Wheel 1.0.0 cujo `--plasmoid-sha256` imprime o que estiver em FAKE_HASH."""
+    out = tmp_path / "fake"
+    out.mkdir()
+    di = "plasma_ai_usage_collector-1.0.0.dist-info"
+    cli = ("import os, sys\ndef main():\n    print(os.environ.get('FAKE_HASH', '')) if '--plasmoid-sha256' in "
+           "sys.argv else print('ai-usage-collector 1.0.0')\n")
+    with zipfile.ZipFile(out / "plasma_ai_usage_collector-1.0.0-py3-none-any.whl", "w") as z:
+        z.writestr("ai_usage_collector/__init__.py", "")
+        z.writestr("ai_usage_collector/cli.py", cli)
+        z.writestr("ai_usage_collector/session_state.py", "def states_main():\n    print('x')\n")
+        z.writestr(di + "/METADATA", "Metadata-Version: 2.1\nName: plasma-ai-usage-collector\nVersion: 1.0.0\n")
+        z.writestr(di + "/WHEEL", "Wheel-Version: 1.0\nGenerator: t\nRoot-Is-Purelib: true\nTag: py3-none-any\n")
+        z.writestr(di + "/entry_points.txt", "[console_scripts]\nai-usage-collector = ai_usage_collector.cli:main\n"
+                   "ai-usage-session-state = ai_usage_collector.session_state:states_main\n")
+        z.writestr(di + "/RECORD", "")
+    return out
+
+
+@pytest.mark.parametrize("fake", ["MAIUSCULAS", "", "abc123", "g" * 64, "a" * 63])
+def test_hash_do_coletor_invalido_ou_em_maiusculas_vira_sem_hash(tmp_path, wheelhouse, fake):
+    real = hashlib.sha256((wheelhouse / PLASMOID).read_bytes()).hexdigest()
+    fake = real.upper() if fake == "MAIUSCULAS" else fake
+    ub = UpdateSandbox(tmp_path, _fake_hash_wheelhouse(tmp_path), wheelhouse)
+    code, lines, _ = ub.update("1.0.0", FAKE_HASH=fake)
+    assert code != 0 and final(lines)["cause"] == "sem_hash" and ub.kpkg_calls() == []

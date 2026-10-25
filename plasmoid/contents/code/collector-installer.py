@@ -22,7 +22,8 @@ Mesmo contrato do install (uma linha JSON por etapa, `result` final), sem downgr
   plasmoid_hash (le `ai-usage-collector --plasmoid-sha256` do venv novo), plasmoid_download (release da TAG vX.Y.Z,
   nunca a latest; so github.com / objects|release-assets.githubusercontent.com por https; max 20 MB),
   plasmoid_verify (SHA256), plasmoid_install (`kpackagetool6 -t Plasma/Applet --upgrade`, sem privilegios elevados).
-Falha antes de plasmoid_install nao altera o Plasmoid. Causas extras: sem_hash (Coletor sem hash embutido; orienta
+Falha antes de plasmoid_install nao altera o Plasmoid. A partir do kpackagetool6 o Coletor novo fica (sem rollback).
+Causas finais: as do install mais sem_hash (Coletor sem hash embutido; orienta
 atualizacao manual), kpackagetool (ausente ou falhou). Override SO para teste, por ambiente:
 PLASMA_AI_INSTALLER_PLASMOID_DIR (diretorio local com org.kde.plasma.aiusage.plasmoid, no lugar da rede).
 """
@@ -41,6 +42,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -70,11 +72,11 @@ def find_collector(configured):
     return None
 
 
-def read_version(path):
+def read_version(path, env=None):
     """Executa `<path> --version` sem shell; devolve o texto X.Y.Z ou None se não for confiável."""
     try:
         proc = subprocess.Popen([path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                errors="replace", stdin=subprocess.DEVNULL, start_new_session=True)
+                                errors="replace", stdin=subprocess.DEVNULL, start_new_session=True, env=env)
     except OSError:
         return None
     try:
@@ -147,6 +149,17 @@ class _Fail(Exception):
 
 class _Interrupted(Exception):
     pass
+
+
+def _os_fail(exc, step=None):
+    """OSError (ENOSPC, ENOENT, EACCES...) vira causa classificada com mensagem clara."""
+    return _Fail("permissao" if exc.errno in _NOPERM else "falha",
+                 "Erro de sistema: %s." % (exc.strerror or type(exc).__name__), step)
+
+
+def _clean_env():
+    """Ambiente sem as variáveis que redirecionam o Python do Coletor."""
+    return {k: v for k, v in os.environ.items() if k not in _DROP_ENV}
 
 
 def _emit(obj):
@@ -314,7 +327,7 @@ def _do_install(version, home, created):
         _step("link", "ok", "Atalhos prontos.")
 
         _step("verify", "start", "Verificando o Coletor.")
-        got = read_version(os.path.join(vbin, BIN))
+        got = read_version(os.path.join(vbin, BIN), _clean_env())
         if got != version:
             raise _Fail("verificacao", "O Coletor instalado reporta a versão %s, não %s." % (got, version), "verify")
         _step("verify", "ok", "ai-usage-collector %s." % got)
@@ -324,8 +337,7 @@ def _do_install(version, home, created):
         f.log = f.log or list(log)[-30:]
         raise
     except OSError as exc:
-        raise _Fail("permissao" if exc.errno in _NOPERM else "falha",
-                    "Erro de sistema: %s." % (exc.strerror or type(exc).__name__))
+        raise _os_fail(exc)
 
 
 def _locked(body, ok_message):
@@ -381,6 +393,15 @@ PLASMOID_HOSTS = ("github.com", "objects.githubusercontent.com", "release-assets
 PLASMOID_MAX = 20 * 1024 * 1024
 NET_TIMEOUT = 60
 KPKG_TIMEOUT = 120
+DOWNLOAD_DEADLINE = 300  # teto TOTAL do download (o NET_TIMEOUT vale por leitura de socket)
+
+
+def _env_float(name, default):
+    """Override SO para testes, por ambiente (ex.: PLASMA_AI_INSTALLER_KPKG_TIMEOUT)."""
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
 
 
 class _SafeRedirect(urllib.request.HTTPRedirectHandler):
@@ -398,6 +419,8 @@ def _fetch_plasmoid(version, dest):
     """Grava o .plasmoid da TAG em dest (limite de tamanho); devolve o SHA256. Falha de rede -> causa rede."""
     local = os.environ.get("PLASMA_AI_INSTALLER_PLASMOID_DIR")  # só testes/offline
     digest, size = hashlib.sha256(), 0
+    deadline = _env_float("PLASMA_AI_INSTALLER_DOWNLOAD_DEADLINE", DOWNLOAD_DEADLINE)
+    start = time.monotonic()
     try:
         if local:
             src = open(os.path.join(local, PLASMOID), "rb")
@@ -409,6 +432,8 @@ def _fetch_plasmoid(version, dest):
                 chunk = src.read(65536)
                 if not chunk:
                     break
+                if time.monotonic() - start >= deadline:  # servidor lento que gota bytes
+                    raise _Fail("rede", "O download do Plasmoid excedeu o tempo máximo.", "plasmoid_download")
                 size += len(chunk)
                 if size > PLASMOID_MAX:
                     raise _Fail("rede", "O arquivo da release excede o tamanho máximo.", "plasmoid_download")
@@ -416,14 +441,16 @@ def _fetch_plasmoid(version, dest):
                 out.write(chunk)
     except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, ssl.SSLError):
         raise _Fail("rede", "Não foi possível baixar o Plasmoid da release v%s." % version, "plasmoid_download")
+    except OSError as exc:  # disco cheio, arquivo local ausente, sem permissão
+        raise _os_fail(exc, "plasmoid_download")
     return digest.hexdigest()
 
 
-def _read_expected_hash(venv_bin):
+def _read_expected_hash(venv_bin, env):
     """SHA256 embutido no Coletor novo, ou None (saída 1/vazia/malformada = versão sem hash)."""
     try:
         r = subprocess.run([os.path.join(venv_bin, BIN), "--plasmoid-sha256"], capture_output=True, text=True,
-                           errors="replace", timeout=VERSION_TIMEOUT, stdin=subprocess.DEVNULL)
+                           errors="replace", timeout=VERSION_TIMEOUT, stdin=subprocess.DEVNULL, env=env)
     except (OSError, subprocess.SubprocessError):
         return None
     out = r.stdout.strip()
@@ -433,7 +460,8 @@ def _read_expected_hash(venv_bin):
 def _do_update(version, home, created):
     target = parse_version(version)
     current = find_collector(None)
-    cur = parse_version(read_version(current)) if current else None
+    env = _clean_env()
+    cur = parse_version(read_version(current, env)) if current else None
     if cur and cur > target:
         raise _Fail("falha", "O Coletor instalado é mais novo que %s; downgrade não é suportado." % version)
     kpkg = shutil.which("kpackagetool6")
@@ -441,30 +469,46 @@ def _do_update(version, home, created):
         raise _Fail("kpackagetool", "kpackagetool6 não encontrado; instale o pacote do Plasma (kpackage) e tente de novo.")
     _do_install(version, home, created)
 
-    _step("plasmoid_hash", "start", "Lendo o hash esperado do Plasmoid.")
-    expected = _read_expected_hash(os.path.join(home, ".local", "share", "plasma-ai-usage", "venv", "bin"))
-    if not expected:
-        raise _Fail("sem_hash", "Esta versão não traz o hash do Plasmoid; o Plasmoid não foi atualizado. "
-                    "Atualize manualmente (baixe o .plasmoid da release e instale com kpackagetool6).", "plasmoid_hash")
-    _step("plasmoid_hash", "ok")
+    try:
+        _step("plasmoid_hash", "start", "Lendo o hash esperado do Plasmoid.")
+        expected = _read_expected_hash(os.path.join(home, ".local", "share", "plasma-ai-usage", "venv", "bin"), env)
+        if not expected:
+            raise _Fail("sem_hash", "Esta versão não traz o hash do Plasmoid; o Plasmoid não foi atualizado. "
+                        "Atualize manualmente (baixe o .plasmoid da release e instale com kpackagetool6).", "plasmoid_hash")
+        _step("plasmoid_hash", "ok")
 
-    with tempfile.TemporaryDirectory(prefix="plasma-ai-update-") as tmp:
-        pkg = os.path.join(tmp, PLASMOID)
-        _step("plasmoid_download", "start", "Baixando o Plasmoid v%s." % version)
-        got = _fetch_plasmoid(version, pkg)
-        _step("plasmoid_download", "ok")
-        _step("plasmoid_verify", "start", "Conferindo o SHA256.")
-        if got != expected:
-            raise _Fail("verificacao", "O SHA256 do Plasmoid baixado não confere com o do Coletor; nada foi instalado.",
-                        "plasmoid_verify")
-        _step("plasmoid_verify", "ok")
-        _step("plasmoid_install", "start", "Atualizando o Plasmoid.")
-        r = subprocess.run([kpkg, "-t", "Plasma/Applet", "--upgrade", pkg], capture_output=True, text=True,
-                           errors="replace", timeout=KPKG_TIMEOUT, stdin=subprocess.DEVNULL)
-        if r.returncode != 0:
-            raise _Fail("kpackagetool", "kpackagetool6 falhou (código %d)." % r.returncode, "plasmoid_install",
-                        [_scrub(x, home) for x in (r.stdout + r.stderr).splitlines()[-30:]])
-        _step("plasmoid_install", "ok", "Plasmoid %s instalado." % version)
+        with tempfile.TemporaryDirectory(prefix="plasma-ai-update-") as tmp:
+            pkg = os.path.join(tmp, PLASMOID)
+            _step("plasmoid_download", "start", "Baixando o Plasmoid v%s." % version)
+            got = _fetch_plasmoid(version, pkg)
+            _step("plasmoid_download", "ok")
+            _step("plasmoid_verify", "start", "Conferindo o SHA256.")
+            if got != expected:
+                raise _Fail("verificacao", "O SHA256 do Plasmoid baixado não confere com o do Coletor; nada foi instalado.",
+                            "plasmoid_verify")
+            _step("plasmoid_verify", "ok")
+            _step("plasmoid_install", "start", "Atualizando o Plasmoid.")
+            created.clear()  # daqui em diante o Coletor novo fica, mesmo com timeout ou sinal
+            proc = subprocess.Popen([kpkg, "-t", "Plasma/Applet", "--upgrade", pkg], stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, errors="replace", stdin=subprocess.DEVNULL,
+                                    start_new_session=True)
+            try:
+                out, _ = proc.communicate(timeout=_env_float("PLASMA_AI_INSTALLER_KPKG_TIMEOUT", KPKG_TIMEOUT))
+            except subprocess.TimeoutExpired:
+                _killpg(proc)  # mata também netos que seguram o pipe
+                proc.communicate()
+                raise _Fail("kpackagetool", "kpackagetool6 excedeu o tempo limite; o Coletor novo foi mantido.",
+                            "plasmoid_install")
+            except BaseException:  # sinal no meio
+                _killpg(proc)
+                proc.wait()
+                raise
+            if proc.returncode != 0:
+                raise _Fail("kpackagetool", "kpackagetool6 falhou (código %d)." % proc.returncode, "plasmoid_install",
+                            [_scrub(x, home) for x in out.splitlines()[-30:]])
+            _step("plasmoid_install", "ok", "Plasmoid %s instalado." % version)
+    except OSError as exc:
+        raise _os_fail(exc)
 
 
 def update(version):
