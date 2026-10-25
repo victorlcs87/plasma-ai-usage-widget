@@ -383,6 +383,50 @@ PlasmoidItem {
             root.widgetUpdate = next;
         }
     }
+    // Menus (painel e Notch): um único rótulo/estado para os dois e uma única entrada, `requestWidgetUpdate`. Ela nunca atualiza:
+    // só busca ou abre a confirmação inline e mostra o popup, onde o WidgetUpdate pede versão/origem/sem sudo.
+    readonly property string widgetUpdateActionText: widgetUpdate.state === "buscando" ? I18n.tr("Checking for updates…")
+        : widgetUpdate.state === "atualizando" ? I18n.tr("Updating the widget…")
+        : widgetUpdate.state === "concluido" ? I18n.tr("Updated to v%1. Reload the widget to start using it.", widgetUpdate.to || widgetUpdateVersion)
+        : widgetUpdateVersion !== "" ? I18n.tr("Update to v%1", widgetUpdateVersion) : I18n.tr("Check for updates")
+    readonly property bool widgetUpdateActionEnabled: !widgetUpdateBusy && (widgetUpdateVersion !== "" || widgetUpdate.state === "concluido" || !widgetCheckCooldown)
+    function requestWidgetUpdate() {
+        if (!root.widgetUpdateActionEnabled) return;
+        if (root.widgetUpdate.state === "idle" || root.widgetUpdate.state === "erro") {
+            if (root.widgetUpdateVersion !== "") root.askWidgetUpdate(); else root.checkWidgetUpdate();
+        }
+        root.setOpen(true);
+    }
+    Plasmoid.contextualActions: [
+        PlasmaCore.Action {
+            objectName: "widgetUpdateAction"
+            text: root.widgetUpdateActionText
+            icon.name: "update-none"
+            enabled: root.widgetUpdateActionEnabled
+            onTriggered: root.requestWidgetUpdate()
+        }
+    ]
+
+    // Janela de configuração (outro contexto QML, sem acesso a este item): lê um espelho do estado e pede ações pela
+    // própria configuração. Quem executa continua sendo só este arquivo, então não há execução dupla.
+    readonly property string widgetUpdateMirror: JSON.stringify({ upd: { state: widgetUpdate.state, result: widgetUpdate.result, version: widgetUpdate.version,
+        step: widgetUpdate.step, to: widgetUpdate.to, cause: widgetUpdate.cause, message: widgetUpdate.message, failedStep: widgetUpdate.failedStep },
+        version: widgetUpdateVersion, current: widgetVersion, cooldown: widgetCheckCooldown })
+    onWidgetUpdateMirrorChanged: Plasmoid.configuration.widgetUpdateMirror = root.widgetUpdateMirror
+    Connections {
+        target: Plasmoid.configuration
+        function onWidgetUpdateRequestChanged() {
+            var a = String(Plasmoid.configuration.widgetUpdateRequest || "").split(":")[0];
+            if (a === "") return;
+            Plasmoid.configuration.widgetUpdateRequest = "";
+            if (a === "check") root.checkWidgetUpdate();
+            else if (a === "ask") root.askWidgetUpdate();
+            else if (a === "cancel") root.cancelWidgetUpdate();
+            else if (a === "start") root.startWidgetUpdate();
+            else if (a === "reload") root.reloadWidget();
+        }
+    }
+
     Plasma5Support.DataSource {  // desconecta ao receber dados: um segundo clique reexecuta o comando
         id: widgetReloadSource
         engine: "executable"
@@ -682,6 +726,7 @@ PlasmoidItem {
     }
 
     Component.onCompleted: {
+        Plasmoid.configuration.widgetUpdateMirror = root.widgetUpdateMirror;
         if (root.idleWanted) idleDelay.restart();
         if (root.rawIdle !== "") providerIdleDelay.restart();
         root.checkCollector();

@@ -165,8 +165,11 @@ def test_done_asks_before_reloading_and_never_reloads_by_itself(tmp_path):
 
 def test_main_state_wiring_is_click_only_and_guarded():
     main = (UI_DIR / "main.qml").read_text()
+    # únicos chamadores permitidos (ticket 78): o clique no menu (requestWidgetUpdate) e o pedido da janela de configuração
+    main_wo = main.replace(main.split("function requestWidgetUpdate()")[1].split("Plasmoid.contextualActions")[0], "")
+    main_wo = main_wo.replace(main.split("function onWidgetUpdateRequestChanged()")[1].split("Plasma5Support")[0], "")
     for fn in ("checkWidgetUpdate", "askWidgetUpdate", "startWidgetUpdate", "reloadWidget"):
-        assert main.count("root.%s(" % fn) == 0 and main.count("function %s(" % fn) == 1  # sem gatilho próprio (partida/timer/popup)
+        assert main_wo.count("root.%s(" % fn) == 0 and main.count("function %s(" % fn) == 1  # sem gatilho próprio (partida/timer/popup)
     for name in ("widgetCheckSource", "widgetUpdateSource", "widgetReloadSource"):
         assert main.count(name + ".connectSource") == 1
     start = main.split("function startWidgetUpdate()")[1].split("function reloadWidget")[0]
@@ -255,3 +258,25 @@ def test_main_guards_both_sides_watchdog_and_reload_disconnect():
     dog = main.split("Watchdog")[1].split("Plasma5Support")[0]
     assert "30000" in dog and "600000" in dog and "running: root.widgetUpdateBusy" in dog and "widgetUpdateStuck" in dog
     assert main.count("connectedSources = []") >= 2
+
+
+def test_panel_context_action_only_requests_and_is_disabled_while_busy():
+    """Ticket 78: menu do painel. A ação nunca atualiza: busca ou abre a confirmação inline e mostra o popup."""
+    main = (UI_DIR / "main.qml").read_text()
+    req = main.split("function requestWidgetUpdate()")[1].split("Plasmoid.contextualActions")[0]
+    assert "if (!root.widgetUpdateActionEnabled) return;" in req and "askWidgetUpdate()" in req and "checkWidgetUpdate()" in req
+    assert "startWidgetUpdate" not in req and "root.setOpen(true)" in req
+    action = main.split("Plasmoid.contextualActions")[1].split("]")[0]
+    assert "PlasmaCore.Action" in action and "enabled: root.widgetUpdateActionEnabled" in action and "onTriggered: root.requestWidgetUpdate()" in action
+    enabled = main.split("widgetUpdateActionEnabled:")[1].split("\n")[0]
+    assert "!widgetUpdateBusy" in enabled
+    text = main.split("widgetUpdateActionText:")[1].split("readonly property bool")[0]
+    for msg in ("Checking for updates…", "Updating the widget…", "Update to v%1", "Check for updates"):
+        assert f'I18n.tr("{msg}"' in text, msg
+
+
+def test_pt_br_translates_the_menu_and_config_strings():
+    po = (Path(__file__).resolve().parent.parent / "po" / "pt_BR.po").read_text()
+    for msg in ("Configure…", "Installed widget version: v%1", "Updating is available once the widget is running.", "Checking for updates…", "Updating the widget…"):
+        m = re.search(r'msgid "%s"\nmsgstr "(.+)"' % re.escape(msg), po)
+        assert m and m.group(1) != msg, msg

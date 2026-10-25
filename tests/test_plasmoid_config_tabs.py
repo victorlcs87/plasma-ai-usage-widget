@@ -43,7 +43,7 @@ def test_inventory_cfg_properties_match_main_xml_and_each_has_one_tab():
     xml = {e.attrib["name"] for e in ET.parse(XML).getroot().iter() if e.tag.endswith("entry")}
     declared = set(re.findall(r"property \w+ cfg_(\w+)", CFG))
     # tudo do main.xml é editável aqui, exceto autoRefreshOnExpand (sem controle desde antes das abas)
-    assert declared <= xml and xml - declared == {"autoRefreshOnExpand"}
+    assert declared <= xml and xml - declared == {"autoRefreshOnExpand", "widgetUpdateMirror", "widgetUpdateRequest"}  # os dois últimos: canal interno main.qml <-> config
     blocks = tab_blocks()
     for name in declared:
         helper = {"providerOrder": "moveProvider(", "hiddenProviders": "setProviderHidden(", "popupProviderOrder": "movePopupProvider(",
@@ -90,11 +90,15 @@ STUB = ("module org.kde.plasma.plasma5support\nDataSource 1.0 DataSource.qml\nsi
     "DataSource.qml": "import QtQuick\nQtObject { property string engine; property var connectedSources: []\n"
                       " signal newData(string s, var d); function connectSource(s) { Log.cmds.push(s) } function disconnectSource(s) {} }"})
 
+PLASMOID_STUB = ("module org.kde.plasma.plasmoid\nsingleton Plasmoid 1.0 Plasmoid.qml\n", {
+    "Plasmoid.qml": "pragma Singleton\nimport QtQuick\nQtObject { property var configuration: QtObject { property string widgetUpdateMirror: ''; property string widgetUpdateRequest: '' } }"})
+
 HARNESS = """
 import QtQuick
 import QtQuick.Window
 import QtTest
 import org.kde.plasma.plasma5support
+import org.kde.plasma.plasmoid
 Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "#eff0f1"
   Rectangle { anchors.fill: parent; color: "#eff0f1" }
   ConfigGeneral { id: cfg; anchors.fill: parent }
@@ -146,6 +150,13 @@ def config(tmp_path, drive="", size=(560, 640), pngs=None):
         shutil.copy(UI_DIR / f, run / f)
     shutil.copy(UI_DIR / "configGeneral.qml", run / "ConfigGeneral.qml")
     shutil.copy(UI_DIR / "WrapCheckBox.qml", run / "WrapCheckBox.qml")
+    shutil.copy(UI_DIR / "WidgetUpdate.qml", run / "WidgetUpdate.qml")
+    shutil.copy(UI_DIR / "NotchButton.qml", run / "NotchButton.qml")
+    imp = tmp_path / "imp" / "org/kde/plasma/plasmoid"
+    imp.mkdir(parents=True)
+    (imp / "qmldir").write_text(PLASMOID_STUB[0])
+    for f, body in PLASMOID_STUB[1].items():
+        (imp / f).write_text(body)
     shutil.copy(UI_DIR / "PlainTip.qml", run / "PlainTip.qml")
     (run / "h.qml").write_text(HARNESS % {"w": size[0], "h": size[1], "data": json.dumps(fixture()), "drive": drive, "pngs": json.dumps(pngs or [])})
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")
@@ -278,3 +289,57 @@ def test_dialog_footers_stay_inside_the_frame_at_any_window_width(tmp_path, monk
         assert opened and len(out["b"]) == 2 and x0 >= 0 and x1 <= width, (title, out)
         for bx0, by0, bx1, by1 in out["b"]:
             assert x0 <= bx0 and bx1 <= x1 and y0 <= by0 and by1 <= y1, (title, width, out)  # rodapé dentro da moldura
+
+
+# ---- ticket 78: atualização do widget na janela de configuração (aba Geral) ----
+
+MIRROR = {"upd": {"state": "idle", "result": "nova", "version": "9.0.0", "step": ""}, "version": "9.0.0", "current": "1.2.0", "cooldown": False}
+WU_PRE = """
+var mirror = function (o) { Plasmoid.configuration.widgetUpdateMirror = JSON.stringify(Object.assign(%s, o)); tc.wait(80) }
+var btns = function () { return all(cfg).filter(function (k) { return k.hint !== undefined && k.activeFocusOnTab === true && k.visible }) }
+var btn = function (t) { return btns().filter(function (b) { return b.text === t })[0] }
+""" % json.dumps(MIRROR)
+
+
+@needs_qml
+def test_config_shows_installed_version_and_requests_check_or_ask_without_running_anything(tmp_path):
+    drive = WU_PRE + """
+    obs('before', [named("widgetInstalledVersion").visible, named("widgetUpdateUnavailable").visible, named("configWidgetUpdate").visible])
+    mirror({}); obs('ver', named("widgetInstalledVersion").text); obs('btns', btns().map(function (b) { return b.text }))
+    btn("Update to v9.0.0").click(); tc.wait(50); obs('ask', Plasmoid.configuration.widgetUpdateRequest)
+    mirror({version: "", upd: {state: "idle", result: "atual", version: "", step: ""}}); btn("Check for updates").click(); tc.wait(50)
+    obs('check', Plasmoid.configuration.widgetUpdateRequest)
+    """
+    out = config(tmp_path, drive=drive)
+    assert out["before"] == [False, True, False]  # sem espelho (widget não roda): só o aviso, sem botão
+    assert out["ver"] == "Installed widget version: v1.2.0" and "Update to v9.0.0" in out["btns"]
+    assert out["ask"].startswith("ask:") and out["check"].startswith("check:")
+    assert out["cmds"] == [] or all(c.startswith("cat ") for c in out["cmds"])  # a janela nunca executa a atualização
+
+
+@needs_qml
+def test_config_reflects_the_shared_state_and_cannot_double_start(tmp_path):
+    drive = WU_PRE + """
+    mirror({upd: {state: "atualizando", result: "nova", version: "9.0.0", step: "plasmoid_download", to: "9.0.0"}})
+    obs('busy', [btn("Updating the widget…").enabled, all(cfg).filter(function (k) { return k.objectName === "widgetUpdateStep" && k.visible })[0].text])
+    Plasmoid.configuration.widgetUpdateRequest = ""; btn("Updating the widget…").click(); tc.wait(50); obs('req', Plasmoid.configuration.widgetUpdateRequest)
+    mirror({upd: {state: "confirmando", result: "nova", version: "9.0.0", step: ""}})
+    obs('conf', all(cfg).filter(function (k) { return k.objectName === "widgetUpdateConfirmTitle" && k.visible }).map(function (k) { return k.text }))
+    btn("Cancel").click(); tc.wait(50); obs('cancel', Plasmoid.configuration.widgetUpdateRequest.split(":")[0])
+    btn("Update").click(); tc.wait(50); obs('start', Plasmoid.configuration.widgetUpdateRequest.split(":")[0])
+    """
+    out = config(tmp_path, drive=drive)
+    assert out["busy"] == [False, "Downloading the widget"] and out["req"] == ""  # em curso: botão desligado, nenhum pedido
+    assert out["conf"] == ["Update the widget from v1.2.0 to v9.0.0?"]  # a confirmação (versão/origem) também vale aqui
+    assert out["cancel"] == "cancel" and out["start"] == "start"
+
+
+def test_config_wiring_and_main_consumes_only_whitelisted_requests():
+    assert "WidgetUpdate {" in CFG and "plasmoidItem: wuProxy" in CFG and "Installed widget version" in CFG
+    assert "widgetUpdateSection" in tab_blocks()["tabGeral"]  # na aba Geral, junto da verificação de versões
+    main = (UI_DIR / "main.qml").read_text(encoding="utf-8")
+    handler = main.split("function onWidgetUpdateRequestChanged()")[1].split("Plasma5Support")[0]
+    for a in ("check", "ask", "cancel", "start", "reload"):
+        assert f'a === "{a}"' in handler
+    assert "Plasmoid.configuration.widgetUpdateRequest = \"\"" in handler  # consumido uma vez
+    assert "root.widgetUpdateMirror" in main.split("onWidgetUpdateMirrorChanged")[1][:120]
