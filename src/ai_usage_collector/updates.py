@@ -280,6 +280,28 @@ def plan_updates(status: dict[str, Any], config: Any, cache_file: Path, now: dat
     return plan
 
 
+def reserve_widget(cache_file: Path, now: datetime) -> None:
+    """Busca forcada (sob o lock): consome o dia da fonte `widget` agora e grava a versao local; so ela, nunca as do npm."""
+    path = cache_file.with_name(STATE_FILENAME)
+    state = _load(path)
+    e = state.setdefault("widget", _blank())
+    e["checked_at"] = now.timestamp()
+    if parsed := parse_version(__version__):
+        e["local"] = parsed[0]
+    for source in SOURCES:
+        state.setdefault(source, _blank())
+    _save(path, state)
+
+
+def forced_outcome(got: tuple[str, str | None] | None) -> dict[str, Any]:
+    """Resposta de uma linha da Busca de Atualizacao forcada: nova (com versao), atual ou indisponivel."""
+    if not got:
+        return {"update": "indisponivel"}
+    if is_newer(got[0], __version__):
+        return {"update": "nova", "version": got[0], **({"url": got[1]} if got[1] else {})}
+    return {"update": "atual", "version": __version__}
+
+
 def run_plan(plan: dict[str, bool], cache_file: Path) -> tuple[dict[str, Any], dict[str, Any]]:
     """FORA do lock: (resultados da rede, {CLI: (assinatura, versao local)}). Nunca levanta por falha de rede.
 

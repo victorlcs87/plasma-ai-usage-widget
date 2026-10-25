@@ -438,3 +438,43 @@ def test_enabled_follows_the_config_even_if_turned_off_during_the_query(env, net
     env()
     assert done == [0]
     assert json.loads(env.cache_path.read_text())["updates"] == {"enabled": False, "items": {}}
+
+
+def check(env, capsys):  # noqa: F811
+    capsys.readouterr()
+    assert main(["--check-update", *env.base]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_forced_check_ignores_daily_interval_only_for_widget(env, net, capsys):  # noqa: F811
+    env()
+    net.calls.clear()
+    net.routes[W] = {"tag_name": "v9.1.0", "html_url": GOOD_URL}
+    out = check(env, capsys)  # mesmo dia: o intervalo diario seria respeitado
+    assert out == {"update": "nova", "version": "9.1.0", "url": GOOD_URL}
+    assert [r.full_url for r in net.calls] == [W]  # uma consulta, nada de npm
+    assert items(env)["widget"]["latest"] == "9.1.0"  # estado que o Plasmoid le
+    saved = json.loads(env.cache_path.with_name(updates.STATE_FILENAME).read_text())
+    assert saved["sources"]["claude"]["latest"] == "2.1.0"
+
+
+def test_forced_check_current_version(env, net, capsys):  # noqa: F811
+    env()
+    net.routes[W] = {"tag_name": f"v{__version__}", "html_url": GOOD_URL}
+    assert check(env, capsys) == {"update": "atual", "version": __version__}
+    assert items(env)["widget"]["available"] is False
+
+
+def test_forced_check_network_failure_is_silent_and_keeps_last_version(env, net, capsys):  # noqa: F811
+    env()
+    net.routes[W] = urllib.error.URLError("sem rede")
+    net.calls.clear()
+    assert check(env, capsys) == {"update": "indisponivel"}
+    assert len(net.calls) == 1
+    assert items(env)["widget"]["latest"] == "9.0.0"
+
+
+def test_forced_check_disabled_does_not_query(env, net, capsys):  # noqa: F811
+    assert main(["--set-update-config", "--update-check", "off", *env.base]) == 0
+    assert check(env, capsys) == {"update": "indisponivel"}
+    assert net.calls == []

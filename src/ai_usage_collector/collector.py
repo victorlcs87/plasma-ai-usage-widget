@@ -117,7 +117,18 @@ def collect_and_save(
     return status_payload
 
 
-def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache_file: Path, payload: dict[str, Any]) -> None:
+def check_update_now(config_path: str | Path | None, cache_path: str | Path | None) -> dict[str, Any]:
+    """Busca de Atualizacao forcada (ticket 76): ignora o intervalo diario so para o widget, uma consulta, estado gravado."""
+    cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+    if not updates.update_check_enabled(load_config(config_path)):
+        return {"update": "indisponivel"}
+    with refresh.status_lock(cache_file.with_name(refresh.STATE_FILENAME)):
+        updates.reserve_widget(cache_file, refresh.utcnow())
+    results = _finish_updates({"widget": True}, config_path, cache_file, {})
+    return updates.forced_outcome((results or {}).get("widget", {}).get("got"))
+
+
+def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache_file: Path, payload: dict[str, Any]) -> dict[str, Any] | None:
     """Rede e `--version` sem o lock; depois mescla so a chave `updates` do status.json atual, sob o lock."""
     try:
         results, local = updates.run_plan(plan, cache_file)
@@ -130,8 +141,10 @@ def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache
                 status["updates"] = {"enabled": updates.update_check_enabled(config), "items": items}
                 save_status_cache(status, cache_file)
                 payload["updates"] = status["updates"]
+        return results
     except Exception as e:  # verificacao de atualizacao e opcional; falha de rede nunca chega aqui (e silenciosa)
         sys.stderr.write(f"Aviso: Verificacao de atualizacao nao processada: {e}\n")
+        return None
 
 
 def _collect(
