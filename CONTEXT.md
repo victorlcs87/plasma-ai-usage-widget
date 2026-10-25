@@ -128,3 +128,11 @@ _Avoid_: backend, daemon, servico
 **Instalador do Coletor**:
 Acao do Plasmoid, sempre com confirmacao explicita do usuario, que baixa do PyPI a versao exata do Coletor igual a do Plasmoid e a instala no venv proprio do widget (`~/.local/share/plasma-ai-usage/venv`, com symlink em `~/.local/bin`), sem `sudo` e sem tocar no Python do sistema. Tambem atualiza um Coletor de versao menor que a do Plasmoid; nunca faz downgrade.
 _Avoid_: auto-instalacao, setup silencioso, atualizacao automatica
+
+**Atualizacao do Widget**:
+Acao do usuario, com confirmacao inline (versao atual -> nova, origem e "sem sudo"), que atualiza Coletor e Plasmoid para a ultima release do GitHub. O Coletor novo e instalado primeiro (reusa o Instalador do Coletor); so entao o Plasmoid e reinstalado com `kpackagetool6 --upgrade`, e apenas se o SHA256 do `.plasmoid` baixado bater com o declarado pelo Coletor novo (canal PyPI, separado do GitHub). Ao fim pede "Recarregar o widget"; nunca reinicia o plasmashell sozinha. Detalhes no ADR-0014.
+_Avoid_: auto-update, atualizacao silenciosa, atualizar os CLIs dos agentes
+
+**Busca de Atualizacao**:
+Consulta de release forcada por clique do usuario, fora do intervalo diario de `updates.py`; uma consulta por clique, sem rajada. Sem versao nova, informa que ja esta na atual.
+_Avoid_: polling, checagem em segundo plano
