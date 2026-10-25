@@ -1,5 +1,18 @@
 # Changelog
 
+## 1.2.3
+
+### Melhorias
+- Sincronização automática da credencial da Conta Ativa no Sistema para seu Perfil Isolado nos três provedores (Claude, Codex e Gemini) antes da consulta de cota.
+- Identificação estrita de Conta por tokens no Claude (`find_account_by_token`), evitando desalinhamentos causados por arquivos de sistema defasados.
+- Validação estrita de identidade (`creds_identity`) e fonte no Gemini imediatamente antes de persistir alterações no chaveiro ou em disco.
+- Feedback no Plasmoid com orientação contextual para o botão "Renovar sessão" em caso de CLI ativa ou detecção inconclusiva.
+- Tratamento resiliente de limites de taxa da API (HTTP 429) como pausa temporária, sem renovação indevida de credenciais.
+
+### Correções
+- Eliminação de falso 0% quando o provedor não retorna dados oficiais de cota (`Sem Dados de Cota`), preservando o Histórico de Tokens local.
+- Proteção atômica com backups rotacionados e rejeição de regressão de credenciais.
+
 ## 1.2.2
 
 ### Melhorias
