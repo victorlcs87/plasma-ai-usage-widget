@@ -57,6 +57,19 @@ Se preferir gerenciar o coletor, use pipx para instalar a **mesma versão do wid
 pipx install plasma-ai-usage-collector==1.2.4
 ```
 
+### Atualizar o widget
+
+Havendo release nova, o popup, o menu de contexto do painel, o menu do Notch e a janela de configuração mostram **Update to vX.Y.Z** (sem versão nova, **Check for updates** força uma consulta e avisa se você já está na atual). Nada roda por timer, na partida ou ao abrir o popup.
+
+Clique e confirme inline (versão atual → nova, origem GitHub Releases, sem `sudo`). O coletor é atualizado primeiro (PyPI); depois o `.plasmoid` da mesma release é baixado do GitHub e instalado com `kpackagetool6 --upgrade`, só se o SHA256 bater com o embutido no coletor novo. Ao final o card oferece **Reload the widget**: o plasmashell só reinicia depois da sua confirmação, e até lá a versão antiga continua rodando. As falhas mais comuns (sem Python, rede, versão ainda fora do PyPI, permissão, verificação de integridade, `kpackagetool6`) aparecem em texto claro. Só releases de tag podem ser atualizadas assim; as CLIs dos agentes (Claude, Codex, Gemini) nunca são tocadas.
+
+Está na **1.2.3 ou anterior**? Esses coletores não trazem o hash embutido, então a primeira atualização para com "não consegue verificar o download do widget". Atualize uma vez à mão: baixe o `.plasmoid` da [release](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest) e rode:
+
+```bash
+kpackagetool6 --type Plasma/Applet --upgrade ./org.kde.plasma.aiusage.plasmoid
+pipx install --force plasma-ai-usage-collector==X.Y.Z   # ou: pipx upgrade plasma-ai-usage-collector
+```
+
 ### 3. Adicione suas contas
 
 Entre pela CLI do provedor e use a configuração do widget para capturar a conta atual. Também é possível capturar pelo terminal:
@@ -80,7 +93,7 @@ Por padrão, o arco representa a **cota usada**. A opção **Restante** mostra o
 
 O widget e o coletor rodam na sua máquina. **Sem servidor do projeto, telemetria ou análise de uso.** As credenciais ficam localmente, e as consultas de cota acessam os endpoints do provedor correspondente.
 
-A checagem opcional de atualizações consulta GitHub e npm. A instalação do coletor acessa o PyPI após confirmação. Captura, alternância e renovação usam credenciais locais. A renovação automática de contas Gemini inativas vem **desligada**; veja [detalhes e limitações](docs/usage.pt-BR.md#renovação-automática-das-contas-inativas).
+A checagem opcional de atualizações consulta GitHub e npm. A instalação do coletor e a atualização do widget acessam PyPI e GitHub Releases após confirmação. Captura, alternância e renovação usam credenciais locais. A renovação automática de contas Gemini inativas vem **desligada**; veja [detalhes e limitações](docs/usage.pt-BR.md#renovação-automática-das-contas-inativas).
 
 As APIs dos provedores podem mudar ou limitar consultas. O widget informa dados indisponíveis, sessões vencidas e leituras desatualizadas; a disponibilidade não é igual em todos os planos.
 

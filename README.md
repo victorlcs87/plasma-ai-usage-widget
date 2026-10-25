@@ -57,6 +57,19 @@ Prefer managing it yourself? Use pipx to install the **same version as the widge
 pipx install plasma-ai-usage-collector==1.2.4
 ```
 
+### Updating the widget
+
+When a newer release exists, the popup, the panel context menu, the Notch menu and the settings window show **Update to vX.Y.Z** (without a newer version, **Check for updates** forces one lookup and says if you already have the latest). Nothing runs on a timer, at startup or when the popup opens.
+
+Click it and confirm inline (current version → new version, source GitHub Releases, no `sudo`). The collector is updated first (from PyPI); then the `.plasmoid` of the same release is downloaded from GitHub and installed with `kpackagetool6 --upgrade`, only if its SHA256 matches the one embedded in the new collector. Afterwards the card offers **Reload the widget**; it restarts the Plasma shell only after you confirm, and until then the old version keeps running. Common failures (no Python, network, version not on PyPI yet, permissions, failed integrity check, `kpackagetool6`) are shown in plain text. Only tagged releases can be updated this way; the agent CLIs (Claude, Codex, Gemini) are never touched.
+
+Coming from **1.2.3 or earlier**? Those collectors carry no embedded hash, so the first update stops with "cannot verify the widget download". Update once by hand: download the `.plasmoid` from the [release](https://github.com/victorlcs87/plasma-ai-usage-widget/releases/latest), then:
+
+```bash
+kpackagetool6 --type Plasma/Applet --upgrade ./org.kde.plasma.aiusage.plasmoid
+pipx install --force plasma-ai-usage-collector==X.Y.Z   # or: pipx upgrade plasma-ai-usage-collector
+```
+
 ### 3. Add your accounts
 
 Sign in through your provider's CLI, then use the widget's account settings to capture the current account. Or capture it from a terminal:
@@ -80,7 +93,7 @@ Arcs show **used quota** by default; switch to **Remaining** to see the balance.
 
 The widget and collector run on your machine. There is **no project backend, telemetry or analytics**. Credentials are stored locally; quota checks contact the relevant provider's endpoints.
 
-Optional update checks contact GitHub and the npm registry. Installing the collector contacts PyPI after confirmation. Account capture, switching and renewal use local credentials. Automatic renewal of inactive Gemini accounts is **off by default**; see the [details and limitations](docs/usage.pt-BR.md#renovação-automática-das-contas-inativas).
+Optional update checks contact GitHub and the npm registry. Installing the collector or updating the widget contacts PyPI and GitHub Releases after confirmation. Account capture, switching and renewal use local credentials. Automatic renewal of inactive Gemini accounts is **off by default**; see the [details and limitations](docs/usage.pt-BR.md#renovação-automática-das-contas-inativas).
 
 Provider endpoints can change or rate-limit requests. A missing window, expired session or failed refresh is shown as unavailable or stale data. Quota information is not available for every plan.
 

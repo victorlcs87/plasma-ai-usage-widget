@@ -35,6 +35,7 @@ Privacy:
 - Everything runs on your machine. There is no telemetry, no analytics and no account on a server of ours.
 - The collector reads your own provider credentials locally and queries each provider's own usage endpoints (Anthropic, OpenAI, Google) to get your quota. Nothing else is sent.
 - Optional daily update check (on by default, can be turned off in settings or with `--set-update-config --update-check off`): read-only requests to api.github.com (latest widget release) and registry.npmjs.org (latest Claude Code, Codex and Gemini CLI versions), without credentials. Nothing is downloaded or installed by it.
+- The update button (only on click, after an inline confirmation) installs the matching collector from PyPI, downloads the `.plasmoid` of the same release from GitHub Releases, verifies its SHA256 and installs it with `kpackagetool6`; the Plasma shell is restarted only if you confirm "Reload the widget".
 - The collector install button contacts PyPI only after you confirm.
 - Renewing inactive Gemini accounts is off by default.
 
@@ -72,6 +73,7 @@ Privacidade:
 - Tudo roda na sua máquina. Não há telemetria, análise de uso nem conta em servidor nosso.
 - O coletor lê localmente as suas credenciais dos provedores e consulta os endpoints de uso de cada provedor (Anthropic, OpenAI, Google) para obter a cota. Nada mais é enviado.
 - Checagem diária de atualização, opcional (ligada por padrão; desligue na configuração ou com `--set-update-config --update-check off`): consultas somente leitura a api.github.com (última versão do widget) e registry.npmjs.org (últimas versões das CLIs Claude Code, Codex e Gemini), sem credenciais. Ela não baixa nem instala nada.
+- O botão de atualização (só ao clicar, após confirmação inline) instala o coletor correspondente do PyPI, baixa o `.plasmoid` da mesma release no GitHub Releases, confere o SHA256 e instala com `kpackagetool6`; o plasmashell só reinicia se você confirmar "Reload the widget".
 - O botão de instalar o Coletor só fala com o PyPI depois da sua confirmação.
 - A renovação das contas Gemini inativas vem desligada.
 

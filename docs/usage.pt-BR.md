@@ -54,6 +54,31 @@ scripts/install-plasmoid.sh
 
 Aponte o widget para `.venv/bin/ai-usage-collector` em Configuração > Geral > **Caminho do coletor**. `scripts/package-release.sh` gera o `.plasmoid` e a wheel em `dist/`.
 
+## Atualizar o widget
+
+O botão **Update to vX.Y.Z** aparece no popup, no menu de contexto do painel, no menu do Notch e na janela de configuração (aba Geral). Sem versão nova ele vira **Check for updates**: uma **Busca de Atualização** por clique (`ai-usage-collector --check-update`, uma linha JSON `nova|atual|indisponivel`), com pausa curta entre cliques; avisa "já está na atual" e respeita a checagem desligada. Os menus só buscam ou abrem a confirmação no popup; nunca atualizam direto.
+
+A confirmação é inline: versão atual → nova, origem GitHub Releases, sem `sudo`, com **Cancel** em foco (Esc cancela). Nada roda por timer, na partida ou ao abrir o popup, e só há uma instalação ou atualização por vez.
+
+Ordem e verificação:
+
+1. **Coletor** primeiro: `pip` instala do PyPI a versão exata (mesmo fluxo do botão "Install collector"). Falha aqui não altera nada; Coletor novo com Plasmoid antigo é compatível.
+2. O Coletor novo informa o SHA256 do `.plasmoid` da mesma release (`ai-usage-collector --plasmoid-sha256`). O instalador baixa o `.plasmoid` da **tag** (nunca a `latest`; só https, host do GitHub, até 20 MB) e confere o hash.
+3. Só com o hash batendo roda `kpackagetool6 -t Plasma/Applet --upgrade`. Sem rollback do QML: se o `kpackagetool6` falhar, o Coletor novo permanece.
+
+Ao concluir, o card mostra **Reload the widget**, que pede confirmação e então reinicia o plasmashell (painéis e widgets somem por alguns segundos). O widget **nunca reinicia sozinho**; até recarregar, o QML antigo segue em memória.
+
+Causas de erro mais comuns: sem `python3` com `venv`; rede; versão ainda não publicada no PyPI; permissão nas pastas de instalação; conflito em `~/.local/bin`; verificação de integridade (nada é alterado); `sem_hash`; `kpackagetool6` ausente ou falhou (o Coletor já foi atualizado).
+
+**Primeira atualização manual (1.2.3 ou anterior):** esses Coletores não embutem o hash, então o botão para com "sem hash" e orienta a atualizar à mão. Baixe o `.plasmoid` da release e rode:
+
+```bash
+kpackagetool6 --type Plasma/Applet --upgrade ./org.kde.plasma.aiusage.plasmoid
+pipx install --force plasma-ai-usage-collector==X.Y.Z   # ou o pip do venv do widget, com ==X.Y.Z
+```
+
+Daí em diante o botão funciona. Builds `latest` da `main` não têm wheel correspondente no PyPI: a atualização só vale para releases de tag. As CLIs dos agentes (claude/codex/gemini) ficam fora.
+
 ## Waybar
 
 `ai-usage-collector --waybar` imprime uma linha JSON (`text`, `tooltip`, `class`, `alt` e, quando há nível, `percentage`) a partir do cache, sem consultar provedores nem a rede, sempre com exit code 0. Mantenha o cache atualizado com `ai-usage-collector --refresh` (ou pelo Plasmoid).
