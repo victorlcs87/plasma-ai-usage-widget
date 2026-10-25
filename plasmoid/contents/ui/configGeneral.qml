@@ -1152,6 +1152,8 @@ Item {
                                 objectName: "configWidgetUpdate"
                                 visible: wuProxy.widgetVersion !== ""
                                 plasmoidItem: wuProxy
+                                fg: Kirigami.Theme.textColor
+                                muted: configRoot.secondaryText
                             }
                         }
 

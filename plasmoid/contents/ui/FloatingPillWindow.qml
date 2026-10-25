@@ -53,7 +53,7 @@ FloatingFrame {
                 objectName: "pillMenuUpdate"
                 text: win.host && win.host.plasmoidItem ? win.host.plasmoidItem.widgetUpdateActionText : ""
                 enabled: Boolean(win.host && win.host.plasmoidItem && win.host.plasmoidItem.widgetUpdateActionEnabled)
-                icon.name: "update-none"
+                icon.name: win.host && win.host.plasmoidItem ? win.host.plasmoidItem.widgetUpdateActionIcon : "view-refresh"
                 onTriggered: win.host.plasmoidItem.requestWidgetUpdate()
             }
             QQC2.MenuItem {

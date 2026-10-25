@@ -14,6 +14,9 @@ ColumnLayout {
 
     property var plasmoidItem: null
     property color accent: Kirigami.Theme.highlightColor
+    // Popup: tons do Notch escuro. Configuração (tema do sistema, claro ou escuro): quem instancia passa os tons do tema.
+    property color fg: Presets.ui.fg
+    property color muted: Presets.ui.muted
 
     readonly property var upd: plasmoidItem && plasmoidItem.widgetUpdate ? plasmoidItem.widgetUpdate : ({ state: "idle", result: "" })
     readonly property string phase: upd.state || "idle"
@@ -68,6 +71,7 @@ ColumnLayout {
             id: primary
             objectName: "widgetUpdateButton"
             accent: wu.accent
+            fg: wu.fg
             text: wu.primaryText
             icon.name: wu.version !== "" ? "update-none" : "view-refresh"
             enabled: !wu.busy && wu.phase !== "confirmando" && (wu.version !== "" || !wu.cooldown)
@@ -87,7 +91,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            color: Presets.ui.muted
+            color: wu.muted
             Accessible.role: Accessible.StaticText
             Accessible.name: text
         }
@@ -112,7 +116,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.bold: true
-            color: Presets.ui.fg
+            color: wu.fg
         }
         QQC2.Label {
             objectName: "widgetUpdateConfirmDetails"
@@ -122,7 +126,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            color: Presets.ui.fg
+            color: wu.fg
         }
         RowLayout {
             spacing: Kirigami.Units.smallSpacing
@@ -130,6 +134,7 @@ ColumnLayout {
                 id: cancelAskButton
                 objectName: "widgetUpdateCancelButton"
                 accent: wu.accent
+                fg: wu.fg
                 text: I18n.tr("Cancel")
                 hint: I18n.tr("Closes this question without changing anything.")
                 onClicked: wu.cancelAsk()
@@ -137,6 +142,7 @@ ColumnLayout {
             NotchButton {
                 objectName: "widgetUpdateConfirmButton"
                 accent: wu.accent
+                fg: wu.fg
                 text: I18n.tr("Update")
                 hint: I18n.tr("Downloads and installs the update now.")
                 onClicked: if (wu.plasmoidItem) { wu.forceActiveFocus(); wu.plasmoidItem.startWidgetUpdate(); }
@@ -165,7 +171,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            color: Presets.ui.muted
+            color: wu.muted
             Accessible.role: Accessible.StaticText
             Accessible.name: text
         }
@@ -183,10 +189,11 @@ ColumnLayout {
             objectName: "widgetUpdateCause"
             Layout.fillWidth: true
             text: "⚠ " + wu.causeText
+            Accessible.ignored: true  // o grupo acima já anuncia a causa sem o glifo
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.bold: true
-            color: Presets.ui.fg
+            color: wu.fg
         }
         QQC2.Label {
             objectName: "widgetUpdateMessage"
@@ -197,7 +204,7 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.pointSize: Kirigami.Theme.smallFont.pointSize
-            color: Presets.ui.muted
+            color: wu.muted
         }
     }
 
@@ -208,7 +215,7 @@ ColumnLayout {
         Layout.fillWidth: true
         spacing: Kirigami.Units.smallSpacing
         Accessible.role: Accessible.Grouping
-        Accessible.name: doneLabel.text
+        Accessible.name: I18n.tr("Updated to v%1. Reload the widget to start using it.", wu.upd.to || wu.version)
         QQC2.Label {
             id: doneLabel
             objectName: "widgetUpdateDoneText"
@@ -217,12 +224,14 @@ ColumnLayout {
             textFormat: Text.PlainText
             wrapMode: Text.Wrap
             font.bold: true
-            color: Presets.ui.fg
+            color: wu.fg
+            Accessible.ignored: true
         }
         NotchButton {
             objectName: "widgetReloadButton"
             visible: !wu.reloadConfirming
             accent: wu.accent
+            fg: wu.fg
             text: I18n.tr("Reload the widget")
             hint: I18n.tr("Asks for confirmation first; the Plasma shell is not restarted until you confirm.")
             onClicked: wu.reloadConfirming = true
@@ -243,7 +252,7 @@ ColumnLayout {
                 textFormat: Text.PlainText
                 wrapMode: Text.Wrap
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
-                color: Presets.ui.fg
+                color: wu.fg
             }
             RowLayout {
                 spacing: Kirigami.Units.smallSpacing
@@ -251,6 +260,7 @@ ColumnLayout {
                     id: cancelReloadButton
                     objectName: "widgetReloadCancelButton"
                     accent: wu.accent
+                    fg: wu.fg
                     text: I18n.tr("Not now")
                     hint: I18n.tr("Closes this question; the old version keeps running until you reload.")
                     onClicked: wu.cancelReload()
@@ -258,6 +268,7 @@ ColumnLayout {
                 NotchButton {
                     objectName: "widgetReloadConfirmButton"
                     accent: wu.accent
+                    fg: wu.fg
                     text: I18n.tr("Reload now")
                     hint: I18n.tr("Restarts the Plasma shell now.")
                     onClicked: if (wu.plasmoidItem) { wu.reloadConfirming = false; wu.plasmoidItem.reloadWidget(); }

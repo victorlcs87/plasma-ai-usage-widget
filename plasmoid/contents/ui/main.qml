@@ -395,6 +395,7 @@ PlasmoidItem {
         : widgetUpdate.state === "concluido" ? I18n.tr("Reload the widget")
         : widgetUpdate.state === "erro" && widgetUpdateVersion !== "" ? I18n.tr("Retry update to v%1", widgetUpdateVersion)
         : widgetUpdateVersion !== "" ? I18n.tr("Update to v%1", widgetUpdateVersion) : I18n.tr("Check for updates")
+    readonly property string widgetUpdateActionIcon: widgetUpdate.state === "concluido" ? "system-reboot" : widgetUpdateVersion !== "" ? "update-none" : "view-refresh"  // o mesmo do botão do popup
     readonly property bool widgetUpdateActionEnabled: !widgetUpdateBusy && collectorInstall.state !== "running" && (widgetUpdateVersion !== "" || widgetUpdate.state === "concluido" || !widgetCheckCooldown)
     function requestWidgetUpdate() {
         if (!root.widgetUpdateActionEnabled) return;
@@ -408,7 +409,7 @@ PlasmoidItem {
         PlasmaCore.Action {
             objectName: "widgetUpdateAction"
             text: root.widgetUpdateActionText
-            icon.name: "update-none"
+            icon.name: root.widgetUpdateActionIcon
             enabled: root.widgetUpdateActionEnabled
             onTriggered: root.requestWidgetUpdate()
         }
