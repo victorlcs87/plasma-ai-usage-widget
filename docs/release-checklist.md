@@ -35,6 +35,7 @@ Ordem obrigatória. O PyPI vem antes da loja KDE, porque o botão do widget inst
 
 - [ ] **Bloqueante:** o nome no PyPI já é seu (aviso do topo) e o commit da tag está na `main` (o `pypi-build` recusa o contrário).
 - [ ] Na `main` atualizada: crie e envie a tag `vX.Y.Z` (a mesma versão do passo 2). Só tags `vX.Y.Z[-sufixo]` disparam o PyPI.
+- [ ] O wheel embute o SHA256 do `.plasmoid` (ADR-0014): `package-release.sh` roda `check-release-hash.py` e falha se faltar ou divergir; confira com `ai-usage-collector --plasmoid-sha256` após instalar o wheel.
 - [ ] Acompanhe em Actions (`Release Automation`): `release` (GitHub Release com `.plasmoid` e `.whl`), `pypi-build` e `pypi-publish`. Os jobs do PyPI rodam em paralelo ao release do GitHub; um pode falhar sem o outro.
 - [ ] Aprove o `pypi-publish` (o environment `pypi` tem revisor obrigatório).
 - [ ] Primeiro release: o Trusted Publisher só se confirma aqui. Se o `pypi-publish` falhar por permissão, revise os campos do passo 1.

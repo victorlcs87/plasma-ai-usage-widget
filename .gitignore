@@ -5,6 +5,7 @@ __pycache__/
 *.egg-info/
 dist/
 build/
+src/ai_usage_collector/_plasmoid_sha256.py
 plasmoid/contents/locale/
 .claude/
 .scratch/

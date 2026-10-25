@@ -132,11 +132,15 @@ jobs:
           fi
           python scripts/check-release-versions.py "$TAG_REF"
 
-      - name: Build sdist and wheel
+      # O wheel do PyPI é o do package-release.sh (embute o SHA256 do .plasmoid; zip reprodutível, igual ao do GitHub).
+      # Só o wheel sobe: o sdist não carregaria o hash (ADR-0014).
+      - name: Build wheel with embedded plasmoid hash
         run: |
           python -m pip install --upgrade pip
           pip install build twine
-          python -m build --outdir dist-pypi
+          ./scripts/package-release.sh dist-build
+          mkdir dist-pypi
+          cp dist-build/*.whl dist-pypi/
           twine check dist-pypi/*
 
       - name: Upload distributions

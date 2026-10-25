@@ -63,7 +63,12 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as zf:
             if file.startswith(".") or file.endswith(("~", ".swp", ".bak")):
                 continue
             abs_path = os.path.join(root, file)
-            zf.write(abs_path, os.path.relpath(abs_path, stage))
+            # Zip reprodutível (data e modo fixos): os jobs do GitHub e do PyPI geram os mesmos bytes e o mesmo hash.
+            info = zipfile.ZipInfo(os.path.relpath(abs_path, stage), date_time=(1980, 1, 1, 0, 0, 0))
+            info.external_attr = 0o644 << 16
+            info.compress_type = zipfile.ZIP_DEFLATED
+            with open(abs_path, "rb") as fh:
+                zf.writestr(info, fh.read())
 EOF
 
 if [ ! -f "${PLASMOID_FILE}" ]; then
@@ -72,7 +77,11 @@ if [ ! -f "${PLASMOID_FILE}" ]; then
 fi
 echo "==> Plasmoid gerado com sucesso: ${PLASMOID_FILE}"
 
-# 2. Empacotar wheel Python
+# 2. Embutir o SHA256 do .plasmoid no wheel (módulo não versionado, removido ao sair) e empacotar
+HASH_MODULE="${REPO_ROOT}/src/ai_usage_collector/_plasmoid_sha256.py"
+trap 'rm -rf "${STAGE_DIR}" "${HASH_MODULE}"' EXIT
+PLASMOID_SHA256="$(sha256sum "${PLASMOID_FILE}" | cut -d' ' -f1)"
+echo "PLASMOID_SHA256 = \"${PLASMOID_SHA256}\"" > "${HASH_MODULE}"
 echo "==> Gerando wheel Python do coletor..."
 if [ -z "${PYTHON_BIN}" ]; then
     echo "Erro: Python não encontrado para compilar a wheel." >&2
@@ -99,6 +108,9 @@ if [ "${WHEEL_COUNT}" -eq 0 ]; then
     echo "Erro: Nenhuma wheel plasma_ai_usage_collector-*.whl foi encontrada em ${DIST_DIR}." >&2
     exit 1
 fi
+
+# Falha o release se o hash faltar no wheel ou divergir do .plasmoid
+"${PYTHON_BIN}" "${SCRIPT_DIR}/check-release-hash.py" "${PLASMOID_FILE}" "$(ls "${DIST_DIR}"/plasma_ai_usage_collector-*.whl | head -n1)"
 
 echo "==> Artefatos gerados com sucesso em ${DIST_DIR}:"
 ls -lh "${DIST_DIR}/${PLUGIN_ID}.plasmoid" "${DIST_DIR}"/plasma_ai_usage_collector-*.whl

@@ -426,6 +426,14 @@ def test_package_release_script_attributes_and_execution(tmp_path):
     wheels = list(tmp_path.glob("plasma_ai_usage_collector-*.whl"))
     assert len(wheels) == 1, f"Expected exactly one wheel in {tmp_path}, found: {wheels}"
 
+    # o wheel embute o SHA256 do .plasmoid gerado, e o módulo gerado não sobra na árvore
+    import hashlib
+    import zipfile
+
+    embedded = zipfile.ZipFile(wheels[0]).read("ai_usage_collector/_plasmoid_sha256.py").decode()
+    assert hashlib.sha256(plasmoid_file.read_bytes()).hexdigest() in embedded
+    assert not (REPO_ROOT / "src" / "ai_usage_collector" / "_plasmoid_sha256.py").exists()
+
 
 def test_plasmoid_package_archive_contents(tmp_path):
     """Verify generated .plasmoid package is a valid zip with metadata at root and required QML files."""
@@ -591,6 +599,7 @@ def test_release_workflow_security_hardening():
     assert not re.search(r"pypi[_-]?(api[_-]?)?token|PYPI_|password:", content, re.I)
     assert content.count("secrets.") == 1
     assert "check-release-versions.py" in build and "twine check" in build
+    assert "package-release.sh" in build and "python -m build" not in build  # wheel do PyPI = o hasheado
     assert "dist/*.whl" in _job("release")
     # o job release também valida a versão da tag antes de empacotar
     rel = _job("release")

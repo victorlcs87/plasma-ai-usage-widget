@@ -19,3 +19,9 @@ Status: proposta (aguarda spec)
 
 - O workflow de release passa a gerar o hash do `.plasmoid` antes de construir o wheel, e o zip publicado no GitHub precisa ser exatamente o hasheado.
 - Depende de `kpackagetool6` e do PyPI no momento da atualizacao.
+
+## Implementacao
+
+- O hash vive no wheel como modulo gerado `ai_usage_collector/_plasmoid_sha256.py` (`PLASMOID_SHA256 = "<hex>"`), escrito por `scripts/package-release.sh` depois de gerar o `.plasmoid` e removido ao sair; nao e versionado (esta no `.gitignore`). Modulo `.py` evita configurar package-data.
+- Leitura: `ai-usage-collector --plasmoid-sha256` imprime o hex minusculo de 64 caracteres numa linha e sai 0; sem hash embutido (arvore de desenvolvimento, versao <= 1.2.3) ou malformado, nao imprime nada e sai 1. Em Python: `ai_usage_collector.plasmoid_hash.plasmoid_sha256()`.
+- O `package-release.sh` roda `scripts/check-release-hash.py` no fim e falha se o hash faltar ou divergir do zip. O zip e reprodutivel (datas e modos fixos), entao os jobs `release` (GitHub) e `pypi-build` geram os mesmos bytes; o `pypi-build` passou a publicar o wheel do `package-release.sh` (sem sdist, que nao carregaria o hash).
