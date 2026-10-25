@@ -16,18 +16,36 @@ usa --no-index). Proxy/certificado: HTTPS_PROXY, HTTP_PROXY, NO_PROXY, SSL_CERT_
 e a ultima: {"result": ok|error, "cause": null|python_indisponivel|rede|versao_inexistente|permissao|
   conflito_em_local_bin|verificacao|falha, "message": str, "log": [ultimas ~30 linhas do pip]}.
 Exit 0 so em sucesso. Escreve apenas no venv do widget, nos symlinks e no lock (install.lock ao lado do venv).
+
+Uso: collector-installer.py update --version X.Y.Z   (ADR-0014)
+Mesmo contrato do install (uma linha JSON por etapa, `result` final), sem downgrade. Etapas: as do install, depois
+  plasmoid_hash (le `ai-usage-collector --plasmoid-sha256` do venv novo), plasmoid_download (release da TAG vX.Y.Z,
+  nunca a latest; so github.com / objects|release-assets.githubusercontent.com por https; max 20 MB),
+  plasmoid_verify (SHA256), plasmoid_install (`kpackagetool6 -t Plasma/Applet --upgrade`, sem privilegios elevados).
+Falha antes de plasmoid_install nao altera o Plasmoid. A partir do kpackagetool6 o Coletor novo fica (sem rollback).
+Causas finais: as do install mais sem_hash (Coletor sem hash embutido; orienta
+atualizacao manual), kpackagetool (ausente ou falhou). Override SO para teste, por ambiente:
+PLASMA_AI_INSTALLER_PLASMOID_DIR (diretorio local com org.kde.plasma.aiusage.plasmoid, no lugar da rede).
 """
 import collections
 import errno
 import fcntl
+import hashlib
+import http.client
 import json
 import os
 import re
 import shutil
 import signal
+import ssl
 import subprocess
 import sys
+import tempfile
 import threading
+import time
+import urllib.error
+import urllib.parse
+import urllib.request
 
 BIN = "ai-usage-collector"
 PIPX = "~/.local/share/pipx/venvs/plasma-ai-usage-collector/bin/" + BIN
@@ -54,11 +72,11 @@ def find_collector(configured):
     return None
 
 
-def read_version(path):
+def read_version(path, env=None):
     """Executa `<path> --version` sem shell; devolve o texto X.Y.Z ou None se não for confiável."""
     try:
         proc = subprocess.Popen([path, "--version"], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
-                                errors="replace", stdin=subprocess.DEVNULL, start_new_session=True)
+                                errors="replace", stdin=subprocess.DEVNULL, start_new_session=True, env=env)
     except OSError:
         return None
     try:
@@ -131,6 +149,17 @@ class _Fail(Exception):
 
 class _Interrupted(Exception):
     pass
+
+
+def _os_fail(exc, step=None):
+    """OSError (ENOSPC, ENOENT, EACCES...) vira causa classificada com mensagem clara."""
+    return _Fail("permissao" if exc.errno in _NOPERM else "falha",
+                 "Erro de sistema: %s." % (exc.strerror or type(exc).__name__), step)
+
+
+def _clean_env():
+    """Ambiente sem as variáveis que redirecionam o Python do Coletor."""
+    return {k: v for k, v in os.environ.items() if k not in _DROP_ENV}
 
 
 def _emit(obj):
@@ -298,7 +327,7 @@ def _do_install(version, home, created):
         _step("link", "ok", "Atalhos prontos.")
 
         _step("verify", "start", "Verificando o Coletor.")
-        got = read_version(os.path.join(vbin, BIN))
+        got = read_version(os.path.join(vbin, BIN), _clean_env())
         if got != version:
             raise _Fail("verificacao", "O Coletor instalado reporta a versão %s, não %s." % (got, version), "verify")
         _step("verify", "ok", "ai-usage-collector %s." % got)
@@ -308,11 +337,11 @@ def _do_install(version, home, created):
         f.log = f.log or list(log)[-30:]
         raise
     except OSError as exc:
-        raise _Fail("permissao" if exc.errno in _NOPERM else "falha",
-                    "Erro de sistema: %s." % (exc.strerror or type(exc).__name__))
+        raise _os_fail(exc)
 
 
-def install(version):
+def _locked(body, ok_message):
+    """Lock exclusivo + limpeza por sinal em volta de body(home, created); devolve o `result` final."""
     home = os.path.expanduser("~")
     lockdir = os.path.join(home, ".local", "share", "plasma-ai-usage")
     created = {}
@@ -332,9 +361,9 @@ def install(version):
         raise _Interrupted()
 
     old = {s: signal.signal(s, on_signal) for s in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
-    result = {"result": "ok", "cause": None, "message": "Coletor %s instalado." % version, "log": []}
+    result = {"result": "ok", "cause": None, "message": ok_message, "log": []}
     try:
-        _do_install(version, home, created)
+        body(home, created)
     except (_Fail, _Interrupted) as exc:
         fail = exc if isinstance(exc, _Fail) else _Fail("falha", "Instalação interrompida.")
         for sg in old:  # a limpeza não pode ser abortada por um segundo sinal
@@ -354,6 +383,139 @@ def install(version):
     return result
 
 
+def install(version):
+    return _locked(lambda home, created: _do_install(version, home, created), "Coletor %s instalado." % version)
+
+
+REPO = "victorlcs87/plasma-ai-usage-widget"
+PLASMOID = "org.kde.plasma.aiusage.plasmoid"
+PLASMOID_HOSTS = ("github.com", "objects.githubusercontent.com", "release-assets.githubusercontent.com")
+PLASMOID_MAX = 20 * 1024 * 1024
+NET_TIMEOUT = 60
+KPKG_TIMEOUT = 120
+DOWNLOAD_DEADLINE = 300  # teto TOTAL do download (o NET_TIMEOUT vale por leitura de socket)
+
+
+def _env_float(name, default):
+    """Override SO para testes, por ambiente (ex.: PLASMA_AI_INSTALLER_KPKG_TIMEOUT)."""
+    try:
+        return float(os.environ.get(name, default))
+    except ValueError:
+        return default
+
+
+class _SafeRedirect(urllib.request.HTTPRedirectHandler):
+    """Só segue redirect https para a lista fixa de hosts da release."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        u = urllib.parse.urlsplit(newurl)
+        if u.scheme != "https" or u.hostname not in PLASMOID_HOSTS:
+            raise _Fail("rede", "Redirecionamento para fora dos hosts permitidos; download recusado.",
+                        "plasmoid_download")
+        return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+
+def _fetch_plasmoid(version, dest):
+    """Grava o .plasmoid da TAG em dest (limite de tamanho); devolve o SHA256. Falha de rede -> causa rede."""
+    local = os.environ.get("PLASMA_AI_INSTALLER_PLASMOID_DIR")  # só testes/offline
+    digest, size = hashlib.sha256(), 0
+    deadline = _env_float("PLASMA_AI_INSTALLER_DOWNLOAD_DEADLINE", DOWNLOAD_DEADLINE)
+    start = time.monotonic()
+    try:
+        if local:
+            src = open(os.path.join(local, PLASMOID), "rb")
+        else:
+            url = "https://github.com/%s/releases/download/v%s/%s" % (REPO, version, PLASMOID)
+            src = urllib.request.build_opener(_SafeRedirect).open(url, timeout=NET_TIMEOUT)
+        with src, open(dest, "wb") as out:
+            while True:
+                chunk = src.read(65536)
+                if not chunk:
+                    break
+                if time.monotonic() - start >= deadline:  # servidor lento que gota bytes
+                    raise _Fail("rede", "O download do Plasmoid excedeu o tempo máximo.", "plasmoid_download")
+                size += len(chunk)
+                if size > PLASMOID_MAX:
+                    raise _Fail("rede", "O arquivo da release excede o tamanho máximo.", "plasmoid_download")
+                digest.update(chunk)
+                out.write(chunk)
+    except (urllib.error.URLError, TimeoutError, ConnectionError, http.client.HTTPException, ssl.SSLError):
+        raise _Fail("rede", "Não foi possível baixar o Plasmoid da release v%s." % version, "plasmoid_download")
+    except OSError as exc:  # disco cheio, arquivo local ausente, sem permissão
+        raise _os_fail(exc, "plasmoid_download")
+    return digest.hexdigest()
+
+
+def _read_expected_hash(venv_bin, env):
+    """SHA256 embutido no Coletor novo, ou None (saída 1/vazia/malformada = versão sem hash)."""
+    try:
+        r = subprocess.run([os.path.join(venv_bin, BIN), "--plasmoid-sha256"], capture_output=True, text=True,
+                           errors="replace", timeout=VERSION_TIMEOUT, stdin=subprocess.DEVNULL, env=env)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    out = r.stdout.strip()
+    return out if r.returncode == 0 and re.fullmatch(r"[0-9a-f]{64}", out) else None
+
+
+def _do_update(version, home, created):
+    target = parse_version(version)
+    current = find_collector(None)
+    env = _clean_env()
+    cur = parse_version(read_version(current, env)) if current else None
+    if cur and cur > target:
+        raise _Fail("falha", "O Coletor instalado é mais novo que %s; downgrade não é suportado." % version)
+    kpkg = shutil.which("kpackagetool6")
+    if not kpkg:  # falha cedo: nada foi alterado
+        raise _Fail("kpackagetool", "kpackagetool6 não encontrado; instale o pacote do Plasma (kpackage) e tente de novo.")
+    _do_install(version, home, created)
+
+    try:
+        _step("plasmoid_hash", "start", "Lendo o hash esperado do Plasmoid.")
+        expected = _read_expected_hash(os.path.join(home, ".local", "share", "plasma-ai-usage", "venv", "bin"), env)
+        if not expected:
+            raise _Fail("sem_hash", "Esta versão não traz o hash do Plasmoid; o Plasmoid não foi atualizado. "
+                        "Atualize manualmente (baixe o .plasmoid da release e instale com kpackagetool6).", "plasmoid_hash")
+        _step("plasmoid_hash", "ok")
+
+        with tempfile.TemporaryDirectory(prefix="plasma-ai-update-") as tmp:
+            pkg = os.path.join(tmp, PLASMOID)
+            _step("plasmoid_download", "start", "Baixando o Plasmoid v%s." % version)
+            got = _fetch_plasmoid(version, pkg)
+            _step("plasmoid_download", "ok")
+            _step("plasmoid_verify", "start", "Conferindo o SHA256.")
+            if got != expected:
+                raise _Fail("verificacao", "O SHA256 do Plasmoid baixado não confere com o do Coletor; nada foi instalado.",
+                            "plasmoid_verify")
+            _step("plasmoid_verify", "ok")
+            _step("plasmoid_install", "start", "Atualizando o Plasmoid.")
+            created.clear()  # daqui em diante o Coletor novo fica, mesmo com timeout ou sinal
+            proc = subprocess.Popen([kpkg, "-t", "Plasma/Applet", "--upgrade", pkg], stdout=subprocess.PIPE,
+                                    stderr=subprocess.STDOUT, text=True, errors="replace", stdin=subprocess.DEVNULL,
+                                    start_new_session=True)
+            try:
+                out, _ = proc.communicate(timeout=_env_float("PLASMA_AI_INSTALLER_KPKG_TIMEOUT", KPKG_TIMEOUT))
+            except subprocess.TimeoutExpired:
+                _killpg(proc)  # mata também netos que seguram o pipe
+                proc.communicate()
+                raise _Fail("kpackagetool", "kpackagetool6 excedeu o tempo limite; o Coletor novo foi mantido.",
+                            "plasmoid_install")
+            except BaseException:  # sinal no meio
+                _killpg(proc)
+                proc.wait()
+                raise
+            if proc.returncode != 0:
+                raise _Fail("kpackagetool", "kpackagetool6 falhou (código %d)." % proc.returncode, "plasmoid_install",
+                            [_scrub(x, home) for x in out.splitlines()[-30:]])
+            _step("plasmoid_install", "ok", "Plasmoid %s instalado." % version)
+    except OSError as exc:
+        raise _os_fail(exc)
+
+
+def update(version):
+    return _locked(lambda home, created: _do_update(version, home, created),
+                   "Coletor e Plasmoid %s instalados. Recarregue o widget." % version)
+
+
 def _cleanup(created):
     """Remove só o que ESTE install criou de novo (symlinks novos e venv recém-criado)."""
     for dest in created.get("links", []):
@@ -366,19 +528,19 @@ def _cleanup(created):
         shutil.rmtree(created["venv"], ignore_errors=True)
 
 
-def main_install(args):
+def main_install(args, run=install):
     if len(args) != 3 or args[1] != "--version" or not _STRICT.fullmatch(args[2]):
         res = {"result": "error", "cause": "falha", "log": [],
-               "message": "Uso: install --version X.Y.Z (versão exata, sem outros argumentos)."}
+               "message": "Uso: %s --version X.Y.Z (versão exata, sem outros argumentos)." % args[0]}
     else:
-        res = install(args[2])
+        res = run(args[2])
     _emit(res)
     return 0 if res["result"] == "ok" else 1
 
 
 def main(argv):
-    if len(argv) > 1 and argv[1] == "install":
-        return main_install(argv[1:])
+    if len(argv) > 1 and argv[1] in ("install", "update"):
+        return main_install(argv[1:], install if argv[1] == "install" else update)
     required, configured = "", ""
     try:
         args = argv[1:]
