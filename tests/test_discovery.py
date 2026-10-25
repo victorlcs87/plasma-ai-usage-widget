@@ -50,7 +50,7 @@ def test_discover_claude_valid_credentials(tmp_path):
             "accessToken": "sk-ant-test-token",
             "subscriptionType": "pro",
             "rateLimitTier": "tier_1",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     cred_file.write_text(json.dumps(cred_data))

@@ -1,5 +1,12 @@
 # Changelog
 
+## 1.3.0
+
+### Novidades
+- Atualização do widget pelo Plasmoid (ADR-0014): botão "Update to vX.Y.Z" no popup, no menu do painel, no menu do Notch e na configuração, com Busca de Atualização (`ai-usage-collector --check-update`) e confirmação inline (versão atual → nova, GitHub Releases, sem `sudo`).
+- Ordem Coletor → Plasmoid; o `.plasmoid` da tag só é instalado se o SHA256 bater com o embutido no Coletor novo. Ao final, "Reload the widget" pede confirmação e nunca reinicia o plasmashell sozinho.
+- Quem está na 1.2.3 ou antes (sem hash embutido) faz a primeira atualização à mão; ver `docs/usage.pt-BR.md`.
+
 ## 1.2.4
 
 ### Melhorias

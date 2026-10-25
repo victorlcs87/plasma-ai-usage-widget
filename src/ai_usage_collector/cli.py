@@ -17,6 +17,7 @@ from ai_usage_collector.collector import (
     collect_and_save,
     interactive_login_account,
     load_status_cache,
+    check_update_now,
     reapply_alert_levels,
     remove_account,
     rename_account,
@@ -209,6 +210,8 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Liga/desliga a verificação diária de atualização (GitHub Releases e npm): --update-check on|off (padrão on)",
     )
+    parser.add_argument("--check-update", action="store_true",
+                        help="Busca de atualização forçada do widget (ignora o intervalo diário, uma consulta); imprime uma linha JSON")
     parser.add_argument("--update-check", choices=["on", "off"], default=None, help="Verificação diária de atualização")
     parser.add_argument(
         "--set-renew-config",
@@ -396,6 +399,10 @@ def main(argv: Sequence[str] | None = None) -> int:
             ok, message = set_renew_settings(args.renew_gemini == "on", config_path)
             reapply_alert_levels(config_path, cache_path)  # so atualiza o status; sem rede
             sys.stdout.write(message + "\n")
+            return 0
+
+        if args.check_update:
+            sys.stdout.write(json.dumps(check_update_now(config_path, cache_path)) + "\n")
             return 0
 
         if args.set_update_config:

@@ -1,6 +1,6 @@
 # 0014. Atualizacao do Widget pelo Plasmoid
 
-Status: proposta (aguarda spec)
+Status: aceita
 
 ## Contexto
 
@@ -26,3 +26,9 @@ Status: proposta (aguarda spec)
 - Leitura: `ai-usage-collector --plasmoid-sha256` imprime o hex minusculo de 64 caracteres numa linha e sai 0; sem hash embutido (arvore de desenvolvimento, versao <= 1.2.3) ou malformado, nao imprime nada e sai 1. Em Python: `ai_usage_collector.plasmoid_hash.plasmoid_sha256()`.
 - O `package-release.sh` roda `scripts/check-release-hash.py` no fim e falha se o hash faltar ou divergir do zip. O workflow constroi uma vez (job `package`, `upload-artifact`) e os jobs `release` (GitHub) e `pypi-build` baixam os mesmos bytes; assim nao depende de o zlib dos runners coincidir (menor que conferir o hash depois). O zip continua reprodutivel (datas e modos fixos), o que o teste de empacotamento garante.
 - Remover o sdist do PyPI e decisao consciente: o wheel e `py3-none-any` puro, o sdist nao carregaria o hash embutido, e o Trusted Publisher segue valido.
+- Instalador: `collector-installer.py update --version X.Y.Z` reaproveita o install (venv, pip, link, verify) e acrescenta `plasmoid_hash`, `plasmoid_download` (tag `vX.Y.Z`, nunca `latest`), `plasmoid_verify` e `plasmoid_install` (`kpackagetool6 --upgrade`). Causas finais: as do install mais `sem_hash` e `kpackagetool`.
+- Busca de Atualizacao: `ai-usage-collector --check-update` imprime uma linha JSON (`nova` com versao, `atual` ou `indisponivel`; `desligada` e decidida pela configuracao no Plasmoid).
+- Estado no `main.qml`: `idle | buscando | confirmando | atualizando | concluido | erro`, com watchdog, pausa de 5 s entre buscas e uma unica instalacao/atualizacao por vez. `WidgetUpdate.qml` desenha botao, confirmacao inline, progresso, erro e recarga; esta no popup e na configuracao. Os menus do painel (`contextualActions`) e do Notch chamam `requestWidgetUpdate`, que so busca ou abre a confirmacao no popup.
+- Canal da configuracao: a janela de configuracao e outro processo QML; o estado chega por `widgetUpdateMirror` e os pedidos voltam por `widgetUpdateRequest` (entradas de `main.xml`).
+- Limitacoes: o canal da configuracao aceita `start` de qualquer processo do mesmo usuario que escreva o campo `widgetUpdateRequest`; mitigado pelo SHA256 do plasmoid e pelo estado `confirmando` (`start` so vale depois de um `ask`).
+- Primeira atualizacao: Coletores <= 1.2.3 nao embutem hash e terminam em `sem_hash`; a atualizacao manual esta em `docs/usage.pt-BR.md`.

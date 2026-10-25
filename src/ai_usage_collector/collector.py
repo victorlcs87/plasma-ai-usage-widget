@@ -117,7 +117,25 @@ def collect_and_save(
     return status_payload
 
 
-def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache_file: Path, payload: dict[str, Any]) -> None:
+def check_update_now(config_path: str | Path | None, cache_path: str | Path | None) -> dict[str, Any]:
+    """Busca de Atualizacao forcada (ticket 76): ignora o intervalo diario so para o widget, uma consulta, estado gravado.
+
+    SEMPRE devolve um dicionario de uma linha (nunca levanta): nova|atual|indisponivel|desligada."""
+    try:
+        cache_file = Path(cache_path).expanduser().resolve() if cache_path else DEFAULT_CACHE_PATH
+        if not updates.update_check_enabled(load_config(config_path)):
+            return {"update": "desligada"}
+        with refresh.status_lock(cache_file.with_name(refresh.STATE_FILENAME)):
+            updates.reserve_widget(cache_file, refresh.utcnow())
+        _finish_updates({"widget": True}, config_path, cache_file, {})
+        # falha de rede cai na ultima versao conhecida (estado ja mesclado), em vez de "indisponivel"
+        known = updates._load(cache_file.with_name(updates.STATE_FILENAME)).get("widget") or {}
+        return updates.forced_outcome((known["latest"], known["url"]) if known.get("latest") else None)
+    except Exception:  # noqa: BLE001 - o Plasmoid espera sempre uma linha JSON, exit 0
+        return {"update": "indisponivel"}
+
+
+def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache_file: Path, payload: dict[str, Any]) -> dict[str, Any] | None:
     """Rede e `--version` sem o lock; depois mescla so a chave `updates` do status.json atual, sob o lock."""
     try:
         results, local = updates.run_plan(plan, cache_file)
@@ -125,13 +143,16 @@ def _finish_updates(plan: dict[str, bool], config_path: str | Path | None, cache
             config = load_config(config_path)
             items = updates.merge_results(cache_file, results, local, config)
             status = load_status_cache(cache_file)
-            if isinstance(status, dict) and isinstance(status.get("updates"), dict):
-                # enabled sempre da configuracao atual (pode ter sido desligada durante a consulta)
-                status["updates"] = {"enabled": updates.update_check_enabled(config), "items": items}
-                save_status_cache(status, cache_file)
-                payload["updates"] = status["updates"]
+            if not isinstance(status, dict):  # sem status.json: base minima valida, para o Plasmoid ler o resultado
+                status = build_empty_status_contract(now_iso=refresh.utcnow().isoformat())
+            # enabled sempre da configuracao atual (pode ter sido desligada durante a consulta)
+            status["updates"] = {"enabled": updates.update_check_enabled(config), "items": items}
+            save_status_cache(status, cache_file)
+            payload["updates"] = status["updates"]
+        return results
     except Exception as e:  # verificacao de atualizacao e opcional; falha de rede nunca chega aqui (e silenciosa)
         sys.stderr.write(f"Aviso: Verificacao de atualizacao nao processada: {e}\n")
+        return None
 
 
 def _collect(

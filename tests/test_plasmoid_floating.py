@@ -206,6 +206,10 @@ Window { id: win; visible: true; width: 20; height: 20
     property string lastUpdatedFormatted: ""
     property var sessionOverlay: ({})
     property var calls: []
+    property var widgetUpdate: ({state: "idle", result: "", version: "", step: ""})
+    property string widgetUpdateActionText: widgetUpdate.state === "atualizando" ? I18n.tr("Updating the widget…") : I18n.tr("Check for updates")
+    property bool widgetUpdateActionEnabled: widgetUpdate.state !== "atualizando"
+    function requestWidgetUpdate() { calls.push("requestUpdate") }
     function setPillHovered(h) { calls.push("hover:" + h) }
     property bool clickOpens: true
     function pillClicked() { calls.push("click"); if (clickOpens) open = !open }
@@ -217,6 +221,7 @@ Window { id: win; visible: true; width: 20; height: 20
   FloatingNotch { id: fn; plasmoidItem: logic; forceLayer: %(layer)s }
   TestCase { id: tc; when: false; name: "t" }
   property var result: ({})
+  function pillMenu(it) { for (var i = 0; i < it.data.length; i++) { var k = it.data[i]; if (k.objectName === "pillMenu") return k; var f = k.data ? pillMenu(k) : null; if (f) return f } return null }
   function rect(w) { return {x: w.x, y: w.y, w: w.width, h: w.height, visible: w.visible} }
   function layerOf(w) { var a = w.LS.Window; return {anchors: a.anchors, ez: a.exclusionZone, ml: a.margins.left, mt: a.margins.top, layer: a.layer, kb: a.keyboardInteractivity, scope: a.scope} }
   Component.onCompleted: Kirigami.Units.longDuration = 200
@@ -362,7 +367,10 @@ def test_click_gives_focus_so_arrows_and_home_work_without_tab_and_right_click_c
       r.afterShiftLeft = Plasmoid.configuration.floatOffsetBottom
       tc.keyClick(Qt.Key_Home); tc.wait(30)
       r.afterHome = Plasmoid.configuration.floatOffsetBottom
-      tc.mouseClick(item, 20, 12, Qt.RightButton); tc.wait(50)
+      tc.mouseClick(item, 20, 12, Qt.RightButton); tc.wait(80)
+      var menu = pillMenu(item)
+      r.menuOpened = menu.visible; r.menuItems = [menu.itemAt(0).objectName, menu.itemAt(1).objectName]
+      menu.itemAt(1).triggered(); menu.close()
       r.configure = Plasmoid.triggered
     }
     """
@@ -372,7 +380,34 @@ def test_click_gives_focus_so_arrows_and_home_work_without_tab_and_right_click_c
     assert k["focusIsPill"] is True and k["afterRight"] == 8, (k["focusDbg"], k.get("afterRight"))
     assert k["afterShiftLeft"] == -32  # Shift = 32 px (o stub não notifica a chave gravada: a base volta a 0)
     assert k["afterHome"] == 0
+    assert k["menuOpened"] is True and k["menuItems"] == ["pillMenuUpdate", "pillMenuConfigure"]
     assert k["configure"] == ["configure"]  # botão direito: Configurar, o caminho de volta também na pílula flutuante
+
+
+@needs_qml
+def test_notch_menu_update_action_follows_the_shared_state_and_only_requests(tmp_path):
+    """Ticket 78: o item do menu usa o rótulo/estado do main.qml, fica desligado durante a atualização e só chama requestWidgetUpdate (que
+    abre a confirmação no popup); nada é executado a partir do menu."""
+    drive = """
+    var menu = pillMenu(fn.pillWindow.contentItem)
+    var up = menu.itemAt(0)
+    r.idle = [up.text, up.enabled]
+    up.triggered(); tc.wait(30)
+    logic.widgetUpdate = {state: "atualizando", result: "nova", version: "9.0.0", step: ""}; tc.wait(30)
+    r.busy = [up.text, up.enabled]
+    """
+    out = run_floating(tmp_path, [{"name": "menu", "cfg": {"floatingNotch": True}, "screen": [1280, 720], "open": False}], drive=drive)
+    m = out["menu"]
+    assert m["idle"] == ["Check for updates", True] and m["busy"] == ["Updating the widget…", False]
+    assert out["calls"].count("requestUpdate") == 1
+
+
+def test_notch_menu_uses_the_shared_entry_point_and_never_updates_directly():
+    pill = (UI_DIR / "FloatingPillWindow.qml").read_text(encoding="utf-8")
+    assert "requestWidgetUpdate()" in pill and "startWidgetUpdate" not in pill and "popupType: QQC2.Popup.Window" in pill
+    assert 'I18n.tr("Configure…")' in pill
+    # review do ticket 78: o menu fixa o popup aberto e abre também por teclado
+    assert "onAboutToShow:" in pill and "plasmoidItem.pinned = true" in pill and "Qt.Key_Menu" in pill and "Qt.Key_F10" in pill
 
 
 @needs_qml
@@ -427,6 +462,7 @@ def test_turning_the_option_off_and_on_never_reopens_the_popup_and_desktop_form_
     main = (UI_DIR / "main.qml").read_text()
     main = re.sub(r"\n\s*Plasmoid\.backgroundHints:.*?\n\n", "\n\n", main, flags=re.S)
     main = re.sub(r"\n\s*Plasmoid\.(icon|title|status):[^\n]*", "", main)
+    main = re.sub(r"\n\s*Plasmoid\.contextualActions:.*?\n    \]\n", "\n", main, flags=re.S)  # Action/attached não existem no stub
     (r / "Main.qml").write_text(main)
     (r / "h.qml").write_text(HOVER_HARNESS)
     env = dict(os.environ, QT_QPA_PLATFORM="offscreen", QT_FORCE_STDERR_LOGGING="1")

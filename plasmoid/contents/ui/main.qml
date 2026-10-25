@@ -266,7 +266,7 @@ PlasmoidItem {
     property var collectorInstall: ({ state: "idle" })
 
     function installCollector() {
-        if (root.collectorInstall.state === "running") return;  // um único install por vez
+        if (root.collectorInstall.state === "running" || root.widgetUpdateBusy) return;  // um único install/atualização por vez
         var script = Collector.scriptPath(Qt.resolvedUrl("../code/collector-installer.py"));
         var cmd = Collector.buildInstallCommand(script, root.widgetVersion);  // "" se a versão não for X.Y.Z
         if (cmd === "") {
@@ -305,6 +305,141 @@ PlasmoidItem {
         repeat: true
         running: true
         onTriggered: root.checkCollector()
+    }
+
+    // Atualização do Widget (ticket 77, ADR-0014): Coletor + .plasmoid pela versão nova do GitHub Releases. SÓ pelo clique
+    // (checkWidgetUpdate / askWidgetUpdate -> startWidgetUpdate); nunca na partida, por timer ou ao abrir o popup. Os
+    // DataSources vivem aqui (fechar o popup não interrompe) e o estado é compartilhado por todo menu que instanciar
+    // WidgetUpdate.qml. state: idle | buscando | confirmando | atualizando | concluido | erro.
+    // result (última busca): "" | nova | atual | indisponivel | desligada. Em erro: cause, message, log, failedStep.
+    property var widgetUpdate: ({ state: "idle", result: "", version: "", step: "" })
+    // Debounce: após uma busca o botão fica desligado por alguns segundos (sem rajada ao GitHub)
+    property bool widgetCheckCooldown: false
+    // Versão nova conhecida (busca desta sessão ou o aviso do status.json), "" se não há ou se a busca disse "atual"
+    readonly property string widgetUpdateVersion: widgetUpdate.result === "nova" ? widgetUpdate.version
+        : widgetUpdate.result === "" && updateInfo.widget ? Collector.cleanVersion(updateInfo.widget.latest) : ""
+    readonly property bool widgetUpdateBusy: widgetUpdate.state === "buscando" || widgetUpdate.state === "atualizando"
+
+    function setWidgetUpdate(state, extra) { root.widgetUpdate = Collector.nextWidgetUpdate(root.widgetUpdate, state, extra); }
+
+    function checkWidgetUpdate() {
+        if (root.widgetUpdateBusy || root.widgetCheckCooldown || root.widgetUpdate.state === "confirmando" || root.widgetUpdate.state === "concluido") return;
+        setWidgetUpdate("buscando", { result: "", version: "" });
+        widgetCheckSource.connectSource(buildCollectorCommand(Collector.shellQuote("--check-update")));
+    }
+    property bool widgetAskFromConfig: false  // a confirmação veio da janela de configuração: fechar o popup não a cancela
+    function askWidgetUpdate(fromConfig) {  // abre a confirmação inline; nada roda ainda
+        if (root.widgetUpdateBusy || root.widgetUpdateVersion === "" || root.collectorInstall.state === "running") return;
+        root.widgetAskFromConfig = fromConfig === true;
+        setWidgetUpdate("confirmando", {});
+    }
+    function cancelWidgetUpdate(origin) {  // origin "popup": o popup fechou
+        if (origin === "popup" && root.widgetAskFromConfig) return;
+        if (root.widgetUpdate.state === "confirmando") setWidgetUpdate("idle", {});
+    }
+    function startWidgetUpdate() {
+        if (root.widgetUpdate.state !== "confirmando" || root.collectorInstall.state === "running") return;  // clique repetido não duplica
+        var script = Collector.scriptPath(Qt.resolvedUrl("../code/collector-installer.py"));
+        var cmd = Collector.buildUpdateCommand(script, root.widgetUpdateVersion);  // "" se a versão não for X.Y.Z
+        if (cmd === "") { setWidgetUpdate("erro", { cause: "falha", message: "", log: [], failedStep: "" }); return; }
+        setWidgetUpdate("atualizando", { to: root.widgetUpdateVersion });
+        widgetUpdateSource.connectSource(cmd);
+    }
+    // Recarrega o plasmashell; só depois do clique + confirmação do usuário no card (o QML antigo segue em memória até lá)
+    function reloadWidget() {
+        if (root.widgetUpdate.state === "concluido") widgetReloadSource.connectSource(Collector.reloadCommand());
+    }
+
+    Plasma5Support.DataSource {
+        id: widgetCheckSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            if (data["exit code"] === undefined) return;  // parcial: espera o fim
+            disconnectSource(sourceName);
+            if (root.widgetUpdate.state !== "buscando") return;  // watchdog já encerrou a busca
+            var r = Collector.parseCheckUpdate(data["stdout"] || "");
+            root.setWidgetUpdate("idle", { result: r.update, version: r.version });
+            root.widgetCheckCooldown = true;
+            widgetCooldown.restart();
+        }
+    }
+    Timer { id: widgetCooldown; interval: 5000; onTriggered: root.widgetCheckCooldown = false }
+
+    Plasma5Support.DataSource {
+        id: widgetUpdateSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => {
+            var r = Collector.widgetUpdateOnData(root.widgetUpdate, data["stdout"] || "", data["exit code"]);
+            if (r.done) disconnectSource(sourceName);
+            root.widgetUpdate = r.next;
+        }
+    }
+    // Watchdog: busca presa (~30 s) ou atualização presa (~10 min) vira erro "falha" e solta os DataSources
+    Timer {
+        interval: root.widgetUpdate.state === "buscando" ? 30000 : 600000
+        running: root.widgetUpdateBusy
+        onTriggered: {
+            var next = Collector.widgetUpdateStuck(root.widgetUpdate);
+            if (next === null) return;
+            widgetCheckSource.connectedSources = [];
+            widgetUpdateSource.connectedSources = [];
+            root.widgetUpdate = next;
+        }
+    }
+    // Menus (painel e Notch): um único rótulo/estado para os dois e uma única entrada, `requestWidgetUpdate`. Ela nunca atualiza:
+    // só busca ou abre a confirmação inline e mostra o popup, onde o WidgetUpdate pede versão/origem/sem sudo.
+    readonly property string widgetUpdateActionText: widgetUpdate.state === "buscando" ? I18n.tr("Checking for updates…")
+        : widgetUpdate.state === "atualizando" ? I18n.tr("Updating the widget…")
+        : widgetUpdate.state === "concluido" ? I18n.tr("Reload the widget")
+        : widgetUpdate.state === "erro" && widgetUpdateVersion !== "" ? I18n.tr("Retry update to v%1", widgetUpdateVersion)
+        : widgetUpdateVersion !== "" ? I18n.tr("Update to v%1", widgetUpdateVersion) : I18n.tr("Check for updates")
+    readonly property string widgetUpdateActionIcon: widgetUpdate.state === "concluido" ? "system-reboot" : widgetUpdateVersion !== "" ? "update-none" : "view-refresh"  // o mesmo do botão do popup
+    readonly property bool widgetUpdateActionEnabled: !widgetUpdateBusy && collectorInstall.state !== "running" && (widgetUpdateVersion !== "" || widgetUpdate.state === "concluido" || !widgetCheckCooldown)
+    function requestWidgetUpdate() {
+        if (!root.widgetUpdateActionEnabled) return;
+        if (root.widgetUpdate.state === "idle" || root.widgetUpdate.state === "erro") {
+            if (root.widgetUpdateVersion !== "") root.askWidgetUpdate(); else root.checkWidgetUpdate();
+        }
+        root.setOpen(true);
+        if (root.hoverOpen) { root.pinned = true; root.openedByHover = false; }  // como o pillClicked: o hover não fecha a confirmação
+    }
+    Plasmoid.contextualActions: [
+        PlasmaCore.Action {
+            objectName: "widgetUpdateAction"
+            text: root.widgetUpdateActionText
+            icon.name: root.widgetUpdateActionIcon
+            enabled: root.widgetUpdateActionEnabled
+            onTriggered: root.requestWidgetUpdate()
+        }
+    ]
+
+    // Janela de configuração (outro contexto QML, sem acesso a este item): lê um espelho do estado e pede ações pela
+    // própria configuração. Quem executa continua sendo só este arquivo, então não há execução dupla.
+    readonly property string widgetUpdateMirror: JSON.stringify({ upd: { state: widgetUpdate.state, result: widgetUpdate.result, version: widgetUpdate.version,
+        step: widgetUpdate.step, to: widgetUpdate.to, cause: widgetUpdate.cause, message: widgetUpdate.message, failedStep: widgetUpdate.failedStep },
+        version: widgetUpdateVersion, current: widgetVersion, cooldown: widgetCheckCooldown })
+    onWidgetUpdateMirrorChanged: Plasmoid.configuration.widgetUpdateMirror = root.widgetUpdateMirror
+    Connections {
+        target: Plasmoid.configuration
+        function onWidgetUpdateRequestChanged() {
+            var a = String(Plasmoid.configuration.widgetUpdateRequest || "").split(":")[0];
+            if (a === "") return;
+            Plasmoid.configuration.widgetUpdateRequest = "";
+            if (a === "check") root.checkWidgetUpdate();
+            else if (a === "ask") root.askWidgetUpdate(true);
+            else if (a === "cancel") root.cancelWidgetUpdate();
+            else if (a === "start") root.startWidgetUpdate();
+            else if (a === "reload") root.reloadWidget();
+        }
+    }
+
+    Plasma5Support.DataSource {  // desconecta ao receber dados: um segundo clique reexecuta o comando
+        id: widgetReloadSource
+        engine: "executable"
+        connectedSources: []
+        onNewData: (sourceName, data) => disconnectSource(sourceName)
     }
 
     function buildCollectorCommand(quotedArgs) { return Collector.buildCollectorCommand(quotedArgs, Plasmoid.configuration.collectorPath); }
@@ -599,6 +734,7 @@ PlasmoidItem {
     }
 
     Component.onCompleted: {
+        Plasmoid.configuration.widgetUpdateMirror = root.widgetUpdateMirror;
         if (root.idleWanted) idleDelay.restart();
         if (root.rawIdle !== "") providerIdleDelay.restart();
         root.checkCollector();

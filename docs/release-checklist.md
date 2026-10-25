@@ -35,7 +35,8 @@ Ordem obrigatória. O PyPI vem antes da loja KDE, porque o botão do widget inst
 
 - [ ] **Bloqueante:** o nome no PyPI já é seu (aviso do topo) e o commit da tag está na `main` (o `pypi-build` recusa o contrário).
 - [ ] Na `main` atualizada: crie e envie a tag `vX.Y.Z` (a mesma versão do passo 2). Só tags `vX.Y.Z[-sufixo]` disparam o PyPI.
-- [ ] O wheel embute o SHA256 do `.plasmoid` (ADR-0014): `package-release.sh` roda `check-release-hash.py` e falha se faltar ou divergir; confira com `ai-usage-collector --plasmoid-sha256` após instalar o wheel.
+- [ ] Hash do `.plasmoid` (ADR-0014): o job `package` roda `scripts/package-release.sh`, que gera o `.plasmoid`, grava o SHA256 no wheel (`_plasmoid_sha256.py`) e roda `scripts/check-release-hash.py`; o job falha se o hash faltar ou divergir do zip. Os jobs `release` e `pypi-build` baixam o mesmo artefato (`upload-artifact`), então o zip da GitHub Release é exatamente o hasheado.
+- [ ] Confira à mão: `sha256sum dist/org.kde.plasma.aiusage.plasmoid` igual a `ai-usage-collector --plasmoid-sha256` (wheel instalado, ver passo 5) e ao anexo baixado da GitHub Release.
 - [ ] Acompanhe em Actions (`Release Automation`): `release` (GitHub Release com `.plasmoid` e `.whl`), `pypi-build` e `pypi-publish`. Os jobs do PyPI rodam em paralelo ao release do GitHub; um pode falhar sem o outro.
 - [ ] Aprove o `pypi-publish` (o environment `pypi` tem revisor obrigatório).
 - [ ] Primeiro release: o Trusted Publisher só se confirma aqui. Se o `pypi-publish` falhar por permissão, revise os campos do passo 1.
@@ -45,6 +46,8 @@ Ordem obrigatória. O PyPI vem antes da loja KDE, porque o botão do widget inst
 - [ ] https://pypi.org/project/plasma-ai-usage-collector/ mostra a versão `X.Y.Z`.
 - [ ] Smoke com HOME limpo (usuário novo ou `HOME=$(mktemp -d)`): `pipx install plasma-ai-usage-collector==X.Y.Z` e `ai-usage-collector --version` devolve `X.Y.Z`.
 - [ ] Smoke do botão: instale o `.plasmoid` da release num perfil sem Coletor, abra o popup, clique em Install collector, confirme e veja o card sumir e os dados aparecerem. Confira `~/.local/share/plasma-ai-usage/venv` e o atalho em `~/.local/bin`. Primeiro release: é a primeira vez que o botão fala com o PyPI de verdade.
+
+- [ ] Smoke da atualização: com um widget da versão anterior (>= 1.2.4, que embute o hash) e o Coletor do widget, clique em **Update to vX.Y.Z**, confirme e recarregue. Builds `latest` da `main` não têm wheel no PyPI: a atualização só vale para releases de tag. Quem está na 1.2.3 ou antes atualiza à mão uma vez (`docs/usage.pt-BR.md`, "Atualizar o widget").
 
 ## 6. KDE Store
 
@@ -72,6 +75,6 @@ No primeiro upload o projeto ainda não existe, então o token precisa ser da co
 
 ## Rollback
 
-- **PyPI:** não dá para reenviar a mesma versão. Em pypi.org > Manage > Releases, faça *yank* da versão ruim (quem fixou `==X.Y.Z` ainda instala; quem não fixou deixa de receber) e publique `X.Y.(Z+1)` corrigida. O botão do widget instala a versão exata do widget, então a loja e o PyPI precisam andar juntos.
+- **PyPI:** não dá para reenviar a mesma versão. Em pypi.org > Manage > Releases, faça *yank* da versão ruim (quem fixou `==X.Y.Z` ainda instala; quem não fixou deixa de receber) e publique `X.Y.(Z+1)` corrigida. O botão do widget instala a versão exata do widget (e a atualização confere o hash embutido no wheel), então a loja, o PyPI e a GitHub Release precisam andar juntos.
 - **Loja KDE:** em store.kde.org, despublique o produto ou volte o arquivo para o `.plasmoid` anterior.
 - **GitHub Release:** `gh release delete vX.Y.Z` e, se necessário, apague a tag. Isso não desfaz o PyPI.

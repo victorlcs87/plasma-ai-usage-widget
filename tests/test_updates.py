@@ -438,3 +438,87 @@ def test_enabled_follows_the_config_even_if_turned_off_during_the_query(env, net
     env()
     assert done == [0]
     assert json.loads(env.cache_path.read_text())["updates"] == {"enabled": False, "items": {}}
+
+
+def check(env, capsys):  # noqa: F811
+    capsys.readouterr()
+    assert main(["--check-update", *env.base]) == 0
+    return json.loads(capsys.readouterr().out)
+
+
+def test_forced_check_ignores_daily_interval_only_for_widget(env, net, capsys):  # noqa: F811
+    env()
+    net.calls.clear()
+    net.routes[W] = {"tag_name": "v9.1.0", "html_url": GOOD_URL}
+    out = check(env, capsys)  # mesmo dia: o intervalo diario seria respeitado
+    assert out == {"update": "nova", "version": "9.1.0", "url": GOOD_URL}
+    assert [r.full_url for r in net.calls] == [W]  # uma consulta, nada de npm
+    assert items(env)["widget"]["latest"] == "9.1.0"  # estado que o Plasmoid le
+    saved = json.loads(env.cache_path.with_name(updates.STATE_FILENAME).read_text())
+    assert saved["sources"]["claude"]["latest"] == "2.1.0"
+
+
+def test_forced_check_current_version(env, net, capsys):  # noqa: F811
+    env()
+    net.routes[W] = {"tag_name": f"v{__version__}", "html_url": GOOD_URL}
+    assert check(env, capsys) == {"update": "atual", "version": __version__}
+    assert items(env)["widget"]["available"] is False
+
+
+def test_forced_check_network_failure_without_known_version_is_indisponivel(env, net, capsys):  # noqa: F811
+    net.routes[W] = urllib.error.URLError("sem rede")
+    net.calls.clear()
+    assert check(env, capsys) == {"update": "indisponivel"}
+    assert len(net.calls) == 1
+
+
+def test_forced_check_disabled_does_not_query(env, net, capsys):  # noqa: F811
+    assert main(["--set-update-config", "--update-check", "off", *env.base]) == 0
+    assert check(env, capsys) == {"update": "desligada"}
+    assert net.calls == []
+
+
+def test_forced_check_consumes_the_day_for_the_normal_collection(env, net, capsys):  # noqa: F811
+    check(env, capsys)  # primeira consulta do dia, forcada
+    net.calls.clear()
+    env()  # coleta normal no mesmo dia: o widget ja foi consultado
+    assert W not in [r.full_url for r in net.calls]
+
+
+def test_forced_check_network_failure_falls_back_to_saved_latest(env, net, capsys):  # noqa: F811
+    env()
+    net.routes[W] = urllib.error.URLError("sem rede")
+    assert check(env, capsys) == {"update": "nova", "version": "9.0.0", "url": GOOD_URL}
+
+
+def test_forced_check_network_failure_with_saved_current_is_atual(env, net, capsys):  # noqa: F811
+    net.routes[W] = {"tag_name": f"v{__version__}", "html_url": GOOD_URL}
+    env()
+    net.routes[W] = urllib.error.URLError("sem rede")
+    assert check(env, capsys) == {"update": "atual", "version": __version__}
+
+
+def test_forced_check_without_status_json_writes_it_for_the_plasmoid(env, net, capsys):  # noqa: F811
+    assert check(env, capsys)["update"] == "nova"
+    data = json.loads(env.cache_path.read_text())
+    assert data["updates"]["items"]["widget"]["latest"] == "9.0.0"
+    validate_status_contract(data)
+
+
+def test_forced_check_adds_updates_key_to_status_without_it(env, net, capsys):  # noqa: F811
+    env()
+    data = json.loads(env.cache_path.read_text())
+    del data["updates"]
+    env.cache_path.write_text(json.dumps(data))
+    check(env, capsys)
+    assert items(env)["widget"]["latest"] == "9.0.0"
+    assert json.loads(env.cache_path.read_text())["updates"]["enabled"] is True
+
+
+@pytest.mark.parametrize("target", ["load_config", "status_lock"])
+def test_forced_check_internal_failure_still_prints_one_json_line(env, net, capsys, monkeypatch, target):  # noqa: F811
+    from ai_usage_collector import collector
+
+    boom = lambda *a, **k: (_ for _ in ()).throw(OSError("falha"))  # noqa: E731
+    monkeypatch.setattr(collector if target == "load_config" else refresh, target, boom)
+    assert check(env, capsys) == {"update": "indisponivel"}

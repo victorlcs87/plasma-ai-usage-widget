@@ -121,6 +121,7 @@ def run(tmp_path):
     main = (UI_DIR / "main.qml").read_text()
     main = re.sub(r"\n\s*Plasmoid\.backgroundHints:.*?\n\n", "\n\n", main, flags=re.S)  # atribuição de attached não existe no stub
     main = re.sub(r"\n\s*Plasmoid\.(icon|title|status):[^\n]*", "", main)
+    main = re.sub(r"\n\s*Plasmoid\.contextualActions:.*?\n    \]\n", "\n", main, flags=re.S)  # Action/attached não existem no stub
     (r / "Main.qml").write_text(main)
     steps = ",".join("[%d, function () { %s }]" % (d, js) for d, js in STEPS)
     (r / "h.qml").write_text(HARNESS % {"steps": steps, "data": json.dumps(fixture())})

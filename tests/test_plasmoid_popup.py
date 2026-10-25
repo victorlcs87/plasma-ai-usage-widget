@@ -36,7 +36,7 @@ STUBS = {
                           " Component.onCompleted: Log.sources.push(this) }"}),
 }
 
-FILES = ("ProviderLogo.qml", "logo-claude.svg", "logo-codex.svg", "logo-gemini.svg", "FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
+FILES = ("ProviderLogo.qml", "logo-claude.svg", "logo-codex.svg", "logo-gemini.svg", "FullRepresentation.qml", "AccountCard.qml", "WindowRow.qml", "NotchButton.qml", "WidgetUpdate.qml", "PlainTip.qml", "UsageDetails.qml", "TokenHistory.qml",
          "DualRing.qml", "SessionMark.qml", "Presets.js", "I18n.js", "Collector.js", "NotchModel.js", "PanelStyle.js", "ViewPrefs.js")
 
 HARNESS = """
@@ -67,6 +67,14 @@ Window { id: win; visible: true; width: %(w)d; height: %(h)d; color: "BGCOLOR"
     property var collectorStatus: null
     property var collectorInstall: ({state: "idle"})
     property string widgetVersion: "1.2.0"
+    property var widgetUpdate: ({state: "idle", result: "", version: "", step: ""})
+    property bool widgetCheckCooldown: false
+    readonly property string widgetUpdateVersion: widgetUpdate.result === "nova" ? widgetUpdate.version : widgetUpdate.result === "" && updateInfo.widget ? Collector.cleanVersion(updateInfo.widget.latest) : ""
+    function checkWidgetUpdate() { calls.push("check") }
+    function askWidgetUpdate() { calls.push("ask"); widgetUpdate = {state: "confirmando", result: widgetUpdate.result, version: widgetUpdate.version, step: ""} }
+    function cancelWidgetUpdate() { if (widgetUpdate.state === "confirmando") { calls.push("cancel"); widgetUpdate = {state: "idle", result: widgetUpdate.result, version: widgetUpdate.version, step: ""} } }
+    function startWidgetUpdate() { calls.push("update") }
+    function reloadWidget() { calls.push("reload") }
     property var calls: []
     function setPopupHovered(h) { calls.push("popupHover:" + h) }
     function closePopup() { calls.push("close") }

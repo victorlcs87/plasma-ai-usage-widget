@@ -76,6 +76,14 @@
       <label>Play a sound when the session finishes or asks for something</label>
       <default>false</default>
     </entry>
+    <entry name="widgetUpdateMirror" type="String">
+      <label>Internal: widget update state mirrored by the widget for the settings window (read only)</label>
+      <default></default>
+    </entry>
+    <entry name="widgetUpdateRequest" type="String">
+      <label>Internal: update action requested by the settings window, consumed by the widget</label>
+      <default></default>
+    </entry>
     <entry name="hoverOpen" type="Bool">
       <label>Open the popup when hovering the Notch (off: click only)</label>
       <default>true</default>

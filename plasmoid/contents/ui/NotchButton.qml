@@ -9,6 +9,7 @@ QQC2.AbstractButton {
     id: btn
 
     property color accent: Kirigami.Theme.highlightColor
+    property color fg: Presets.ui.fg  // texto/ícone; a janela de configuração (tema do sistema, claro ou escuro) passa o tom do tema
     property string hint: ""  // dica (tooltip) e descrição acessível
     property string accessibleName: ""  // nome para leitor de tela quando o texto tem glifos ou se repete por cartão
     property alias iconItem: iconItem
@@ -28,7 +29,7 @@ QQC2.AbstractButton {
 
     background: Rectangle {
         radius: 4
-        color: btn.down ? Qt.rgba(1, 1, 1, 0.16) : btn.hovered ? Qt.rgba(1, 1, 1, 0.1) : btn.checked ? Qt.rgba(1, 1, 1, 0.07) : "transparent"
+        color: btn.down ? Qt.alpha(btn.fg, 0.16) : btn.hovered ? Qt.alpha(btn.fg, 0.1) : btn.checked ? Qt.alpha(btn.fg, 0.07) : "transparent"
         border.width: btn.visualFocus ? 2 : 0
         border.color: btn.accent
     }
@@ -44,7 +45,7 @@ QQC2.AbstractButton {
                 width: Kirigami.Units.iconSizes.small
                 height: width
                 source: btn.icon.name
-                color: Presets.ui.fg
+                color: btn.fg
             }
             QQC2.Label {
                 id: label
@@ -55,7 +56,7 @@ QQC2.AbstractButton {
                 elide: Text.ElideRight
                 font.pointSize: Kirigami.Theme.smallFont.pointSize
                 font.bold: btn.checked
-                color: Presets.ui.fg
+                color: btn.fg
             }
         }
         Rectangle {  // marcado: traço sob o texto (forma além do negrito)

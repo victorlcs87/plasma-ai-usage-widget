@@ -1,6 +1,8 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as QQC2
 import org.kde.plasma.plasmoid
+import "I18n.js" as I18n
 
 // Pílula flutuante: o MESMO CompactRepresentation do painel (anéis, selos, hover, clique, ocultar), com a
 // orientação e o tamanho do Notch flutuante. Arrastar ao longo da borda, setas (8 px, Shift 32 px) e Home
@@ -19,6 +21,7 @@ FloatingFrame {
             var d = 0;
             if (event.key === (win.vertical ? Qt.Key_Up : Qt.Key_Left)) d = -step;
             else if (event.key === (win.vertical ? Qt.Key_Down : Qt.Key_Right)) d = step;
+            else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) { menu.popup(); event.accepted = true; return; }
             else if (event.key === Qt.Key_Home) { win.host.recenter(); event.accepted = true; return; }
             else return;
             win.host.nudge(d);
@@ -34,10 +37,31 @@ FloatingFrame {
             panelOverride: win.host ? win.host.panelCfg : null
         }
 
-        // Botão direito: Configurar (o mesmo caminho de volta do menu do widget no painel)
+        // Botão direito: Configurar (o mesmo caminho de volta do menu do widget no painel) e a atualização do widget, que
+        // só busca ou abre a confirmação no popup (requestWidgetUpdate); a janela da pílula é pequena, então o menu é uma janela própria
         TapHandler {
             acceptedButtons: Qt.RightButton
-            onTapped: Plasmoid.internalAction("configure").trigger()
+            onTapped: menu.popup()
+        }
+        QQC2.Menu {
+            id: menu
+            objectName: "pillMenu"
+            popupType: QQC2.Popup.Window
+            // o ponteiro sai da pílula ao abrir o menu: fixa o popup para o hover perdido não fechá-lo
+            onAboutToShow: if (win.host && win.host.plasmoidItem && win.host.plasmoidItem.open) win.host.plasmoidItem.pinned = true
+            QQC2.MenuItem {
+                objectName: "pillMenuUpdate"
+                text: win.host && win.host.plasmoidItem ? win.host.plasmoidItem.widgetUpdateActionText : ""
+                enabled: Boolean(win.host && win.host.plasmoidItem && win.host.plasmoidItem.widgetUpdateActionEnabled)
+                icon.name: win.host && win.host.plasmoidItem ? win.host.plasmoidItem.widgetUpdateActionIcon : "view-refresh"
+                onTriggered: win.host.plasmoidItem.requestWidgetUpdate()
+            }
+            QQC2.MenuItem {
+                objectName: "pillMenuConfigure"
+                text: I18n.tr("Configure…")
+                icon.name: "configure"
+                onTriggered: Plasmoid.internalAction("configure").trigger()
+            }
         }
 
         DragHandler {

@@ -255,7 +255,7 @@ def test_parse_install_requires_exit_zero_and_final_ok_line(tmp_path):
 def test_main_install_wiring_is_guarded_and_refreshes_after_success():
     main = (UI_DIR / "main.qml").read_text()
     fn = main.split("function installCollector")[1].split("Plasma5Support.DataSource")[0]
-    assert 'state === "running") return' in fn and "Collector.buildInstallCommand(script, root.widgetVersion)" in fn
+    assert 'state === "running" ||' in fn and "Collector.buildInstallCommand(script, root.widgetVersion)" in fn
     ds = main.split("id: installSource")[1].split("Timer {")[0]
     assert 'data["exit code"] === undefined' in ds and "root.checkCollector()" in ds and "root.collectorCheckedAt = 0" in ds
     assert 'verifying: true' in ds and 'cause: "verificacao"' in main.split("id: statusCheckSource")[1].split("Timer {")[0]  # só volta a idle após o recheck

@@ -4,6 +4,7 @@ import QtQuick.Controls as QQC2
 import QtCore
 
 import org.kde.kirigami as Kirigami
+import org.kde.plasma.plasmoid
 import org.kde.plasma.core as PlasmaCore
 import org.kde.plasma.components as PlasmaComponents3
 import org.kde.plasma.plasma5support as Plasma5Support
@@ -23,6 +24,32 @@ Item {
 
     // Texto de ajuda/secundário: texto do tema a 70% (>= 5:1 no Breeze claro e escuro; disabledTextColor dava 3,7:1)
     readonly property color secondaryText: Qt.alpha(Kirigami.Theme.textColor, 0.7)
+
+    // Atualização do Widget (ticket 78): esta janela não enxerga o main.qml; ele espelha o estado em Plasmoid.configuration e
+    // recebe os pedidos por lá. O proxy tem a mesma interface que o WidgetUpdate.qml usa (estado + cinco ações) e nada executa aqui.
+    Item {
+        id: wuProxy
+        objectName: "wuProxy"
+        property var mirror: ({})
+        readonly property var widgetUpdate: mirror.upd || ({ state: "idle", result: "", version: "", step: "" })
+        readonly property string widgetUpdateVersion: mirror.version || ""
+        readonly property string widgetVersion: mirror.current || ""
+        readonly property bool widgetCheckCooldown: mirror.cooldown === true
+        function refresh() {
+            try { var o = JSON.parse(Plasmoid.configuration.widgetUpdateMirror || "{}"); wuProxy.mirror = o && typeof o === "object" ? o : ({}); } catch (e) { wuProxy.mirror = ({}); }
+        }
+        function send(action) { Plasmoid.configuration.widgetUpdateRequest = action + ":" + Date.now(); }
+        function checkWidgetUpdate() { send("check"); }
+        function askWidgetUpdate() { send("ask"); }
+        function cancelWidgetUpdate() { send("cancel"); }
+        function startWidgetUpdate() { send("start"); }
+        function reloadWidget() { send("reload"); }
+        Component.onCompleted: refresh()
+        Connections {
+            target: Plasmoid.configuration
+            function onWidgetUpdateMirrorChanged() { wuProxy.refresh(); }
+        }
+    }
 
     // Intervalo de Atualização por provedor (KConfigXT, main.xml)
     property int cfg_refreshIntervalClaude: 3600
@@ -1095,6 +1122,39 @@ Item {
                             Accessible.description: I18n.tr("Queries the widget's GitHub Releases and the npm registry for Claude Code, Codex and Gemini CLI; nothing is downloaded or installed")
                             QQC2.ToolTip.text: Accessible.description
                             QQC2.ToolTip.visible: hovered || activeFocus
+                        }
+
+                        // Atualização do Widget: mesmo componente e mesmo estado do popup; só age com clique e confirmação
+                        ColumnLayout {
+                            objectName: "widgetUpdateSection"
+                            Layout.fillWidth: true
+                            spacing: Kirigami.Units.smallSpacing
+                            QQC2.Label {
+                                objectName: "widgetInstalledVersion"
+                                Layout.fillWidth: true
+                                visible: wuProxy.widgetVersion !== ""
+                                wrapMode: Text.WordWrap
+                                textFormat: Text.PlainText
+                                text: I18n.tr("Installed widget version: v%1", wuProxy.widgetVersion)
+                                Accessible.role: Accessible.StaticText
+                                Accessible.name: text
+                            }
+                            QQC2.Label {
+                                objectName: "widgetUpdateUnavailable"
+                                Layout.fillWidth: true
+                                visible: wuProxy.widgetVersion === ""
+                                wrapMode: Text.WordWrap
+                                textFormat: Text.PlainText
+                                color: configRoot.secondaryText
+                                text: I18n.tr("Updating is available once the widget is running.")
+                            }
+                            WidgetUpdate {
+                                objectName: "configWidgetUpdate"
+                                visible: wuProxy.widgetVersion !== ""
+                                plasmoidItem: wuProxy
+                                fg: Kirigami.Theme.textColor
+                                muted: configRoot.secondaryText
+                            }
                         }
 
                         // Renovação de Contas Gemini inativas: opt-in (usa o app OAuth da Antigravity; ver README e ADR 0013)
