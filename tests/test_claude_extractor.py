@@ -84,7 +84,7 @@ def test_claude_extractor_fresh_empty_directory(tmp_path):
         "claudeAiOauth": {
             "accessToken": "sk-ant-test",
             "subscriptionType": "pro",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     (claude_dir / ".credentials.json").write_text(json.dumps(creds))
@@ -129,7 +129,7 @@ def test_claude_extractor_active_5h_and_weekly_usage(tmp_path):
         "claudeAiOauth": {
             "accessToken": "sk-ant-test",
             "subscriptionType": "pro",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     (claude_dir / ".credentials.json").write_text(json.dumps(creds))
@@ -201,7 +201,7 @@ def test_claude_extractor_quota_exhausted_or_exceeded(tmp_path):
         "claudeAiOauth": {
             "accessToken": "sk-ant-test",
             "subscriptionType": "pro",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     (claude_dir / ".credentials.json").write_text(json.dumps(creds))
@@ -399,7 +399,7 @@ def test_collector_integration_with_claude_native_extractor(tmp_path):
         "claudeAiOauth": {
             "accessToken": "sk-ant-test",
             "subscriptionType": "pro",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     (claude_dir / ".credentials.json").write_text(json.dumps(creds))
@@ -605,7 +605,7 @@ def test_extract_claude_status_with_official_api(tmp_path):
         "claudeAiOauth": {
             "accessToken": "sk-ant-live",
             "subscriptionType": "pro",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     (claude_dir / ".credentials.json").write_text(json.dumps(creds))
@@ -656,7 +656,7 @@ def test_extract_claude_status_fallback_when_api_fails(tmp_path):
         "claudeAiOauth": {
             "accessToken": "sk-ant-live",
             "subscriptionType": "pro",
-            "expiresAt": "2026-10-25T12:00:00Z",
+            "expiresAt": "2099-01-01T00:00:00Z",
         }
     }
     (claude_dir / ".credentials.json").write_text(json.dumps(creds))
