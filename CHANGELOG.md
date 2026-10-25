@@ -1,6 +1,6 @@
 # Changelog
 
-## Não lançado
+## 1.3.0
 
 ### Novidades
 - Atualização do widget pelo Plasmoid (ADR-0014): botão "Update to vX.Y.Z" no popup, no menu do painel, no menu do Notch e na configuração, com Busca de Atualização (`ai-usage-collector --check-update`) e confirmação inline (versão atual → nova, GitHub Releases, sem `sudo`).

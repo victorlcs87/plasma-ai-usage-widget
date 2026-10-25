@@ -15,7 +15,7 @@
         "License": "GPL-3.0-or-later",
         "Name": "AI Usage Monitor",
         "Name[pt_BR]": "Monitor de Uso de IA",
-        "Version": "1.2.4",
+        "Version": "1.3.0",
         "Website": "https://github.com/victorlcs87/plasma-ai-usage-widget"
     },
     "X-Plasma-API-Minimum-Version": "6.0",

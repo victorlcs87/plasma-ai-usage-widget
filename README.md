@@ -51,10 +51,10 @@ For an existing installation, replace `--install` with `--upgrade`.
 
 Open the widget, click **Install collector** and confirm. It installs the matching version from PyPI into its own virtual environment, without `sudo` or changes to system Python. The collector is required to display usage.
 
-Prefer managing it yourself? Use pipx to install the **same version as the widget**. For release `v1.2.4`:
+Prefer managing it yourself? Use pipx to install the **same version as the widget**. For release `v1.3.0`:
 
 ```bash
-pipx install plasma-ai-usage-collector==1.2.4
+pipx install plasma-ai-usage-collector==1.3.0
 ```
 
 ### Updating the widget

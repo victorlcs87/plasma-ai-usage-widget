@@ -51,10 +51,10 @@ Para atualizar uma instalação existente, troque `--install` por `--upgrade`.
 
 Abra o widget, clique em **Install collector** e confirme. Ele instala do PyPI a versão correspondente ao widget, em um ambiente virtual próprio, sem `sudo` ou alterações no Python do sistema. O coletor é obrigatório para exibir o uso.
 
-Se preferir gerenciar o coletor, use pipx para instalar a **mesma versão do widget**. Para o release `v1.2.4`:
+Se preferir gerenciar o coletor, use pipx para instalar a **mesma versão do widget**. Para o release `v1.3.0`:
 
 ```bash
-pipx install plasma-ai-usage-collector==1.2.4
+pipx install plasma-ai-usage-collector==1.3.0
 ```
 
 ### Atualizar o widget
