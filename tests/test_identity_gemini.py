@@ -225,7 +225,7 @@ def test_profile_with_newer_expiry_is_not_regressed_by_system(env):
     assert len(list(pa.glob("oauth_creds.json.bak-*"))) == 1
 
 
-def test_collector_never_writes_renewed_token_to_disk(env, monkeypatch):
+def test_collector_syncs_matching_keyring_token_only_to_profile(env, monkeypatch):
     pa = env.profile("a", _creds("a@x.com", "tok-a", "ref-a", PAST_MS))
     env.save_cfg([_acc("a", pa)])
     before = (pa / "oauth_creds.json").read_bytes()
@@ -233,7 +233,8 @@ def test_collector_never_writes_renewed_token_to_disk(env, monkeypatch):
     monkeypatch.setattr("ai_usage_collector.extractors.gemini.fetch_gemini_quota_api",
                         lambda token, *a, **k: {"buckets": []})
     env.run("--status")
-    assert (pa / "oauth_creds.json").read_bytes() == before
+    assert _read(pa / "oauth_creds.json")["access_token"] == "tok-kr"
+    assert any(p.read_bytes() == before for p in pa.glob("oauth_creds.json.bak-*"))
     assert not env.sys_creds.exists()
 
 

@@ -1026,6 +1026,33 @@ def account_credential_file(provider: str, account: dict[str, Any]) -> Path | No
     return Path(val).expanduser().resolve() if val else None
 
 
+def find_account_by_token(
+    provider: str,
+    accounts: list[dict[str, Any]],
+    creds: dict[str, Any] | None,
+    cred_file: Path | None = None,
+) -> dict[str, Any] | None:
+    """Conta cujo access_token ou refresh_token coincide exatamente com `creds`.
+
+    Diferente de `find_matching_account`, não faz fallback para identidade da Conta
+    nem assinatura de metadados; só retorna uma Conta se os tokens coincidirem.
+    """
+    prov = provider.lower().strip()
+    target = cred_file.expanduser().resolve() if cred_file else None
+    exclude_system = supports_identity(prov)
+    sig = _extract_credential_signature(prov, creds) if creds else {}
+    if not any(sig.get(k) for k in ("refresh_token", "access_token")):
+        return None
+    for acc in accounts:
+        f = account_credential_file(prov, acc)
+        if f is not None and f.is_file() and not (exclude_system and target and f == target):
+            acc_sig = _extract_credential_signature(prov, _read_json_dict(f))
+            for key in ("refresh_token", "access_token"):
+                if sig.get(key) and sig[key] == acc_sig.get(key):
+                    return acc
+    return None
+
+
 def find_matching_account(
     provider: str,
     accounts: list[dict[str, Any]],
@@ -1114,6 +1141,109 @@ def _store_into_profile(
     if copy_identity:
         copy_identity_state(provider, src_file, profile_file)
     enforce_profile_security_permissions(profile_file.parent)
+
+
+def sync_active_claude_profile(
+    accounts: list[dict[str, Any]], override: Path | None = None,
+    config_path: str | Path | None = None,
+) -> str | None:
+    """Sincroniza somente uma Conta Claude com identidade inequívoca antes da coleta.
+
+    O estado de identidade do Claude fica separado da credencial. Por isso exigimos
+    identidade conhecida nos dois lados e um único perfil correspondente.
+    """
+    system_file = get_system_credential_file("claude", override)
+    system_creds = get_active_credentials("claude", override)
+    system_identity = credential_identity("claude", system_file)
+    if not system_creds or not system_identity:
+        return None
+    oauth = system_creds.get("claudeAiOauth")
+    if not isinstance(oauth, dict) or not (oauth.get("accessToken") or oauth.get("refreshToken")):
+        return None
+    # O estado ~/.claude.json pode estar defasado após uma troca externa. Se os
+    # tokens identificam outro Perfil Isolado, não copiar para a identidade antiga.
+    token_match = find_account_by_token("claude", accounts, system_creds, system_file)
+    if token_match is not None:
+        token_profile = account_credential_file("claude", token_match)
+        token_identity = credential_identity("claude", token_profile) if token_profile else None
+        if token_identity is None or token_identity.key != system_identity.key:
+            return None
+    profiles_base = get_profiles_base_dir(config_path)
+    matches = []
+    for account in accounts:
+        profile = account_credential_file("claude", account)
+        if (profile is None or profile == system_file.resolve()
+                or not profile.is_relative_to(profiles_base) or not profile.parent.is_dir()):
+            continue
+        identity = credential_identity("claude", profile)
+        if identity and identity.key == system_identity.key:
+            matches.append((account, profile))
+    if len(matches) != 1:
+        return None
+    account, profile = matches[0]
+    _store_into_profile("claude", system_creds, system_file, profile)
+    return str(account.get("id"))
+
+
+def sync_active_codex_profile(
+    accounts: list[dict[str, Any]], override: Path | None = None,
+    config_path: str | Path | None = None,
+) -> str | None:
+    """Sincroniza a credencial Codex somente para uma identidade inequívoca."""
+    system_file = get_system_credential_file("codex", override)
+    system_creds = get_active_credentials("codex", override)
+    system_identity = credential_identity("codex", system_file)
+    if not system_creds or not system_identity:
+        return None
+    tokens = system_creds.get("tokens")
+    if not isinstance(tokens, dict) or not (tokens.get("access_token") or tokens.get("refresh_token")):
+        return None
+    profiles_base = get_profiles_base_dir(config_path)
+    matches = []
+    for account in accounts:
+        profile = account_credential_file("codex", account)
+        if (profile is None or profile == system_file.resolve()
+                or not profile.is_relative_to(profiles_base) or not profile.parent.is_dir()):
+            continue
+        identity = credential_identity("codex", profile)
+        if identity and identity.key == system_identity.key:
+            matches.append((account, profile))
+    if len(matches) != 1:
+        return None
+    account, profile = matches[0]
+    _store_into_profile("codex", system_creds, system_file, profile)
+    return str(account.get("id"))
+
+
+def sync_active_gemini_profile(
+    accounts: list[dict[str, Any]], override: Path | None = None,
+    config_path: str | Path | None = None,
+) -> str | None:
+    """Copy the live Gemini credential only to one profile with the same email."""
+    system_file = get_system_credential_file("gemini", override)
+    system_creds = get_active_credentials("gemini", override)
+    system_identity = creds_identity("gemini", system_creds)
+    if not system_creds or not system_identity or not (system_creds.get("access_token") or system_creds.get("refresh_token")):
+        return None
+    profiles_base = get_profiles_base_dir(config_path).resolve()
+    matches = []
+    for account in accounts:
+        raw_path = account.get("credential_path") or account.get("credentials_path")
+        if raw_path and Path(raw_path).expanduser().is_symlink():
+            continue
+        profile = account_credential_file("gemini", account)
+        if (profile is None or profile == system_file.resolve()
+                or not profile.is_relative_to(profiles_base) or not profile.parent.is_dir()
+                or profile.is_symlink()):
+            continue
+        identity = credential_identity("gemini", profile)
+        if identity and identity.key == system_identity.key:
+            matches.append((account, profile))
+    if len(matches) != 1:
+        return None
+    account, profile = matches[0]
+    _store_into_profile("gemini", system_creds, system_file, profile)
+    return str(account.get("id"))
 
 
 PROFILE_BACKUPS_KEPT = 5

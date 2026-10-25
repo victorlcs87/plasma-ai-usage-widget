@@ -16,6 +16,9 @@ from ai_usage_collector.capture import (
     get_active_credentials,
     get_system_credential_file,
     switch_system_account,
+    sync_active_claude_profile,
+    sync_active_codex_profile,
+    sync_active_gemini_profile,
     sync_gemini_from_antigravity,
 )
 from ai_usage_collector.config import (
@@ -179,6 +182,32 @@ def _collect(
             sys.stderr.write(f"Aviso: Conta Ativa {agent_id} nao detectada: {type(e).__name__}\n")
             active_acc_id = None
 
+        synced_id = None
+        if agent_id == "claude":
+            try:
+                with config_lock(config_path):
+                    synced_id = sync_active_claude_profile(accounts, credential_override(agent_id, config), config_path)
+                if synced_id is not None:
+                    active_acc_id = synced_id
+            except (OSError, ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Aviso: Perfil Claude nao sincronizado: {type(e).__name__}\n")
+        if agent_id == "codex":
+            try:
+                with config_lock(config_path):
+                    synced_id = sync_active_codex_profile(accounts, credential_override(agent_id, config), config_path)
+                if synced_id is not None:
+                    active_acc_id = synced_id
+            except (OSError, ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Aviso: Perfil Codex nao sincronizado: {type(e).__name__}\n")
+        if agent_id == "gemini":
+            try:
+                with config_lock(config_path):
+                    synced_id = sync_active_gemini_profile(accounts, credential_override(agent_id, config), config_path)
+                if synced_id is not None:
+                    active_acc_id = synced_id
+            except (OSError, ValueError, RuntimeError) as e:
+                sys.stderr.write(f"Aviso: Perfil Gemini nao sincronizado: {type(e).__name__}\n")
+
         for acc in accounts:
             acc_id = acc.get("id", "default")
             manual_renew = renew_account == (agent_id, str(acc_id))
@@ -203,14 +232,41 @@ def _collect(
             manual_invite = acc.get("manual_invite_url")
             manual_invite_count = acc.get("manual_invite_count")
 
-            if agent_id == "gemini" and source == "captured" and cred_path:
+            if agent_id == "gemini" and source == "captured" and cred_path and not is_active:
                 try:
                     sync_gemini_from_antigravity(Path(cred_path))  # copia isolada acompanha o token vivo
                 except Exception as e:
                     sys.stderr.write(f"Aviso: Gemini {acc_id} nao sincronizado com a Antigravity: {type(e).__name__}\n")
             cyc.begin_account(agent_id, str(acc_id))
+            claude_api = provider_settings(config, "claude") if agent_id == "claude" else None
+            official_claude_oauth = agent_id == "claude" and not (claude_api or {}).get("api_base_url")
+            active_oauth = (get_active_credentials("claude", credential_override(agent_id, config)) or {}).get("claudeAiOauth") if official_claude_oauth and is_active else None
+            active_codex = get_active_credentials("codex", credential_override(agent_id, config)) if agent_id == "codex" and is_active else None
+            codex_token = (active_codex or {}).get("tokens") if isinstance(active_codex, dict) else None
+            gemini_auto = agent_id == "gemini" and is_active and not renew_account and renew.renew_gemini_enabled(config)
             if is_active and manual_renew:
                 renew.renew_active_manual(cyc, agent_id, str(acc_id), acc, credential_override(agent_id, config), config_path)
+            elif official_claude_oauth and is_active and synced_id == str(acc_id) and not renew_account and cred_path and (
+                not isinstance(active_oauth, dict) or not active_oauth.get("accessToken")
+                or ((expiry := renew._expiry_ts("claude", Path(cred_path))) is not None
+                    and expiry <= now_dt.timestamp())
+            ):
+                renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                        credential_override(agent_id, config), config_path)
+            elif agent_id == "codex" and is_active and synced_id == str(acc_id) and not renew_account and cred_path and (
+                not isinstance(codex_token, dict) or not codex_token.get("access_token")
+                or ((expiry := renew._expiry_ts("codex", Path(cred_path))) is not None
+                    and expiry <= now_dt.timestamp())
+            ):
+                renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                        credential_override(agent_id, config), config_path)
+            elif gemini_auto and synced_id == str(acc_id) and cred_path and (
+                not (get_active_credentials("gemini", credential_override(agent_id, config)) or {}).get("access_token")
+                or ((expiry := renew._expiry_ts("gemini", Path(cred_path))) is not None
+                    and expiry <= now_dt.timestamp())
+            ):
+                renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                        credential_override(agent_id, config), config_path)
             elif not is_active and (not renew_account or manual_renew):
                 renew.renew_inactive(
                     cyc, agent_id, str(acc_id), acc, interval, credential_override(agent_id, config),
@@ -221,9 +277,18 @@ def _collect(
             weekly_window = None
             invites = None
             usage_details = None
+            first_outcome = None
 
             if agent_id == "claude":
-                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=provider_settings(config, "claude"))
+                claude_data = extract_claude_status(acc, initial_health=health, now=now_dt, api=claude_api)
+                first_outcome = cyc.take_outcome()
+                if (official_claude_oauth and is_active and synced_id == str(acc_id) and not manual_renew and not renew_account
+                        and first_outcome and first_outcome["kind"] == "auth"
+                        and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                                    credential_override(agent_id, config), config_path)):
+                    health = discover_account(agent_id, cred_path, account_data=acc)
+                    claude_data = extract_claude_status(
+                        acc, initial_health=health, now=now_dt, api=claude_api)
                 health = claude_data.get("health", health)
                 native_window = claude_data.get("native_window")
                 weekly_window = claude_data.get("weekly_window")
@@ -231,6 +296,13 @@ def _collect(
                 usage_details = claude_data.get("usage_details")
             elif agent_id == "codex":
                 codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
+                first_outcome = cyc.take_outcome()
+                if (is_active and synced_id == str(acc_id) and not manual_renew and not renew_account
+                        and first_outcome and first_outcome["kind"] == "auth"
+                        and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                                    credential_override(agent_id, config), config_path)):
+                    health = discover_account(agent_id, cred_path, account_data=acc)
+                    codex_data = extract_codex_status(acc, initial_health=health, now=now_dt)
                 health = codex_data.get("health", health)
                 native_window = codex_data.get("native_window")
                 weekly_window = codex_data.get("weekly_window")
@@ -238,6 +310,12 @@ def _collect(
                 usage_details = codex_data.get("usage_details")
             elif agent_id == "gemini":
                 gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
+                first_outcome = cyc.take_outcome()
+                if (gemini_auto and synced_id == str(acc_id) and first_outcome and first_outcome["kind"] == "auth"
+                        and renew.renew_active_auto(cyc, agent_id, str(acc_id), acc, interval,
+                                                    credential_override(agent_id, config), config_path)):
+                    health = discover_account(agent_id, cred_path, account_data=acc)
+                    gemini_data = extract_gemini_status(acc, initial_health=health, now=now_dt)
                 health = gemini_data.get("health", health)
                 native_window = gemini_data.get("native_window")
                 weekly_window = gemini_data.get("weekly_window")
@@ -269,17 +347,19 @@ def _collect(
                 is_active=is_active,
                 usage_details=usage_details,
             )
-            last_renewal = None if is_active and not manual_renew else cyc.renewals.get(f"{agent_id}:{acc_id}")
-            if agent_id == "gemini" and not is_active and not manual_renew and not renew.renew_gemini_enabled(config):
+            last_renewal = cyc.renewals.get(f"{agent_id}:{acc_id}")
+            if agent_id == "gemini" and not manual_renew and not renew.renew_gemini_enabled(config):
                 acc_status["renewal"] = {"error": "disabled", "at": refresh._iso(now_dt.timestamp())}  # so avisar
             elif last_renewal:  # so a classe do erro e a hora; nunca saida da CLI ou token
                 acc_status["renewal"] = {"error": last_renewal["error"], "at": refresh._iso(last_renewal["at"])}
-            outcome = cyc.take_outcome()
+            outcome = cyc.take_outcome() or first_outcome
             identity = credential_identity(agent_id, cred_path) if outcome and cred_path else None
             refresh.apply_outcome(
                 acc_status, outcome, previous_accounts.get(str(acc_id)), now_dt, interval,
                 identity_key=identity.key if identity else None,
             )
+            if agent_id in ("claude", "codex"):
+                refresh.ensure_confirmed_windows(acc_status, previous_accounts.get(str(acc_id)), identity.key if identity else None)
             if (
                 agent_id == "gemini" and "no_data" not in acc_status
                 and all(acc_status[w].get("usage_percentage") is None for w in ("native_window", "weekly_window"))

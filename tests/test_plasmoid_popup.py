@@ -687,3 +687,19 @@ def test_history_without_tokens_leaves_no_empty_chart_strip(tmp_path):
     zero = popup(tmp_path / "b", "hist_zero", data=data, drive=drive, size=(460, 1400))
     assert full["chart"] == 1 and zero["chart"] == 0 and "Today 0 • Week 0 • Month 0" in zero["txt"][0]
     assert full["h"] - zero["h"] >= 30  # a faixa de ~2 gridUnits sumiu e o resumo/30d continuam
+
+
+def test_claude_no_quota_data_keeps_token_history_visible(tmp_path):
+    data = fixture()
+    account = data["agents"]["claude"]["accounts"][0]
+    account["native_window"] = {"usage_percentage": None, "tokens_used": 120000}
+    account["weekly_window"] = {"usage_percentage": None}
+    account["no_data"] = True
+    result = popup(tmp_path, "claude_no_quota", data=data, size=(460, 1400), drive="""
+        obs('status', all(f).filter(function (k) { return k.visible && typeof k.text === 'string' && k.text.indexOf('No data from the provider') !== -1 }).map(function (k) { return k.text }))
+        obs('history', txt('historySummary'))
+        obs('pct', txt('pct'))
+    """)
+    assert result["status"]
+    assert any("Today" in value for value in result["history"])
+    assert "0%" not in result["pct"]

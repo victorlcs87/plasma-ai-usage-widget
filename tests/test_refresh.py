@@ -302,8 +302,8 @@ def test_window_without_own_history_has_no_percentage(env, tmp_path):
     assert nw["usage_percentage"] is None
     assert nw["used_capacity"] is None and nw["available_capacity"] is None
     assert nw["release_time"] is None
-    assert isinstance(ww["usage_percentage"], float) and ww["messages_used"] == 3
-    assert "no_data" not in acc
+    assert ww["usage_percentage"] is None and ww["messages_used"] == 3
+    assert acc["no_data"] is True
     assert validate_status_contract(status)
 
 
@@ -515,7 +515,7 @@ def test_idle_account_with_null_windows_is_a_valid_response(env, tmp_path):
     configure(env, tmp_path, {"claude": [make_profile(tmp_path, "claude", "a")]})
     status = env["run"]("--provider", "claude", http=FakeHttp(claude=[{"five_hour": None, "seven_day": None}]))
     acc = acc_of(status, "claude")
-    assert acc["stale"] is False and "no_data" not in acc and "fetch_error" not in acc
+    assert acc["stale"] is False and acc["no_data"] is True and "fetch_error" not in acc
 
 
 def test_remove_account_forgets_its_pause(env, tmp_path):

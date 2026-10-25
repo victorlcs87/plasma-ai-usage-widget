@@ -177,12 +177,14 @@ def test_collector_consolidates_all_three_providers_simultaneously(tmp_path):
     # Claude window check
     cl_acc = agents["claude"]["accounts"][0]
     assert cl_acc["native_window"]["type"] == "5h"
-    assert cl_acc["native_window"]["used_capacity"] == 1
+    assert cl_acc["native_window"]["used_capacity"] is None  # sem confirmação da API
+    assert cl_acc["native_window"]["messages_used"] == 1
 
     # Codex window check
     co_acc = agents["codex"]["accounts"][0]
     assert co_acc["native_window"]["type"] == "3h"
-    assert co_acc["native_window"]["used_capacity"] == 1
+    assert co_acc["native_window"]["used_capacity"] is None  # sem confirmação da API
+    assert co_acc["native_window"]["messages_used"] == 1
 
     # Gemini window check
     ge_acc = agents["gemini"]["accounts"][0]

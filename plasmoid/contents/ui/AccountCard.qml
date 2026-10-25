@@ -155,6 +155,21 @@ Rectangle {
             try {
                 var payload = JSON.parse((data["stdout"] || "").trim());
                 if (cardRoot.plasmoidItem) cardRoot.plasmoidItem.statusData = payload;
+                var provider = String(cardRoot.accountData?.provider || "").toLowerCase();
+                var accountId = String(cardRoot.accountData?.id || "");
+                var accounts = payload && payload.agents && payload.agents[provider] && payload.agents[provider].accounts ? payload.agents[provider].accounts : [];
+                var updated = null;
+                for (var i = 0; i < accounts.length; i++) {
+                    if (String(accounts[i].id) === accountId) {
+                        updated = accounts[i];
+                        break;
+                    }
+                }
+                if (updated && updated.renewal && updated.renewal.error) {
+                    cardRoot.renewalError = cardRoot.authErrorText(updated.renewal);
+                } else {
+                    cardRoot.renewalError = "";
+                }
             } catch (e) {
                 if (cardRoot.plasmoidItem && typeof cardRoot.plasmoidItem.loadStatus === "function") cardRoot.plasmoidItem.loadStatus();
             }
@@ -250,6 +265,7 @@ Rectangle {
         var acc = cardRoot.accountData || {};
         var parts = [];
         if (acc.fetch_error && cardRoot.fetchErrorText(acc.fetch_error)) parts.push("⚠ " + cardRoot.fetchErrorText(acc.fetch_error));
+        else if (acc.renewal && acc.renewal.error && cardRoot.authErrorText(acc.renewal)) parts.push("⚠ " + cardRoot.authErrorText(acc.renewal));
         if (cardRoot.hasNoData) parts.push(I18n.tr("No data from the provider"));
         else if (cardRoot.isStale && acc.fetched_at && !isNaN(Date.parse(acc.fetched_at)))
             parts.push(I18n.tr("Data from %1", ViewPrefs.dateText(Date.parse(acc.fetched_at), cardRoot.nowMs)));

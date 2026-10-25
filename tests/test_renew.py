@@ -274,6 +274,10 @@ def test_codex_in_user_local_bin_is_renewed_with_desktop_path(env, tmp_path, fak
     local_bin.mkdir(parents=True)
     (tmp_path / "bin" / "codex").rename(local_bin / "codex")
     monkeypatch.setenv("PATH", "/usr/bin:/bin")
+    # Algumas maquinas tem Codex tambem em /usr/bin; simule sua ausencia no PATH
+    # para exercitar especificamente o fallback em ~/.local/bin.
+    real_which = renew.shutil.which
+    monkeypatch.setattr(renew.shutil, "which", lambda exe: None if exe == "codex" else real_which(exe))
     profile = make_expired_profile(tmp_path, "codex", "desktop")
     configure(env, tmp_path, {"codex": [profile]})
 

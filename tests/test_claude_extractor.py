@@ -449,12 +449,12 @@ def test_collector_integration_with_claude_native_extractor(tmp_path):
     # Native window check
     nw = acc["native_window"]
     assert nw["type"] == "5h"
-    assert nw["used_capacity"] == 2
+    assert nw["used_capacity"] is None
     assert nw["total_capacity"] == 45
-    assert nw["available_capacity"] == 43
-    assert nw["usage_percentage"] == round((2 / 45) * 100, 1)
-    assert nw["release_time"] is not None
-    assert nw["seconds_remaining"] is not None
+    assert nw["available_capacity"] is None
+    assert nw["usage_percentage"] is None
+    assert nw["messages_used"] == 2
+    assert acc["no_data"] is True
 
     # Free trial invites check
     assert acc["free_trial_invites"]["available_count"] == 1

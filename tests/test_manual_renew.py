@@ -7,7 +7,7 @@ import pytest
 
 from ai_usage_collector import renew
 from ai_usage_collector.cli import main
-from test_refresh import API_OK, T0, FakeHttp, acc_of, configure, env, make_profile
+from test_refresh import API_OK, T0, FakeHttp, acc_of, configure, env, http_error, make_profile
 from test_renew import install_system
 
 
@@ -168,3 +168,44 @@ def test_manual_renew_cannot_bypass_shared_system_refresh_token_guard(env, tmp_p
     status = env["run"]("--renew-account", "claude", "target", http=FakeHttp(claude=[API_OK["claude"]]))
     assert calls == []
     assert acc_of(status, "claude")["renewal"]["error"] == "detection_failed"
+
+
+@pytest.mark.parametrize("storage", ["keyring", "file"])
+def test_manual_active_gemini_rejects_divergent_identity_without_persisting(env, tmp_path, monkeypatch, storage):
+    target = make_profile(tmp_path, "gemini", "target", expired=True, ident="demo@example.test")
+    system_dir = install_system(tmp_path, "gemini", target)
+    system_file = system_dir / "oauth_creds.json"
+    old = json.loads(system_file.read_text())
+    stored = []
+    source = "keyring (secret-tool)" if storage == "keyring" else str(system_file)
+    monkeypatch.setattr("ai_usage_collector.capture.get_active_gemini_credentials", lambda _override=None: (old, source))
+    monkeypatch.setattr("ai_usage_collector.capture._store_gemini_keyring", stored.append)
+    monkeypatch.setattr("ai_usage_collector.running.detect_running", lambda: {"gemini": False})
+    # Credencial renovada com identidade divergente (outro email)
+    divergent = {**old, "email": "divergent@example.test", "access_token": "divergent-tok"}
+    divergent.pop("id_token", None)
+    monkeypatch.setattr(renew, "_refresh_gemini_credentials", lambda _creds: divergent)
+    configure(env, tmp_path, {"gemini": [target]})
+    status = env["run"]("--renew-account", "gemini", "target", http=FakeHttp(gemini=[API_OK["gemini"]]))
+    assert acc_of(status, "gemini")["renewal"]["error"] == "detection_failed"
+    assert stored == []
+    assert json.loads(system_file.read_text())["access_token"] == old["access_token"]
+
+
+def test_manual_active_claude_renewal_with_http_429_records_pause_without_retry(env, tmp_path, monkeypatch):
+    target = make_profile(tmp_path, "claude", "target", expired=True, ident="identity")
+    system = install_system(tmp_path, "claude", target, ident="identity")
+    configure(env, tmp_path, {"claude": [target]})
+    monkeypatch.setattr("ai_usage_collector.running.detect_running", lambda: {"claude": False})
+    calls = []
+    monkeypatch.setattr(renew, "RENEWERS", {"claude": refresh_fake("claude", calls)})
+    status = env["run"]("--renew-account", "claude", "target", http=FakeHttp(claude=[http_error(429, "120")]))
+    assert calls == [system]
+    account = acc_of(status, "claude")
+    assert account["renewal"]["error"] is None
+    assert account["fetch_error"]["kind"] == "rate_limited"
+    assert account["fetch_error"]["retry_at"] is not None
+    assert account["native_window"]["usage_percentage"] is None
+    assert account["no_data"] is True
+    # Credencial foi renovada
+    assert json.loads(Path(target["credential_path"]).read_text())["claudeAiOauth"]["expiresAt"] > (T0 + timedelta(hours=1)).isoformat()

@@ -93,3 +93,56 @@ def test_successful_renewal_displays_fresh_usage_without_reopening(tmp_path, pro
     assert "37%" in out["percentages"]
     assert out["remainingButtons"] == 0
     assert out["refreshing"] is False
+
+
+@pytest.mark.parametrize("error_code,expect", [
+    ("cli_running", "close the provider CLI, then click Renew session to refresh this account safely."),
+    ("detection_failed", "could not safely identify the active session. Close the provider CLI and try Renew session again."),
+])
+def test_manual_renewal_failure_displays_guidance_feedback(tmp_path, error_code, expect):
+    data = fixture()
+    for agent in data["agents"].values():
+        agent["accounts"] = []
+    data["agents"]["claude"]["accounts"] = [acct("claude", "target", "Active account", True,
+        health="session_expired", no_data=True, fetch_error={"kind": "auth"})]
+    drive = """
+        btn('Renew session').click()
+        var fresh = JSON.parse(JSON.stringify(logic.statusData))
+        var account = fresh.agents.claude.accounts[0]
+        account.renewal = {error: 'ERROR_CODE', at: '2026-10-24T18:00:00Z'}
+        for (var i = 0; i < Log.sources.length; i++) Log.sources[i].newData(Log.cmds[0], {'exit code': 0, stdout: JSON.stringify(fresh)})
+        wait(50)
+        obs('texts', all(f).filter(function (k) { return k.visible && typeof k.text === 'string' }).map(function (k) { return k.text }))
+        obs('refreshing', logic.isRefreshing)
+    """.replace('ERROR_CODE', error_code)
+    out = popup(tmp_path, "renew_feedback_" + error_code, data=data, drive=drive, size=(600, 700))
+    joined = " ".join(out["texts"])
+    assert expect in joined
+    assert out["refreshing"] is False
+
+
+def test_manual_renewal_with_http_429_displays_pause_and_hides_button(tmp_path):
+    data = fixture()
+    for agent in data["agents"].values():
+        agent["accounts"] = []
+    data["agents"]["claude"]["accounts"] = [acct("claude", "target", "Active account", True,
+        health="session_expired", no_data=True, fetch_error={"kind": "auth"})]
+    drive = """
+        btn('Renew session').click()
+        var fresh = JSON.parse(JSON.stringify(logic.statusData))
+        var account = fresh.agents.claude.accounts[0]
+        account.health.status = 'valid'
+        account.renewal = {error: null, at: '2026-10-24T18:00:00Z'}
+        account.fetch_error = {kind: 'rate_limited', message: 'Rate limit (HTTP 429)'}
+        account.stale = true
+        for (var i = 0; i < Log.sources.length; i++) Log.sources[i].newData(Log.cmds[0], {'exit code': 0, stdout: JSON.stringify(fresh)})
+        wait(50)
+        obs('remainingButtons', vis('renewSessionButton').length)
+        obs('statusLines', all(f).filter(function (k) { return k.visible && typeof k.text === 'string' && k.text.indexOf('\\u26a0') === 0 }).map(function (k) { return k.text }))
+        obs('refreshing', logic.isRefreshing)
+    """
+    out = popup(tmp_path, "renew_rate_limit", data=data, drive=drive, size=(600, 700))
+    assert out["remainingButtons"] == 0
+    joined = " ".join(out["statusLines"])
+    assert "Provider rate limit reached (HTTP 429)" in joined or "HTTP 429" in joined
+    assert out["refreshing"] is False
