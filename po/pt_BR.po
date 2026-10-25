@@ -23,7 +23,7 @@ msgstr "%1, conta %2"
 msgid "Active on the system"
 msgstr "Ativa no sistema"
 
-#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:456
+#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:463
 msgid "Exit code %1"
 msgstr "Código de saída %1"
 
@@ -287,7 +287,7 @@ msgstr[1] "%1 convites disponíveis"
 msgid "AI Usage Monitor"
 msgstr "Monitor de Uso de IA"
 
-#: contents/ui/FloatingPillWindow.qml:58
+#: contents/ui/FloatingPillWindow.qml:61
 msgid "Configure…"
 msgstr "Configurar…"
 
@@ -861,19 +861,19 @@ msgstr "Não foi possível buscar atualizações agora. Tente de novo mais tarde
 msgid "Update checks are turned off in the settings."
 msgstr "A busca de atualizações está desligada nas configurações."
 
-#: contents/ui/WidgetUpdate.qml:57 contents/ui/main.qml:388
+#: contents/ui/WidgetUpdate.qml:57 contents/ui/main.qml:393
 msgid "Checking for updates…"
 msgstr "Buscando atualização…"
 
-#: contents/ui/WidgetUpdate.qml:58 contents/ui/WidgetUpdate.qml:158 contents/ui/main.qml:389
+#: contents/ui/WidgetUpdate.qml:58 contents/ui/WidgetUpdate.qml:158 contents/ui/main.qml:394
 msgid "Updating the widget…"
 msgstr "Atualizando o widget…"
 
-#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:391
+#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:397
 msgid "Update to v%1"
 msgstr "Atualizar para v%1"
 
-#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:391
+#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:397
 msgid "Check for updates"
 msgstr "Buscar atualização"
 
@@ -909,11 +909,11 @@ msgstr "Atualizar"
 msgid "Downloads and installs the update now."
 msgstr "Baixa e instala a atualização agora."
 
-#: contents/ui/WidgetUpdate.qml:216 contents/ui/main.qml:390
+#: contents/ui/WidgetUpdate.qml:216
 msgid "Updated to v%1. Reload the widget to start using it."
 msgstr "Atualizado para a v%1. Recarregue o widget para começar a usá-la."
 
-#: contents/ui/WidgetUpdate.qml:226
+#: contents/ui/WidgetUpdate.qml:226 contents/ui/main.qml:395
 msgid "Reload the widget"
 msgstr "Recarregar o widget"
 
@@ -1789,14 +1789,18 @@ msgstr "Cache de status não encontrado. Execute o coletor."
 msgid "Status cache not found. See the collector notice."
 msgstr "Cache de status não encontrado. Veja o aviso do coletor."
 
-#: contents/ui/main.qml:457
+#: contents/ui/main.qml:396
+msgid "Retry update to v%1"
+msgstr "Tentar atualizar para v%1 de novo"
+
+#: contents/ui/main.qml:464
 msgid "Error running the collector: %1"
 msgstr "Erro ao executar coletor: %1"
 
-#: contents/ui/main.qml:480
+#: contents/ui/main.qml:487
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr "O coletor não respondeu em 120 s; nova tentativa no próximo ciclo."
 
-#: contents/ui/main.qml:595
+#: contents/ui/main.qml:602
 msgid "Error reading status JSON: %1"
 msgstr "Erro ao ler JSON de status: %1"

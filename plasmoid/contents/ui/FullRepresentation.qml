@@ -59,7 +59,7 @@ Item {
     property bool collectorConfirming: false
     readonly property string collectorConfirmTitle: collectorState === "desatualizado" ? I18n.tr("Update collector to version %1?", widgetVersion) : I18n.tr("Install collector version %1?", widgetVersion)
     onCollectorStateChanged: collectorConfirming = false
-    onIsOpenChanged: if (!isOpen) { collectorConfirming = false; if (plasmoidItem && plasmoidItem.cancelWidgetUpdate) plasmoidItem.cancelWidgetUpdate(); }
+    onIsOpenChanged: if (!isOpen) { collectorConfirming = false; if (plasmoidItem && plasmoidItem.cancelWidgetUpdate) plasmoidItem.cancelWidgetUpdate("popup"); }
     onCollectorInstallingChanged: if (collectorInstalling) collectorConfirming = false
     function cancelCollectorInstall() { collectorConfirming = false; forceActiveFocus(); }
     function confirmCollectorInstall() {

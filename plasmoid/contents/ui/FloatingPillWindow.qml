@@ -21,6 +21,7 @@ FloatingFrame {
             var d = 0;
             if (event.key === (win.vertical ? Qt.Key_Up : Qt.Key_Left)) d = -step;
             else if (event.key === (win.vertical ? Qt.Key_Down : Qt.Key_Right)) d = step;
+            else if (event.key === Qt.Key_Menu || (event.key === Qt.Key_F10 && (event.modifiers & Qt.ShiftModifier))) { menu.popup(); event.accepted = true; return; }
             else if (event.key === Qt.Key_Home) { win.host.recenter(); event.accepted = true; return; }
             else return;
             win.host.nudge(d);
@@ -46,6 +47,8 @@ FloatingFrame {
             id: menu
             objectName: "pillMenu"
             popupType: QQC2.Popup.Window
+            // o ponteiro sai da pílula ao abrir o menu: fixa o popup para o hover perdido não fechá-lo
+            onAboutToShow: if (win.host && win.host.plasmoidItem && win.host.plasmoidItem.open) win.host.plasmoidItem.pinned = true
             QQC2.MenuItem {
                 objectName: "pillMenuUpdate"
                 text: win.host && win.host.plasmoidItem ? win.host.plasmoidItem.widgetUpdateActionText : ""

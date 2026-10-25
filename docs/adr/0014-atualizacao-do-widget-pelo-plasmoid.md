@@ -30,4 +30,5 @@ Status: aceita
 - Busca de Atualizacao: `ai-usage-collector --check-update` imprime uma linha JSON (`nova` com versao, `atual` ou `indisponivel`; `desligada` e decidida pela configuracao no Plasmoid).
 - Estado no `main.qml`: `idle | buscando | confirmando | atualizando | concluido | erro`, com watchdog, pausa de 5 s entre buscas e uma unica instalacao/atualizacao por vez. `WidgetUpdate.qml` desenha botao, confirmacao inline, progresso, erro e recarga; esta no popup e na configuracao. Os menus do painel (`contextualActions`) e do Notch chamam `requestWidgetUpdate`, que so busca ou abre a confirmacao no popup.
 - Canal da configuracao: a janela de configuracao e outro processo QML; o estado chega por `widgetUpdateMirror` e os pedidos voltam por `widgetUpdateRequest` (entradas de `main.xml`).
+- Limitacoes: o canal da configuracao aceita `start` de qualquer processo do mesmo usuario que escreva o campo `widgetUpdateRequest`; mitigado pelo SHA256 do plasmoid e pelo estado `confirmando` (`start` so vale depois de um `ask`).
 - Primeira atualizacao: Coletores <= 1.2.3 nao embutem hash e terminam em `sem_hash`; a atualizacao manual esta em `docs/usage.pt-BR.md`.

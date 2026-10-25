@@ -406,6 +406,8 @@ def test_notch_menu_uses_the_shared_entry_point_and_never_updates_directly():
     pill = (UI_DIR / "FloatingPillWindow.qml").read_text(encoding="utf-8")
     assert "requestWidgetUpdate()" in pill and "startWidgetUpdate" not in pill and "popupType: QQC2.Popup.Window" in pill
     assert 'I18n.tr("Configure…")' in pill
+    # review do ticket 78: o menu fixa o popup aberto e abre também por teclado
+    assert "onAboutToShow:" in pill and "plasmoidItem.pinned = true" in pill and "Qt.Key_Menu" in pill and "Qt.Key_F10" in pill
 
 
 @needs_qml

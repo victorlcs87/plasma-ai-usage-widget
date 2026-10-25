@@ -36,7 +36,7 @@ Item {
         readonly property string widgetVersion: mirror.current || ""
         readonly property bool widgetCheckCooldown: mirror.cooldown === true
         function refresh() {
-            try { wuProxy.mirror = JSON.parse(Plasmoid.configuration.widgetUpdateMirror || "{}"); } catch (e) { wuProxy.mirror = ({}); }
+            try { var o = JSON.parse(Plasmoid.configuration.widgetUpdateMirror || "{}"); wuProxy.mirror = o && typeof o === "object" ? o : ({}); } catch (e) { wuProxy.mirror = ({}); }
         }
         function send(action) { Plasmoid.configuration.widgetUpdateRequest = action + ":" + Date.now(); }
         function checkWidgetUpdate() { send("check"); }

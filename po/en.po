@@ -23,7 +23,7 @@ msgstr "%1, account %2"
 msgid "Active on the system"
 msgstr "Active on the system"
 
-#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:456
+#: contents/ui/AccountCard.qml:124 contents/ui/main.qml:463
 msgid "Exit code %1"
 msgstr "Exit code %1"
 
@@ -287,7 +287,7 @@ msgstr[1] "%1 invites available"
 msgid "AI Usage Monitor"
 msgstr "AI Usage Monitor"
 
-#: contents/ui/FloatingPillWindow.qml:58
+#: contents/ui/FloatingPillWindow.qml:61
 msgid "Configure…"
 msgstr "Configure…"
 
@@ -861,19 +861,19 @@ msgstr "Could not check for updates right now. Try again later."
 msgid "Update checks are turned off in the settings."
 msgstr "Update checks are turned off in the settings."
 
-#: contents/ui/WidgetUpdate.qml:57 contents/ui/main.qml:388
+#: contents/ui/WidgetUpdate.qml:57 contents/ui/main.qml:393
 msgid "Checking for updates…"
 msgstr "Checking for updates…"
 
-#: contents/ui/WidgetUpdate.qml:58 contents/ui/WidgetUpdate.qml:158 contents/ui/main.qml:389
+#: contents/ui/WidgetUpdate.qml:58 contents/ui/WidgetUpdate.qml:158 contents/ui/main.qml:394
 msgid "Updating the widget…"
 msgstr "Updating the widget…"
 
-#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:391
+#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:397
 msgid "Update to v%1"
 msgstr "Update to v%1"
 
-#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:391
+#: contents/ui/WidgetUpdate.qml:60 contents/ui/main.qml:397
 msgid "Check for updates"
 msgstr "Check for updates"
 
@@ -909,11 +909,11 @@ msgstr "Update"
 msgid "Downloads and installs the update now."
 msgstr "Downloads and installs the update now."
 
-#: contents/ui/WidgetUpdate.qml:216 contents/ui/main.qml:390
+#: contents/ui/WidgetUpdate.qml:216
 msgid "Updated to v%1. Reload the widget to start using it."
 msgstr "Updated to v%1. Reload the widget to start using it."
 
-#: contents/ui/WidgetUpdate.qml:226
+#: contents/ui/WidgetUpdate.qml:226 contents/ui/main.qml:395
 msgid "Reload the widget"
 msgstr "Reload the widget"
 
@@ -1789,14 +1789,18 @@ msgstr "Status cache not found. Run the collector."
 msgid "Status cache not found. See the collector notice."
 msgstr "Status cache not found. See the collector notice."
 
-#: contents/ui/main.qml:457
+#: contents/ui/main.qml:396
+msgid "Retry update to v%1"
+msgstr "Retry update to v%1"
+
+#: contents/ui/main.qml:464
 msgid "Error running the collector: %1"
 msgstr "Error running the collector: %1"
 
-#: contents/ui/main.qml:480
+#: contents/ui/main.qml:487
 msgid "The collector did not respond within 120 s; retrying on the next cycle."
 msgstr "The collector did not respond within 120 s; retrying on the next cycle."
 
-#: contents/ui/main.qml:595
+#: contents/ui/main.qml:602
 msgid "Error reading status JSON: %1"
 msgstr "Error reading status JSON: %1"

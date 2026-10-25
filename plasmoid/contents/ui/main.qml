@@ -327,11 +327,16 @@ PlasmoidItem {
         setWidgetUpdate("buscando", { result: "", version: "" });
         widgetCheckSource.connectSource(buildCollectorCommand(Collector.shellQuote("--check-update")));
     }
-    function askWidgetUpdate() {  // abre a confirmação inline; nada roda ainda
+    property bool widgetAskFromConfig: false  // a confirmação veio da janela de configuração: fechar o popup não a cancela
+    function askWidgetUpdate(fromConfig) {  // abre a confirmação inline; nada roda ainda
         if (root.widgetUpdateBusy || root.widgetUpdateVersion === "" || root.collectorInstall.state === "running") return;
+        root.widgetAskFromConfig = fromConfig === true;
         setWidgetUpdate("confirmando", {});
     }
-    function cancelWidgetUpdate() { if (root.widgetUpdate.state === "confirmando") setWidgetUpdate("idle", {}); }
+    function cancelWidgetUpdate(origin) {  // origin "popup": o popup fechou
+        if (origin === "popup" && root.widgetAskFromConfig) return;
+        if (root.widgetUpdate.state === "confirmando") setWidgetUpdate("idle", {});
+    }
     function startWidgetUpdate() {
         if (root.widgetUpdate.state !== "confirmando" || root.collectorInstall.state === "running") return;  // clique repetido não duplica
         var script = Collector.scriptPath(Qt.resolvedUrl("../code/collector-installer.py"));
@@ -387,15 +392,17 @@ PlasmoidItem {
     // só busca ou abre a confirmação inline e mostra o popup, onde o WidgetUpdate pede versão/origem/sem sudo.
     readonly property string widgetUpdateActionText: widgetUpdate.state === "buscando" ? I18n.tr("Checking for updates…")
         : widgetUpdate.state === "atualizando" ? I18n.tr("Updating the widget…")
-        : widgetUpdate.state === "concluido" ? I18n.tr("Updated to v%1. Reload the widget to start using it.", widgetUpdate.to || widgetUpdateVersion)
+        : widgetUpdate.state === "concluido" ? I18n.tr("Reload the widget")
+        : widgetUpdate.state === "erro" && widgetUpdateVersion !== "" ? I18n.tr("Retry update to v%1", widgetUpdateVersion)
         : widgetUpdateVersion !== "" ? I18n.tr("Update to v%1", widgetUpdateVersion) : I18n.tr("Check for updates")
-    readonly property bool widgetUpdateActionEnabled: !widgetUpdateBusy && (widgetUpdateVersion !== "" || widgetUpdate.state === "concluido" || !widgetCheckCooldown)
+    readonly property bool widgetUpdateActionEnabled: !widgetUpdateBusy && collectorInstall.state !== "running" && (widgetUpdateVersion !== "" || widgetUpdate.state === "concluido" || !widgetCheckCooldown)
     function requestWidgetUpdate() {
         if (!root.widgetUpdateActionEnabled) return;
         if (root.widgetUpdate.state === "idle" || root.widgetUpdate.state === "erro") {
             if (root.widgetUpdateVersion !== "") root.askWidgetUpdate(); else root.checkWidgetUpdate();
         }
         root.setOpen(true);
+        if (root.hoverOpen) { root.pinned = true; root.openedByHover = false; }  // como o pillClicked: o hover não fecha a confirmação
     }
     Plasmoid.contextualActions: [
         PlasmaCore.Action {
@@ -420,7 +427,7 @@ PlasmoidItem {
             if (a === "") return;
             Plasmoid.configuration.widgetUpdateRequest = "";
             if (a === "check") root.checkWidgetUpdate();
-            else if (a === "ask") root.askWidgetUpdate();
+            else if (a === "ask") root.askWidgetUpdate(true);
             else if (a === "cancel") root.cancelWidgetUpdate();
             else if (a === "start") root.startWidgetUpdate();
             else if (a === "reload") root.reloadWidget();

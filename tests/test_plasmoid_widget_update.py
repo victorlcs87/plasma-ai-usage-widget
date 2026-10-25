@@ -174,7 +174,7 @@ def test_main_state_wiring_is_click_only_and_guarded():
         assert main.count(name + ".connectSource") == 1
     start = main.split("function startWidgetUpdate()")[1].split("function reloadWidget")[0]
     assert 'state !== "confirmando" ||' in start and "Collector.buildUpdateCommand(script, root.widgetUpdateVersion)" in start
-    ask = main.split("function askWidgetUpdate()")[1].split("function cancelWidgetUpdate")[0]
+    ask = main.split("function askWidgetUpdate(")[1].split("function cancelWidgetUpdate")[0]
     assert "widgetUpdateBusy" in ask and 'collectorInstall.state === "running"' in ask
     assert 'state === "concluido"' in main.split("function reloadWidget()")[1].split("}")[0]
     assert "interval: 5000" in main.split("id: widgetCooldown")[1].split("}")[0]
@@ -280,3 +280,33 @@ def test_pt_br_translates_the_menu_and_config_strings():
     for msg in ("Configure…", "Installed widget version: v%1", "Updating is available once the widget is running.", "Checking for updates…", "Updating the widget…"):
         m = re.search(r'msgid "%s"\nmsgstr "(.+)"' % re.escape(msg), po)
         assert m and m.group(1) != msg, msg
+
+
+def test_request_pins_the_popup_like_pill_click_and_enabled_respects_collector_install():
+    """Review do ticket 78 (M1, B1): o popup aberto por hover não pode fechar sobre a confirmação; o menu respeita o install em curso."""
+    main = (UI_DIR / "main.qml").read_text()
+    req = main.split("function requestWidgetUpdate()")[1].split("Plasmoid.contextualActions")[0]
+    assert "root.pinned = true" in req.split("root.setOpen(true)")[1] and "root.openedByHover = false" in req.split("root.setOpen(true)")[1]
+    assert 'collectorInstall.state !== "running"' in main.split("widgetUpdateActionEnabled:")[1].split("\n")[0]
+
+
+def test_popup_close_keeps_a_confirmation_opened_from_the_config_window():
+    """Review do ticket 78 (M2): só a confirmação aberta pelo popup é cancelada ao fechá-lo; a da configuração e o cancelar explícito seguem."""
+    main = (UI_DIR / "main.qml").read_text()
+    full = (UI_DIR / "FullRepresentation.qml").read_text()
+    assert 'plasmoidItem.cancelWidgetUpdate("popup")' in full
+    cancel = main.split("function cancelWidgetUpdate(")[1].split("function startWidgetUpdate")[0]
+    assert 'origin === "popup" && root.widgetAskFromConfig) return' in cancel and 'state === "confirmando"' in cancel
+    assert "root.widgetAskFromConfig = fromConfig === true" in main.split("function askWidgetUpdate(")[1].split("setWidgetUpdate")[0]
+    handler = main.split("function onWidgetUpdateRequestChanged()")[1].split("Plasma5Support")[0]
+    assert "askWidgetUpdate(true)" in handler and "cancelWidgetUpdate()" in handler
+
+
+def test_config_mirror_rejects_non_object_json_and_labels_follow_the_state():
+    cfg = (UI_DIR / "configGeneral.qml").read_text()
+    assert 'o && typeof o === "object" ? o : ({})' in cfg
+    main = (UI_DIR / "main.qml").read_text()
+    text = main.split("widgetUpdateActionText:")[1].split("readonly property bool")[0]
+    assert 'state === "concluido" ? I18n.tr("Reload the widget")' in text and 'I18n.tr("Retry update to v%1"' in text
+    po = (Path(__file__).resolve().parent.parent / "po" / "pt_BR.po").read_text()
+    assert "Retry update to v%1" in po
