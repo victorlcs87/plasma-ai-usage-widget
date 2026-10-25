@@ -79,6 +79,7 @@ ColumnLayout {
                 : I18n.tr("Looks for a newer release on GitHub. Nothing is installed.")
             onClicked: {
                 if (!wu.plasmoidItem) return;
+                wu.forceActiveFocus();  // o botão desliga durante a busca/confirmação: o foco do teclado não se perde
                 if (wu.version !== "") wu.plasmoidItem.askWidgetUpdate();
                 else wu.plasmoidItem.checkWidgetUpdate();
             }

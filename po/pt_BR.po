@@ -449,7 +449,7 @@ msgstr "Ver versão: %1"
 msgid "Open the release page in the browser"
 msgstr "Abrir a página da release no navegador"
 
-#: contents/ui/FullRepresentation.qml:387 contents/ui/FullRepresentation.qml:423 contents/ui/FullRepresentation.qml:533 contents/ui/WidgetUpdate.qml:202
+#: contents/ui/FullRepresentation.qml:387 contents/ui/FullRepresentation.qml:423 contents/ui/FullRepresentation.qml:533 contents/ui/WidgetUpdate.qml:203
 msgid "Details: %1"
 msgstr "Detalhes: %1"
 
@@ -485,7 +485,7 @@ msgstr "Será instalado em %1, com um atalho em %2."
 msgid "No sudo is used and the system Python is not changed."
 msgstr "Não usa sudo e não altera o Python do sistema."
 
-#: contents/ui/FullRepresentation.qml:500 contents/ui/WidgetUpdate.qml:138 contents/ui/configGeneral.qml:2279 contents/ui/configGeneral.qml:2337 contents/ui/configGeneral.qml:2409
+#: contents/ui/FullRepresentation.qml:500 contents/ui/WidgetUpdate.qml:139 contents/ui/configGeneral.qml:2279 contents/ui/configGeneral.qml:2337 contents/ui/configGeneral.qml:2409
 msgid "Cancel"
 msgstr "Cancelar"
 
@@ -501,7 +501,7 @@ msgstr "Instalar"
 msgid "Downloads and installs the collector now."
 msgstr "Baixa e instala o coletor agora."
 
-#: contents/ui/FullRepresentation.qml:534 contents/ui/WidgetUpdate.qml:203
+#: contents/ui/FullRepresentation.qml:534 contents/ui/WidgetUpdate.qml:204
 msgid "Stopped during: %1"
 msgstr "Parou durante: %1"
 
@@ -865,7 +865,7 @@ msgstr "A busca de atualizações está desligada nas configurações."
 msgid "Checking for updates…"
 msgstr "Buscando atualização…"
 
-#: contents/ui/WidgetUpdate.qml:61 contents/ui/WidgetUpdate.qml:164 contents/ui/main.qml:394
+#: contents/ui/WidgetUpdate.qml:61 contents/ui/WidgetUpdate.qml:165 contents/ui/main.qml:394
 msgid "Updating the widget…"
 msgstr "Atualizando o widget…"
 
@@ -885,63 +885,63 @@ msgstr "Pede confirmação antes; nada é alterado até você confirmar."
 msgid "Looks for a newer release on GitHub. Nothing is installed."
 msgstr "Procura uma release mais nova no GitHub. Nada é instalado."
 
-#: contents/ui/WidgetUpdate.qml:115
+#: contents/ui/WidgetUpdate.qml:116
 msgid "Update the widget from v%1 to v%2?"
 msgstr "Atualizar o widget da v%1 para a v%2?"
 
-#: contents/ui/WidgetUpdate.qml:124
+#: contents/ui/WidgetUpdate.qml:125
 msgid "The collector and the widget package will be downloaded from GitHub Releases and the widget package is checked against a checksum."
 msgstr "O coletor e o pacote do widget serão baixados do GitHub Releases, e o pacote do widget é conferido por uma soma de verificação."
 
-#: contents/ui/WidgetUpdate.qml:125
+#: contents/ui/WidgetUpdate.qml:126
 msgid "No sudo is used. The widget keeps running the old version until you reload it."
 msgstr "Não usa sudo. O widget segue na versão antiga até você recarregá-lo."
 
-#: contents/ui/WidgetUpdate.qml:139
+#: contents/ui/WidgetUpdate.qml:140
 msgid "Closes this question without changing anything."
 msgstr "Fecha esta pergunta sem alterar nada."
 
-#: contents/ui/WidgetUpdate.qml:146
+#: contents/ui/WidgetUpdate.qml:147
 msgid "Update"
 msgstr "Atualizar"
 
-#: contents/ui/WidgetUpdate.qml:147
+#: contents/ui/WidgetUpdate.qml:148
 msgid "Downloads and installs the update now."
 msgstr "Baixa e instala a atualização agora."
 
-#: contents/ui/WidgetUpdate.qml:218 contents/ui/WidgetUpdate.qml:223
+#: contents/ui/WidgetUpdate.qml:219 contents/ui/WidgetUpdate.qml:224
 msgid "Updated to v%1. Reload the widget to start using it."
 msgstr "Atualizado para a v%1. Recarregue o widget para começar a usá-la."
 
-#: contents/ui/WidgetUpdate.qml:235 contents/ui/main.qml:395
+#: contents/ui/WidgetUpdate.qml:236 contents/ui/main.qml:395
 msgid "Reload the widget"
 msgstr "Recarregar o widget"
 
-#: contents/ui/WidgetUpdate.qml:236
+#: contents/ui/WidgetUpdate.qml:237
 msgid "Asks for confirmation first; the Plasma shell is not restarted until you confirm."
 msgstr "Pede confirmação antes; o shell do Plasma não é reiniciado até você confirmar."
 
-#: contents/ui/WidgetUpdate.qml:245
+#: contents/ui/WidgetUpdate.qml:246
 msgid "Reload the widget?"
 msgstr "Recarregar o widget?"
 
-#: contents/ui/WidgetUpdate.qml:251
+#: contents/ui/WidgetUpdate.qml:252
 msgid "This restarts the Plasma shell: panels and widgets disappear for a few seconds and come back. Nothing is lost."
 msgstr "Isso reinicia o shell do Plasma: painéis e widgets somem por alguns segundos e voltam. Nada se perde."
 
-#: contents/ui/WidgetUpdate.qml:264
+#: contents/ui/WidgetUpdate.qml:265
 msgid "Not now"
 msgstr "Agora não"
 
-#: contents/ui/WidgetUpdate.qml:265
+#: contents/ui/WidgetUpdate.qml:266
 msgid "Closes this question; the old version keeps running until you reload."
 msgstr "Fecha esta pergunta; a versão antiga segue em uso até você recarregar."
 
-#: contents/ui/WidgetUpdate.qml:272
+#: contents/ui/WidgetUpdate.qml:273
 msgid "Reload now"
 msgstr "Recarregar agora"
 
-#: contents/ui/WidgetUpdate.qml:273
+#: contents/ui/WidgetUpdate.qml:274
 msgid "Restarts the Plasma shell now."
 msgstr "Reinicia o shell do Plasma agora."
 
