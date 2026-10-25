@@ -73,8 +73,8 @@ function buildInstallCommand(scriptFile, version) {
     return "python3 " + shellQuote(scriptFile) + " install --version " + shellQuote(version);
 }
 
-var INSTALL_CAUSES = ["python_indisponivel", "rede", "versao_inexistente", "permissao", "conflito_em_local_bin", "verificacao", "falha"];
-var INSTALL_STEPS = ["venv", "download", "install", "link", "verify"];
+var INSTALL_CAUSES = ["python_indisponivel", "rede", "versao_inexistente", "permissao", "conflito_em_local_bin", "verificacao", "sem_hash", "kpackagetool", "falha"];
+var INSTALL_STEPS = ["venv", "download", "install", "link", "verify", "plasmoid_hash", "plasmoid_download", "plasmoid_verify", "plasmoid_install"];
 
 // Linhas JSON do `install` -> {steps: [{step, status, message}], result: objeto final ou null}. Linhas inválidas são ignoradas.
 function _installLines(stdout) {
@@ -104,3 +104,32 @@ function parseInstall(stdout, exitCode) {
     var log = (r && Array.isArray(r.log) ? r.log : []).slice(-30).map(function (l) { return String(l).slice(0, 300); });
     return { ok: false, cause: cause, message: r ? String(r.message || "") : "", log: log, failedStep: failed };
 }
+
+// ---- Atualização do Widget (ticket 77, ADR-0014): Coletor + .plasmoid, só depois da confirmação do usuário ----
+// `update` emite as mesmas linhas JSON do `install` (mais os passos plasmoid_*), então o parser é o mesmo.
+function buildUpdateCommand(scriptFile, version) {
+    if (!isVersion(version)) return "";
+    return "python3 " + shellQuote(scriptFile) + " update --version " + shellQuote(version);
+}
+var parseUpdate = parseInstall;
+
+// "v1.2.5" / "1.2.5" -> "1.2.5"; qualquer outra coisa -> "" (a versão vai ao shell)
+function cleanVersion(v) {
+    var s = String(v === null || v === undefined ? "" : v).replace(/^v/, "");
+    return isVersion(s) ? s : "";
+}
+
+// Saída do `ai-usage-collector --check-update` (uma linha JSON) -> {update: nova|atual|indisponivel|desligada, version}.
+// Qualquer saída vazia, inválida ou desconhecida vira "indisponivel"; "nova" sem versão X.Y.Z também.
+function parseCheckUpdate(stdout) {
+    var o, bad = { update: "indisponivel", version: "" };
+    try { o = JSON.parse(String(stdout || "").trim().split("\n").pop()); } catch (e) { return bad; }
+    if (!o || typeof o !== "object") return bad;
+    if (o.update === "desligada") return { update: "desligada", version: "" };
+    if (o.update === "atual") return { update: "atual", version: cleanVersion(o.version) };
+    if (o.update === "nova" && cleanVersion(o.version) !== "") return { update: "nova", version: cleanVersion(o.version) };
+    return bad;
+}
+
+// Recarga do widget: só roda no clique do usuário (nunca automática); desacoplada para sobreviver ao fim do plasmashell
+function reloadCommand() { return "setsid -f plasmashell --replace >/dev/null 2>&1"; }
